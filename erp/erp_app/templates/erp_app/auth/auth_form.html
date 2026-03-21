@@ -1,0 +1,46 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <link rel="stylesheet" href="{% static 'erp_app/css/auth_common.css' %}">
+</head>
+<body>
+    <main class="auth-layout">
+        <section class="auth-card">
+            <h1>{{ page_title }}</h1>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="auth-alert">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post" class="auth-form">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div class="field-error">{{ form.non_field_errors }}</div>
+                {% endif %}
+
+                {% for field in form %}
+                    <div class="form-row">
+                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.errors %}
+                            <small class="field-error">{{ field.errors|striptags }}</small>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+
+                <button type="submit" class="auth-button">{{ submit_label }}</button>
+            </form>
+
+            <p class="alt-link"><a href="{% url alternate_url_name %}">{{ alternate_text }}</a></p>
+        </section>
+    </main>
+</body>
+</html>
+
