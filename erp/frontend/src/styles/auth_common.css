@@ -3,8 +3,8 @@
   --bg-soft: #12515a;
   --card-bg: #0b3a40;
   --card-bg-elev: #17626b;
-  --text: #dbf4f1;
-  --muted: #98c6c1;
+  --text: #f0fffe;
+  --muted: #cce8e5;
   --primary: #16b2a5;
   --primary-hover: #25d2c3;
   --border: #1e666d;
@@ -12,8 +12,8 @@
   --success-bg: #0f5f56;
   --header-bg: #021317;
   --header-border: #0d4248;
-  --header-text: #dffcf8;
-  --header-muted: #8ac8c2;
+  --header-text: #ffffff;
+  --header-muted: #d0eeea;
 }
 
 * {
@@ -80,8 +80,9 @@ textarea {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-end;
-  line-height: 1.1;
-  margin-right: 0.25rem;
+  line-height: 1.4;
+  gap: 0.2rem;
+  margin-right: 0.6rem;
 }
 
 .project-header__title {
@@ -95,8 +96,8 @@ textarea {
 }
 
 .project-header__logo {
-  width: 45px;
-  height: 45px;
+  width: 65px;
+  height: 65px;
   object-fit: contain;
 }
 
@@ -123,13 +124,13 @@ textarea {
 }
 
 .project-header__username {
-  font-size: 0.88rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #ffb347;
 }
 
 .project-header__role {
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   color: var(--header-muted);
 }
 
@@ -293,8 +294,8 @@ select.auth-input option {
 
 .home-sidenav__title {
   margin: 0 0 0.65rem;
-  font-size: 0.95rem;
-  color: var(--muted);
+  font-size: 1rem;
+  color: #ffffff;
   white-space: nowrap;
   opacity: 0;
   transform: translateX(-8px);
@@ -339,13 +340,13 @@ select.auth-input option {
 }
 
 .home-sidenav__link {
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .home-sidenav__sublink {
   margin-left: 0;
-  font-size: 0.84rem;
-  color: var(--muted);
+  font-size: 0.94rem;
+  color: #e8fffe;
 }
 
 .home-sidenav:hover .home-sidenav__sublink,
@@ -545,7 +546,7 @@ select.auth-input option {
 
 .users-table th {
   background: #0d4a51;
-  color: #d9fffb;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -772,8 +773,8 @@ select.auth-input option {
   }
 
   .project-header__logo {
-    width: 32px;
-    height: 32px;
+    width: 46px;
+    height: 46px;
   }
 
   .project-header__left {
@@ -788,11 +789,11 @@ select.auth-input option {
   }
 
   .project-header__username {
-    font-size: 0.84rem;
+    font-size: 0.95rem;
   }
 
   .project-header__role {
-    font-size: 0.68rem;
+    font-size: 0.78rem;
   }
 
   .project-header__home,
@@ -890,6 +891,13 @@ select.auth-input option {
 }
 
 /* ── Pending Approvals ─────────────────────────────────────────── */
+.auth-input--readonly,
+.auth-input[readonly] {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background: rgba(0, 0, 0, 0.15);
+}
+
 .pending-badge {
   display: inline-flex;
   align-items: center;

@@ -32,6 +32,7 @@ from .sub_views import (
     stock_maintenance_detail_api_view,
     task_detail_api_view,
     create_task_status_option_api_view,
+    create_activity_option_api_view,
     create_project_status_option_api_view,
 )
 

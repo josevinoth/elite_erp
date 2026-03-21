@@ -1,3 +1,4 @@
+from .activity import Activity
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .project import Project
@@ -6,11 +7,13 @@ from .stock_maintenance import StockMaintenance
 from .stock_purchase import StockPurchase
 from .task import Task
 from .task_status_option import TaskStatusOption
+from .team import Team
 from .user_profile import UserProfile
 from .user_status_option import UserStatusOption
 from .vendor import Vendor
 
 __all__ = [
+	"Activity",
 	"Vendor",
 	"Project",
 	"ProjectLifecycleStatusOption",
@@ -20,6 +23,7 @@ __all__ = [
 	"Task",
 	"ProjectStatusOption",
 	"TaskStatusOption",
+	"Team",
 	"UserStatusOption",
 	"UserProfile",
 ]

@@ -32,6 +32,7 @@ from .views import (
     create_task_api_view,
     task_detail_api_view,
     create_task_status_option_api_view,
+    create_activity_option_api_view,
     create_project_status_option_api_view,
 )
 
@@ -76,5 +77,6 @@ urlpatterns = [
     path('api/tasks/create/', create_task_api_view, name='api-tasks-create'),
     path('api/tasks/<int:pk>/', task_detail_api_view, name='api-tasks-detail'),
     path('api/tasks/status-options/add/', create_task_status_option_api_view, name='api-tasks-status-add'),
+    path('api/tasks/activity-options/add/', create_activity_option_api_view, name='api-tasks-activity-add'),
     path('api/tasks/project-status-options/add/', create_project_status_option_api_view, name='api-project-status-add'),
 ]

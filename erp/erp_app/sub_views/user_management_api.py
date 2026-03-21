@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import UserProfile, UserStatusOption
+from ..sub_models import Team, UserProfile, UserStatusOption
 
 
 def _ensure_authenticated(request):
@@ -26,14 +26,16 @@ def _resolve_user_role(user):
 
 
 def _serialize_user(user):
-    profile = UserProfile.objects.filter(user=user).select_related("status").first()
+    profile = UserProfile.objects.filter(user=user).select_related("status", "team").first()
     status = profile.status.name if profile and profile.status else ""
+    team = profile.team.name if profile and profile.team else ""
     return {
         "id": user.id,
         "username": user.username,
         "email": user.email,
         "role": _resolve_user_role(user),
         "status": status,
+        "team": team,
         "date_joined": user.date_joined.strftime("%d %b %Y") if user.date_joined else "",
     }
 
@@ -54,6 +56,7 @@ def list_users_api_view(request):
     users = User.objects.order_by("username")
     status_options = list(UserStatusOption.objects.order_by("name").values_list("name", flat=True))
     role_options = list(Group.objects.order_by("name").values_list("name", flat=True))
+    team_options = list(Team.objects.order_by("name").values_list("name", flat=True))
     new_registration_count = UserProfile.objects.filter(
         status__name__iexact="New Registration"
     ).count()
@@ -62,6 +65,7 @@ def list_users_api_view(request):
             "users": [_serialize_user(user) for user in users],
             "role_options": role_options,
             "status_options": status_options,
+            "team_options": team_options,
             "new_registration_count": new_registration_count,
         }
     )
@@ -147,9 +151,10 @@ def user_detail_api_view(request, user_id):
     payload = _read_json_body(request)
     role = str(payload.get("role", "")).strip()
     status_name = str(payload.get("status", "")).strip()
+    team_name = str(payload.get("team", "")).strip()
 
-    if not role and not status_name:
-        return JsonResponse({"message": "Role or status is required."}, status=400)
+    if not role and not status_name and not team_name:
+        return JsonResponse({"message": "Role, status, or team is required."}, status=400)
 
     if role:
         if len(role) > 50:
@@ -164,6 +169,12 @@ def user_detail_api_view(request, user_id):
         profile.save(update_fields=["status"])
         user.is_active = status_obj.name.lower() not in ("inactive", "new registration")
         user.save(update_fields=["is_active"])
+
+    if team_name:
+        team_obj, _ = Team.objects.get_or_create(name=team_name)
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.team = team_obj
+        profile.save(update_fields=["team"])
 
     return JsonResponse(
         {

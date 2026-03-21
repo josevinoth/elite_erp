@@ -18,6 +18,8 @@ import { clearSessionUser, getSessionUser } from "./services/sessionUser";
 function App() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(() => getSessionUser());
+  const roleName = String(currentUser?.role || "").toLowerCase();
+  const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
 
   const displayUsername = currentUser?.username || "Guest";
   const displayRole = currentUser?.role || (currentUser ? "User" : "Visitor");
@@ -36,6 +38,8 @@ function App() {
 
   const homePath = currentUser ? "/home" : "/login";
   const secureRoute = (element) => (currentUser ? element : <Navigate to="/login" replace />);
+  const adminRoute = (element) =>
+    currentUser ? (isAdmin ? element : <Navigate to="/home" replace />) : <Navigate to="/login" replace />;
 
   return (
     <div className="app-shell">
@@ -51,12 +55,15 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to={homePath} replace />} />
           <Route path="/login" element={<LoginPage onLoginSuccess={setCurrentUser} />} />
-          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/register"
+            element={currentUser && !isAdmin ? <Navigate to="/home" replace /> : <RegisterPage />}
+          />
 
-          <Route path="/home" element={secureRoute(<HomeLayout />)} />
+          <Route path="/home" element={secureRoute(<HomeLayout currentUser={currentUser} />)} />
 
-          <Route path="/users-management" element={secureRoute(<UsersManagementPage />)} />
-          <Route path="/pending-approvals" element={secureRoute(<PendingApprovalsPage />)} />
+          <Route path="/users-management" element={adminRoute(<UsersManagementPage />)} />
+          <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage />)} />
           <Route path="/projects" element={secureRoute(<ProjectsPage />)} />
           <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
           <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />

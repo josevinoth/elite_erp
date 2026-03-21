@@ -10,6 +10,7 @@ import {
   BsKanbanFill,
   BsListTask,
   BsPersonCheck,
+  BsPersonPlusFill,
   BsPeopleFill,
   BsReceiptCutoff,
 } from "react-icons/bs";
@@ -27,6 +28,7 @@ const iconMap = {
   customerPo: BsReceiptCutoff,
   costing: BsCashCoin,
   pendingApprovals: BsPersonCheck,
+  userRegistration: BsPersonPlusFill,
 };
 
 function NavIcon({ icon }) {
@@ -34,13 +36,20 @@ function NavIcon({ icon }) {
   return <IconComponent className={`home-sidenav__icon home-sidenav__icon--${icon}`} aria-hidden="true" />;
 }
 
-function HomeSideNav({ badges = {} }) {
+function HomeSideNav({ badges = {}, isAdmin = false }) {
+  const visibleItems = homeNavItems
+    .filter((item) => !item.adminOnly || isAdmin)
+    .map((item) => ({
+      ...item,
+      children: item.children?.filter((child) => !child.adminOnly || isAdmin),
+    }));
+
   return (
     <aside className="home-sidenav" aria-label="Main navigation">
       <h2 className="home-sidenav__title">Modules</h2>
 
       <nav className="home-sidenav__nav">
-        {homeNavItems.map((item) => {
+        {visibleItems.map((item) => {
           const itemBadge = item.badgeKey && badges[item.badgeKey] > 0
             ? badges[item.badgeKey]
             : null;

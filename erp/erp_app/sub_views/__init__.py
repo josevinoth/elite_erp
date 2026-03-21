@@ -23,6 +23,7 @@ from .stock_purchase_api import (
 )
 from .task_api import create_task_api_view, list_tasks_api_view, task_detail_api_view
 from .task_meta_api import (
+    create_activity_option_api_view,
     create_project_status_option_api_view,
     create_task_status_option_api_view,
     list_task_meta_api_view,
@@ -50,5 +51,6 @@ __all__ = [
     "create_stock_maintenance_type_option_api_view",
     "list_tasks_api_view", "create_task_api_view", "task_detail_api_view",
     "list_task_meta_api_view", "create_task_status_option_api_view", "create_project_status_option_api_view",
+    "create_activity_option_api_view",
 ]
 

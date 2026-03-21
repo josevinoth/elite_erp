@@ -1,4 +1,4 @@
-import { BsBoxArrowRight, BsHouseDoor, BsLock, BsPerson, BsPersonBadge, BsToggleOn } from "react-icons/bs";
+import { BsBoxArrowRight, BsHouseDoor, BsLock, BsPeople, BsPerson, BsPersonBadge, BsToggleOn } from "react-icons/bs";
 
 export function HomeIcon({ className = "app-icon" }) {
   return <BsHouseDoor className={className} aria-hidden="true" focusable="false" />;
@@ -22,5 +22,9 @@ export function RoleIcon({ className = "app-icon" }) {
 
 export function StatusIcon({ className = "app-icon" }) {
   return <BsToggleOn className={className} aria-hidden="true" focusable="false" />;
+}
+
+export function TeamIcon({ className = "app-icon" }) {
+  return <BsPeople className={className} aria-hidden="true" focusable="false" />;
 }
 

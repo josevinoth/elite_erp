@@ -27,6 +27,7 @@ function CrudPage({
   stickyHeader = false,
   tableWrapClassName = "",
   showAddButton = true,
+  computeValues = null,   // (changedKey, changedValue, allValues) => extraValues
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +69,15 @@ function CrudPage({
 
   const openEdit = (row) => {
     setEditRow(row);
-    setFormValues(Object.fromEntries(fields.map((f) => [f.key, row[f.key] ?? ""])));
+    setFormValues(
+      Object.fromEntries(
+        fields.map((f) => [
+          f.key,
+          // Disabled fields always use their default (e.g. updated_by = logged-in user)
+          f.disabled ? (f.default ?? "") : (row[f.key] ?? ""),
+        ])
+      )
+    );
     setShowModal(true);
   };
 
@@ -92,38 +101,72 @@ function CrudPage({
           .trimStart()
       : value;
 
-    setFormValues((prev) => ({ ...prev, [name]: nextValue }));
+    setFormValues((prev) => {
+      const nextValues = { ...prev, [name]: nextValue };
+      const extras = computeValues ? computeValues(name, nextValue, nextValues) : {};
+      return { ...nextValues, ...extras };
+    });
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError("");
-    const payload = fields.reduce((acc, field) => {
-      const rawValue = formValues[field.key];
-      if (
-        typeof rawValue === "string" &&
-        !field.options &&
-        (!field.type || ["text", "textarea", "email", "tel", "search"].includes(field.type))
-      ) {
-        acc[field.key] = rawValue
-          .replace(/\s+/g, " ")
-          .replace(/\s*([-_])\s*/g, "$1")
-          .trim();
-      } else {
-        acc[field.key] = rawValue;
-      }
-      return acc;
-    }, {});
+
+    const buildPayload = (fv) =>
+      fields.reduce((acc, field) => {
+        const rawValue = fv[field.key];
+        if (
+          typeof rawValue === "string" &&
+          !field.options &&
+          (!field.type || ["text", "textarea", "email", "tel", "search"].includes(field.type))
+        ) {
+          acc[field.key] = rawValue
+            .replace(/\s+/g, " ")
+            .replace(/\s*([-_])\s*/g, "$1")
+            .trim();
+        } else {
+          acc[field.key] = rawValue;
+        }
+        return acc;
+      }, {});
+
     try {
+      let fv = { ...formValues };
+      let savedRow;
+
+      // Retry loop: on 409 with suggested_revision, confirm + retry automatically.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const payload = buildPayload(fv);
+        try {
+          if (editRow) {
+            savedRow = await updateFn(editRow[rowKey], payload);
+          } else {
+            savedRow = await createFn(payload);
+          }
+          break; // success
+        } catch (retryErr) {
+          const suggested = retryErr.payload?.suggested_revision;
+          if (suggested) {
+            const ok = window.confirm(
+              `${retryErr.message}\n\nUse revision "${suggested}" instead?`
+            );
+            if (ok) {
+              fv = { ...fv, revision: suggested };
+              continue;
+            }
+          }
+          throw retryErr; // re-throw to outer catch
+        }
+      }
+
       if (editRow) {
-        const updated = await updateFn(editRow[rowKey], payload);
         setRows((prev) =>
-          prev.map((r) => (r[rowKey] === editRow[rowKey] ? updated : r))
+          prev.map((r) => (r[rowKey] === editRow[rowKey] ? savedRow : r))
         );
       } else {
-        const created = await createFn(payload);
-        setRows((prev) => [created, ...prev]);
+        setRows((prev) => [savedRow, ...prev]);
       }
       closeModal();
     } catch (err) {
@@ -345,9 +388,10 @@ function CrudPage({
                       <select
                         id={`mf-${field.key}`}
                         name={field.key}
-                        className="auth-input"
+                        className={`auth-input${field.disabled ? " auth-input--readonly" : ""}`}
                         value={formValues[field.key] ?? ""}
-                        onChange={handleChange}
+                        onChange={field.disabled ? undefined : handleChange}
+                        disabled={field.disabled}
                         required={field.required}
                       >
                         <option value="">Select {field.label}</option>
@@ -376,15 +420,18 @@ function CrudPage({
                       value={formValues[field.key] ?? ""}
                       onChange={handleChange}
                       required={field.required}
+                      readOnly={field.readOnly}
                     />
                   ) : (
                     <input
                       id={`mf-${field.key}`}
                       name={field.key}
                       type={field.type || "text"}
-                      className="auth-input"
+                      className={`auth-input${(field.readOnly || field.disabled) ? " auth-input--readonly" : ""}`}
                       value={formValues[field.key] ?? ""}
-                      onChange={handleChange}
+                      onChange={(!field.readOnly && !field.disabled) ? handleChange : undefined}
+                      readOnly={field.readOnly}
+                      disabled={field.disabled}
                       required={field.required}
                     />
                   )}

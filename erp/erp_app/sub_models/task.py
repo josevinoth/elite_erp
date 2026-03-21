@@ -1,7 +1,19 @@
 from django.db import models
-from datetime import timedelta
+from datetime import date as _date, timedelta
 from ..utils import normalize_text, to_title_case
 from .project import Project
+
+
+def _coerce_date(value):
+    """Return a datetime.date or None; accepts date objects and ISO strings."""
+    if not value:
+        return None
+    if isinstance(value, _date):
+        return value
+    try:
+        return _date.fromisoformat(str(value).split(" ")[0])
+    except (ValueError, AttributeError):
+        return None
 
 
 class Task(models.Model):
@@ -72,14 +84,22 @@ class Task(models.Model):
             proj = self.project
             self.project_id_name = f"{proj.project_id}_{proj.project_name}"
 
-        if self.start_date and self.end_date:
-            self.no_of_days = self._calc_days_excluding_sunday(self.start_date, self.end_date)
+        # Normalise date fields so they are always datetime.date or None
+        start = _coerce_date(self.start_date)
+        end = _coerce_date(self.end_date)
+        approved = _coerce_date(self.approved_date)
+        self.start_date = start
+        self.end_date = end
+        self.approved_date = approved
 
-        if self.end_date:
-            self.drawn_by_month = self._format_month_week(self.end_date)
+        if start and end:
+            self.no_of_days = self._calc_days_excluding_sunday(start, end)
 
-        if self.approved_date:
-            self.approved_by_month = self._format_month_week(self.approved_date)
+        if end:
+            self.drawn_by_month = self._format_month_week(end)
+
+        if approved:
+            self.approved_by_month = self._format_month_week(approved)
 
         super().save(*args, **kwargs)
 

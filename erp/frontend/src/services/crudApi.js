@@ -278,3 +278,15 @@ export async function addProjectStatusOption(name) {
   });
   return parseJson(res);
 }
+
+export async function addActivityOption(name) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/tasks/activity-options/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+

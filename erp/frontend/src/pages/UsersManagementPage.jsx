@@ -6,6 +6,7 @@ const COLUMNS = [
   { key: "username", label: "User Name" },
   { key: "email", label: "Email" },
   { key: "role", label: "Role" },
+  { key: "team", label: "Team" },
   { key: "status", label: "Status" },
 ];
 
@@ -16,11 +17,13 @@ function toOptions(arr) {
 function UsersManagementPage() {
   const [roleOptions, setRoleOptions] = useState([]);
   const [statusOptions, setStatusOptions] = useState([]);
+  const [teamOptions, setTeamOptions] = useState([]);
 
   const fetchFn = useCallback(async () => {
     const data = await listUsers();
     setRoleOptions(Array.isArray(data.role_options) ? data.role_options : []);
     setStatusOptions(Array.isArray(data.status_options) ? data.status_options : []);
+    setTeamOptions(Array.isArray(data.team_options) ? data.team_options : []);
     return Array.isArray(data.users) ? data.users : [];
   }, []);
 
@@ -33,13 +36,19 @@ function UsersManagementPage() {
         options: toOptions(roleOptions),
       },
       {
+        key: "team",
+        label: "Team",
+        required: false,
+        options: toOptions(teamOptions),
+      },
+      {
         key: "status",
         label: "Status",
         required: true,
         options: toOptions(statusOptions),
       },
     ],
-    [roleOptions, statusOptions]
+    [roleOptions, teamOptions, statusOptions]
   );
 
   const createFn = useCallback(async () => {
@@ -47,7 +56,7 @@ function UsersManagementPage() {
   }, []);
 
   const updateFn = useCallback(async (id, payload) => {
-    const data = await updateUserRole(id, payload.role || "", payload.status || "");
+    const data = await updateUserRole(id, payload.role || "", payload.status || "", payload.team || "");
     return data.user;
   }, []);
 
@@ -68,4 +77,3 @@ function UsersManagementPage() {
 }
 
 export default UsersManagementPage;
-

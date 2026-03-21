@@ -3,12 +3,20 @@ export const homeNavItems = [
     label: "Users Management",
     to: "/users-management",
     icon: "users",
+    adminOnly: true,
     children: [
+      {
+        label: "User Registration",
+        to: "/register",
+        icon: "userRegistration",
+        adminOnly: true,
+      },
       {
         label: "Pending Approvals",
         to: "/pending-approvals",
         icon: "pendingApprovals",
         badgeKey: "pendingCount",
+        adminOnly: true,
       },
     ],
   },

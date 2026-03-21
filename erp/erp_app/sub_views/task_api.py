@@ -1,4 +1,6 @@
+import datetime
 import json
+import re
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
@@ -28,9 +30,31 @@ def _to_decimal(value, default="0"):
 
 
 def _to_date(value):
+    """Return a datetime.date (or None). Accepts date objects, ISO strings, or datetime strings."""
     if value in (None, ""):
         return None
-    return str(value).split(" ")[0]
+    if isinstance(value, datetime.date):
+        return value
+    s = str(value).split(" ")[0]
+    try:
+        return datetime.date.fromisoformat(s)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _next_revision(revision: str) -> str:
+    """Auto-increment the trailing number in a revision string.
+
+    '01' → '02', '09' → '10', 'Rev-3' → 'Rev-4'.
+    Falls back to appending '-2' if no trailing digits found.
+    """
+    s = str(revision or "01").strip()
+    m = re.search(r"(\d+)$", s)
+    if m:
+        num_str = m.group(1)
+        new_num = str(int(num_str) + 1).zfill(len(num_str))
+        return s[: m.start()] + new_num
+    return s + "-2"
 
 
 def _serialize(obj):
@@ -64,6 +88,23 @@ def list_tasks_api_view(request):
     return JsonResponse({"tasks": [_serialize(o) for o in Task.objects.all()]})
 
 
+def _check_duplicate(project_instance, activity, revision, exclude_pk=None):
+    """Return error message string if Project+Revision+Activity combo already exists, else None."""
+    qs = Task.objects.filter(
+        project=project_instance,
+        activity__iexact=activity,
+        revision__iexact=revision,
+    )
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    if qs.exists():
+        return (
+            f"A task with Project '{project_instance.project_id}', "
+            f"Revision '{revision}' and Activity '{activity}' already exists."
+        )
+    return None
+
+
 @require_POST
 @csrf_protect
 def create_task_api_view(request):
@@ -73,23 +114,30 @@ def create_task_api_view(request):
     p = _read_json(request)
 
     project_db_id = p.get("project", "")
-    project_instance = None
-    if project_db_id:
-        try:
-            project_instance = Project.objects.get(id=int(project_db_id))
-        except (Project.DoesNotExist, ValueError, TypeError):
-            return JsonResponse({"message": "Invalid project selected."}, status=400)
-    else:
+    if not project_db_id:
         return JsonResponse({"message": "Project is required."}, status=400)
+    try:
+        project_instance = Project.objects.get(id=int(project_db_id))
+    except (Project.DoesNotExist, ValueError, TypeError):
+        return JsonResponse({"message": "Invalid project selected."}, status=400)
+
+    activity = normalize_text(p.get("activity", ""))
+    revision = normalize_text(p.get("revision", "01"))
+
+    dup_msg = _check_duplicate(project_instance, activity, revision)
+    if dup_msg:
+        return JsonResponse(
+            {"message": dup_msg, "suggested_revision": _next_revision(revision)}, status=409
+        )
 
     obj = Task.objects.create(
         project=project_instance,
         proposal_date=_to_date(p.get("proposal_date")),
-        activity=normalize_text(p.get("activity", "")),
-        revision=normalize_text(p.get("revision", "")),
+        activity=activity,
+        revision=revision,
         start_date=_to_date(p.get("start_date")),
         end_date=_to_date(p.get("end_date")),
-        no_of_days=_to_decimal(p.get("no_of_days"), default="0"),
+        no_of_days=_to_decimal(p.get("no_of_days"), default="1"),
         drawn_by=to_title_case(p.get("drawn_by", "")),
         approved_by=to_title_case(p.get("approved_by", "")),
         approved_date=_to_date(p.get("approved_date")),
@@ -118,22 +166,36 @@ def task_detail_api_view(request, pk):
 
     p = _read_json(request)
 
-    project_db_id = p.get("project", "")
-    if project_db_id != "":
-        if project_db_id:
-            try:
-                obj.project = Project.objects.get(id=int(project_db_id))
-            except (Project.DoesNotExist, ValueError, TypeError):
-                return JsonResponse({"message": "Invalid project selected."}, status=400)
-        else:
-            obj.project = None
 
     obj.proposal_date = _to_date(p.get("proposal_date", obj.proposal_date))
-    obj.activity = normalize_text(p.get("activity", obj.activity))
-    obj.revision = normalize_text(p.get("revision", obj.revision))
+
+    activity = normalize_text(p.get("activity", obj.activity))
+    revision = normalize_text(p.get("revision", obj.revision))
+
+    # Resolve project for duplicate check
+    project_for_check = obj.project
+    new_project_id = p.get("project", "")
+    if new_project_id != "" and new_project_id:
+        try:
+            project_for_check = Project.objects.get(id=int(new_project_id))
+        except (Project.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({"message": "Invalid project selected."}, status=400)
+        obj.project = project_for_check
+
+    dup_msg = _check_duplicate(project_for_check, activity, revision, exclude_pk=pk)
+    if dup_msg:
+        return JsonResponse(
+            {"message": dup_msg, "suggested_revision": _next_revision(revision)}, status=409
+        )
+
+    obj.activity = activity
+    obj.revision = revision
     obj.start_date = _to_date(p.get("start_date", obj.start_date))
     obj.end_date = _to_date(p.get("end_date", obj.end_date))
-    obj.no_of_days = _to_decimal(p.get("no_of_days", obj.no_of_days), default=str(obj.no_of_days))
+
+    raw_days = _to_decimal(p.get("no_of_days", obj.no_of_days), default=str(obj.no_of_days))
+    obj.no_of_days = max(1, float(raw_days or 1))
+
     obj.drawn_by = to_title_case(p.get("drawn_by", obj.drawn_by))
     obj.approved_by = to_title_case(p.get("approved_by", obj.approved_by))
     obj.approved_date = _to_date(p.get("approved_date", obj.approved_date))

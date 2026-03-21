@@ -1,86 +1,5 @@
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import AuthForm from "../components/AuthForm";
-import AuthLayout from "../components/AuthLayout";
-import useAuthForm from "../hooks/useAuthForm";
-import { registerUser } from "../services/authApi";
-
-const registerFields = [
-  {
-    name: "username",
-    label: "Username",
-    icon: "user",
-    type: "text",
-    autoComplete: "username",
-    required: true,
-  },
-  {
-    name: "email",
-    label: "Email",
-    type: "email",
-    autoComplete: "email",
-    required: true,
-  },
-  {
-    name: "password1",
-    label: "Password",
-    icon: "lock",
-    type: "password",
-    autoComplete: "new-password",
-    required: true,
-  },
-  {
-    name: "password2",
-    label: "Confirm password",
-    icon: "lock",
-    type: "password",
-    autoComplete: "new-password",
-    required: true,
-  },
-];
-
-function RegisterPage() {
-  const navigate = useNavigate();
-  const {
-    values,
-    errors,
-    formError,
-    successMessage,
-    loading,
-    handleChange,
-    handleSubmit,
-  } = useAuthForm(
-    { username: "", email: "", password1: "", password2: "" },
-    registerUser,
-    (_data, setValues) => {
-      setValues({ username: "", email: "", password1: "", password2: "" });
-      setTimeout(() => navigate("/login"), 700);
-    }
-  );
-
-  return (
-    <AuthLayout
-      title="Create account"
-      alternateText="Already have an account? Log in"
-      alternateTo="/login"
-    >
-      {successMessage ? (
-        <div className="auth-alert">{successMessage}</div>
-      ) : null}
-      <AuthForm
-        fields={registerFields}
-        submitLabel="Register"
-        values={values}
-        errors={errors}
-        formError={formError}
-        loading={loading}
-        onChange={handleChange}
-        onSubmit={handleSubmit}
-      />
-    </AuthLayout>
-  );
-}
-
-export default RegisterPage;
 import AuthForm from "../components/AuthForm";
 import AuthLayout from "../components/AuthLayout";
 import useAuthForm from "../hooks/useAuthForm";
@@ -88,7 +7,23 @@ import { fetchRegisterMeta, registerUser } from "../services/authApi";
 
 function RegisterPage() {
   const navigate = useNavigate();
-  const [meta, setMeta] = useState({ role_options: [], status_options: [] });
+  const [teamOptions, setTeamOptions] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchRegisterMeta()
+      .then((data) => {
+        if (!mounted) return;
+        setTeamOptions(
+          Array.isArray(data.team_options) ? data.team_options : ["CDC Team", "Oman Team"]
+        );
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setTeamOptions(["CDC Team", "Oman Team"]);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   const registerFields = useMemo(
     () => [
@@ -108,12 +43,21 @@ function RegisterPage() {
         required: true,
       },
       {
+        name: "team",
+        label: "Team",
+        icon: "team",
+        type: "select",
+        required: true,
+        options: teamOptions,
+      },
+      {
         name: "role",
         label: "Role",
         icon: "role",
         type: "select",
         required: true,
-        options: meta.role_options,
+        disabled: true,
+        options: ["User"],
       },
       {
         name: "status",
@@ -121,7 +65,8 @@ function RegisterPage() {
         icon: "status",
         type: "select",
         required: true,
-        options: meta.status_options,
+        disabled: true,
+        options: ["New Registration"],
       },
       {
         name: "password1",
@@ -140,7 +85,7 @@ function RegisterPage() {
         required: true,
       },
     ],
-    [meta.role_options, meta.status_options]
+    [teamOptions]
   );
 
   const {
@@ -152,39 +97,33 @@ function RegisterPage() {
     handleChange,
     handleSubmit,
   } = useAuthForm(
-    { username: "", email: "", role: "", status: "", password1: "", password2: "" },
+    {
+      username: "",
+      email: "",
+      team: "",
+      role: "User",
+      status: "New Registration",
+      password1: "",
+      password2: "",
+    },
     registerUser,
     (_data, setValues) => {
-      setValues({ username: "", email: "", role: "", status: "", password1: "", password2: "" });
+      setValues({
+        username: "",
+        email: "",
+        team: "",
+        role: "User",
+        status: "New Registration",
+        password1: "",
+        password2: "",
+      });
       setTimeout(() => {
-        navigate("/login");
+        navigate("/login", {
+          state: { approvalMessage: "Approval pending. Contact administrator..." },
+        });
       }, 700);
     }
   );
-
-  useEffect(() => {
-    let mounted = true;
-    fetchRegisterMeta()
-      .then((data) => {
-        if (!mounted) {
-          return;
-        }
-        setMeta({
-          role_options: Array.isArray(data.role_options) ? data.role_options : [],
-          status_options: Array.isArray(data.status_options) ? data.status_options : [],
-        });
-      })
-      .catch(() => {
-        if (!mounted) {
-          return;
-        }
-        setMeta({ role_options: ["User"], status_options: ["New Registration", "Active", "Inactive"] });
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   return (
     <AuthLayout

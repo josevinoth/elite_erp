@@ -127,7 +127,7 @@ export async function listUsers() {
   return parseJson(response);
 }
 
-export async function updateUserRole(userId, role, status = "") {
+export async function updateUserRole(userId, role, status = "", team = "") {
   await ensureCsrfCookie();
   const csrftoken = getCookie("csrftoken");
 
@@ -138,7 +138,7 @@ export async function updateUserRole(userId, role, status = "") {
       "Content-Type": "application/json",
       "X-CSRFToken": csrftoken,
     },
-    body: JSON.stringify({ role, status }),
+    body: JSON.stringify({ role, status, team }),
   });
 
   return parseJson(response);

@@ -1,4 +1,4 @@
-import { LockIcon, RoleIcon, StatusIcon, UserIcon } from "./AppIcons";
+import { LockIcon, RoleIcon, StatusIcon, TeamIcon, UserIcon } from "./AppIcons";
 
 function renderFieldIcon(icon) {
   if (icon === "user") {
@@ -15,6 +15,10 @@ function renderFieldIcon(icon) {
 
   if (icon === "status") {
     return <StatusIcon className="auth-field-icon" />;
+  }
+
+  if (icon === "team") {
+    return <TeamIcon className="auth-field-icon" />;
   }
 
   return null;
@@ -40,6 +44,7 @@ function AuthForm({
           className="auth-input"
           autoComplete={field.autoComplete}
           onChange={onChange}
+          disabled={field.disabled}
           required={field.required}
         >
           <option value="">{field.placeholder || `Select ${field.label}`}</option>
@@ -61,6 +66,7 @@ function AuthForm({
         className="auth-input"
         autoComplete={field.autoComplete}
         onChange={onChange}
+        disabled={field.disabled}
         required={field.required}
       />
     );

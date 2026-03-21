@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CrudPage from "../components/CrudPage";
 import { listUsers } from "../services/authApi";
 import {
+  addActivityOption,
   addTaskStatusOption,
   createTask,
   deleteTask,
@@ -9,6 +10,27 @@ import {
   listTasks,
   updateTask,
 } from "../services/crudApi";
+import { getSessionUser } from "../services/sessionUser";
+
+/** Counts non-Sunday days between two date strings (inclusive). Min 1. */
+function calcDaysExcludingSunday(startStr, endStr) {
+  if (!startStr || !endStr) return "";
+  const s = new Date(startStr);
+  const e = new Date(endStr);
+  if (isNaN(s) || isNaN(e)) return "";
+  // Work with calendar dates only (avoid TZ offsets)
+  let start = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+  let end = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+  if (start > end) [start, end] = [end, start];
+  if (start.getTime() === end.getTime()) return "1";
+  let days = 0;
+  const cur = new Date(start);
+  while (cur <= end) {
+    if (cur.getDay() !== 0) days++; // 0 = Sunday
+    cur.setDate(cur.getDate() + 1);
+  }
+  return String(Math.max(days, 1));
+}
 
 const COLUMNS = [
   { key: "project_id_name", label: "Project ID + Name" },
@@ -25,8 +47,13 @@ const COLUMNS = [
 ];
 
 function TaskPage() {
+  const currentUser = useMemo(() => getSessionUser(), []);
+  const loggedInUsername = currentUser?.username || "";
+
   const [taskStatuses, setTaskStatuses] = useState([]);
+  const [activityOptions, setActivityOptions] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
+  const [omanTeamUserOptions, setOmanTeamUserOptions] = useState([]);
   const [projectOptions, setProjectOptions] = useState([]);
 
   const toTitleCase = (value) =>
@@ -43,7 +70,9 @@ function TaskPage() {
   const loadMeta = useCallback(async () => {
     const [metaData, usersData] = await Promise.all([listTaskMeta(), listUsers()]);
     setTaskStatuses(mapOptions(metaData.task_statuses));
+    setActivityOptions(mapOptions(metaData.activity_options || []));
     setUserOptions(mapOptions((usersData.users || []).map((u) => u.username)));
+    setOmanTeamUserOptions(mapOptions(metaData.oman_team_users || []));
     setProjectOptions(
       (metaData.project_options || []).map((p) => ({ value: p.value, label: p.label }))
     );
@@ -52,7 +81,9 @@ function TaskPage() {
   useEffect(() => {
     loadMeta().catch(() => {
       setTaskStatuses([]);
+      setActivityOptions([]);
       setUserOptions([]);
+      setOmanTeamUserOptions([]);
     });
   }, [loadMeta]);
 
@@ -62,8 +93,32 @@ function TaskPage() {
     return data.name;
   };
 
+  const appendActivity = async (name) => {
+    const data = await addActivityOption(name);
+    await loadMeta();
+    return data.name;
+  };
+
+  /** Re-calculate no_of_days whenever start_date or end_date changes in the form. */
+  const computeValues = useCallback((changedKey, changedValue, allValues) => {
+    if (changedKey === "start_date" || changedKey === "end_date") {
+      const start = changedKey === "start_date" ? changedValue : allValues.start_date;
+      const end = changedKey === "end_date" ? changedValue : allValues.end_date;
+      const days = calcDaysExcludingSunday(start, end);
+      if (days !== "") return { no_of_days: days };
+    }
+    return {};
+  }, []);
+
   const fields = useMemo(
     () => [
+      {
+        key: "updated_by",
+        label: "Updated By",
+        type: "text",
+        disabled: true,
+        default: loggedInUsername,
+      },
       {
         key: "project",
         label: "Project (ID + Name)",
@@ -71,13 +126,25 @@ function TaskPage() {
         required: true,
       },
       { key: "proposal_date", label: "Date of Proposal", type: "date" },
-      { key: "activity", label: "Activity" },
-      { key: "revision", label: "Revision" },
+      {
+        key: "activity",
+        label: "Activity",
+        options: activityOptions,
+        onAppend: appendActivity,
+        required: true,
+      },
+      { key: "revision", label: "Revision", default: "01" },
       { key: "start_date", label: "Start Date", type: "date" },
       { key: "end_date", label: "End Date", type: "date" },
-      { key: "no_of_days", label: "No of Days", type: "number" },
+      {
+        key: "no_of_days",
+        label: "No of Days (auto)",
+        type: "number",
+        readOnly: true,
+        default: "1",
+      },
       { key: "drawn_by", label: "Drawn By", options: userOptions },
-      { key: "approved_by", label: "Approved By", options: userOptions },
+      { key: "approved_by", label: "Approved By", options: omanTeamUserOptions },
       { key: "approved_date", label: "Approved Date", type: "date" },
       {
         key: "task_status",
@@ -85,11 +152,10 @@ function TaskPage() {
         options: taskStatuses,
         onAppend: appendTaskStatus,
       },
-      { key: "project_owner", label: "Project Owner", options: userOptions },
+      { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions },
       { key: "remarks", label: "Remarks", type: "textarea" },
-      { key: "updated_by", label: "Updated By", options: userOptions },
     ],
-    [taskStatuses, userOptions, projectOptions]
+    [taskStatuses, activityOptions, userOptions, omanTeamUserOptions, projectOptions, loggedInUsername]
   );
 
   const fetchFn = useCallback(async () => {
@@ -116,6 +182,7 @@ function TaskPage() {
       createFn={createFn}
       updateFn={updateFn}
       deleteFn={deleteTask}
+      computeValues={computeValues}
     />
   );
 }

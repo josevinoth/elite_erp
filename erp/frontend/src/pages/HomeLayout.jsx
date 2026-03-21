@@ -1,26 +1,50 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { BsBarChartFill, BsBuildingFill, BsFolder2Open, BsListTask, BsPeopleFill } from "react-icons/bs";
+import {
+  BsBarChartFill,
+  BsBuildingFill,
+  BsFolder2Open,
+  BsListTask,
+  BsPeopleFill,
+  BsPersonPlusFill,
+} from "react-icons/bs";
 import HomeSideNav from "../components/HomeSideNav";
 import { listPendingRegistrations } from "../services/authApi";
 
-function HomeLayout() {
+function HomeLayout({ currentUser }) {
   const [pendingCount, setPendingCount] = useState(0);
+  const roleName = String(currentUser?.role || "").toLowerCase();
+  const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
 
   useEffect(() => {
+    if (!isAdmin) {
+      setPendingCount(0);
+      return;
+    }
+
     listPendingRegistrations()
       .then((data) => setPendingCount(data.count || 0))
       .catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   const dashboardCards = [
-    {
-      title: "Users",
-      stat: pendingCount > 0 ? `${pendingCount} pending approval` : "Manage accounts",
-      to: "/users-management",
-      icon: BsPeopleFill,
-      badge: pendingCount,
-    },
+    ...(isAdmin
+      ? [
+          {
+            title: "User Registration",
+            stat: "Create new user accounts",
+            to: "/register",
+            icon: BsPersonPlusFill,
+          },
+          {
+            title: "Users",
+            stat: pendingCount > 0 ? `${pendingCount} pending approval` : "Manage accounts",
+            to: "/users-management",
+            icon: BsPeopleFill,
+            badge: pendingCount,
+          },
+        ]
+      : []),
     { title: "Projects", stat: "Track active work", to: "/projects", icon: BsFolder2Open },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
     { title: "Stock", stat: "Purchase and maintenance", to: "/stock-purchase", icon: BsBarChartFill },
@@ -29,7 +53,7 @@ function HomeLayout() {
 
   return (
     <section className="home-layout">
-      <HomeSideNav badges={{ pendingCount }} />
+      <HomeSideNav badges={{ pendingCount }} isAdmin={isAdmin} />
       <main className="home-main">
         <section className="dashboard-panel">
           <h1 className="module-page__title">Dashboard</h1>

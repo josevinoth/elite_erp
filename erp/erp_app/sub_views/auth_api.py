@@ -5,7 +5,18 @@ from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from ..sub_forms import LoginForm, RegistrationForm
-from ..sub_models import UserProfile, UserStatusOption
+from ..sub_models import Team, UserProfile, UserStatusOption
+
+
+def _resolve_user_role(user):
+    first_group = user.groups.order_by("name").first()
+    if first_group:
+        return first_group.name
+    if user.is_superuser:
+        return "Super Admin"
+    if user.is_staff:
+        return "Staff"
+    return "User"
 
 
 @require_GET
@@ -16,11 +27,20 @@ def csrf_token_view(request):
 
 @require_GET
 def register_meta_api_view(_request):
-    """Returns only status options – role is fixed to User on registration."""
+    """Returns registration dropdown metadata."""
+    role_options = list(Group.objects.filter(name__in=["User", "Admin"]).order_by("name").values_list("name", flat=True))
+    if not role_options:
+        role_options = ["User", "Admin"]
+
     status_options = list(UserStatusOption.objects.order_by("name").values_list("name", flat=True))
     if not status_options:
         status_options = ["New Registration", "Active", "Inactive"]
-    return JsonResponse({"status_options": status_options})
+
+    team_options = list(Team.objects.order_by("name").values_list("name", flat=True))
+    if not team_options:
+        team_options = ["CDC Team", "Oman Team"]
+
+    return JsonResponse({"role_options": role_options, "status_options": status_options, "team_options": team_options})
 
 
 @require_POST
@@ -42,7 +62,13 @@ def register_api_view(request):
     new_reg_status, _ = UserStatusOption.objects.get_or_create(name="New Registration")
     profile, _ = UserProfile.objects.get_or_create(user=user)
     profile.status = new_reg_status
-    profile.save(update_fields=["status"])
+
+    team_name = str(request.POST.get("team", "")).strip()
+    if team_name:
+        team_obj, _ = Team.objects.get_or_create(name=team_name)
+        profile.team = team_obj
+
+    profile.save()
 
     return JsonResponse(
         {
@@ -96,7 +122,11 @@ def login_api_view(request):
         {
             "success": True,
             "message": "Logged in successfully.",
-            "user": {"username": user.username, "email": user.email},
+            "user": {
+                "username": user.username,
+                "email": user.email,
+                "role": _resolve_user_role(user),
+            },
         }
     )
 
