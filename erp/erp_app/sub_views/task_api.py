@@ -1,8 +1,10 @@
 import datetime
 import json
+import os
 import re
 
-from django.http import JsonResponse
+from django.conf import settings
+from django.http import FileResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -55,6 +57,34 @@ def _next_revision(revision: str) -> str:
         new_num = str(int(num_str) + 1).zfill(len(num_str))
         return s[: m.start()] + new_num
     return s + "-2"
+
+
+def _normalized_key(value):
+    return normalize_text(str(value or "")).lower().replace(" ", "")
+
+
+def _project_lookup():
+    """Build fast lookup maps for project matching during import."""
+    lookup_by_compound = {}
+    lookup_by_parts = {}
+    for project in Project.objects.all():
+        compound = f"{project.project_id}_{project.project_name}"
+        lookup_by_compound[_normalized_key(compound)] = project
+        lookup_by_compound[_normalized_key(f"{project.project_id} {project.project_name}")] = project
+        lookup_by_parts[_normalized_key(project.project_id)] = project
+    return lookup_by_compound, lookup_by_parts
+
+
+def _resolve_project(project_id_name, project_no, project_name, lookup_by_compound, lookup_by_parts):
+    direct = lookup_by_compound.get(_normalized_key(project_id_name))
+    if direct:
+        return direct
+
+    by_no = lookup_by_parts.get(_normalized_key(project_no))
+    if by_no and _normalized_key(by_no.project_name) == _normalized_key(project_name):
+        return by_no
+
+    return None
 
 
 def _serialize(obj):
@@ -147,6 +177,138 @@ def create_task_api_view(request):
         updated_by=to_title_case(p.get("updated_by", "")),
     )
     return JsonResponse({"success": True, "task": _serialize(obj)}, status=201)
+
+
+@require_POST
+@csrf_protect
+def import_tasks_excel_api_view(request):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    excel_file = request.FILES.get("file")
+    if not excel_file:
+        return JsonResponse({"message": "Excel file is required (form field: file)."}, status=400)
+
+    try:
+        import openpyxl
+    except ImportError:
+        return JsonResponse({"message": "Excel import dependency not installed."}, status=500)
+
+    try:
+        wb = openpyxl.load_workbook(excel_file, data_only=True)
+        ws = wb.active
+    except Exception:
+        return JsonResponse({"message": "Invalid or unreadable Excel file."}, status=400)
+
+    lookup_by_compound, lookup_by_parts = _project_lookup()
+    created_count = 0
+    skipped_count = 0
+    failed_count = 0
+    revised_count = 0
+    failures = []
+
+    for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        values = list(row)
+        if len(values) < 16:
+            values.extend([None] * (16 - len(values)))
+
+        project_id_name = values[3]
+        proposal_date = values[4]
+        activity_raw = values[5]
+        revision_raw = values[6]
+        start_date = values[7]
+        end_date = values[8]
+        no_of_days = values[9]
+        drawn_by = values[10]
+        approved_by = values[11]
+        approved_date = values[12]
+        task_status = values[13]
+        project_owner = values[15]
+        remarks = values[17] if len(values) > 17 else ""
+
+        if not any([project_id_name, proposal_date, activity_raw, revision_raw, start_date, end_date]):
+            skipped_count += 1
+            continue
+
+        project = _resolve_project(
+            project_id_name=project_id_name,
+            project_no=values[1],
+            project_name=values[2],
+            lookup_by_compound=lookup_by_compound,
+            lookup_by_parts=lookup_by_parts,
+        )
+        if not project:
+            failed_count += 1
+            failures.append(f"Row {row_number}: Project not found for '{project_id_name}'.")
+            continue
+
+        activity = normalize_text(activity_raw)
+        if not activity:
+            failed_count += 1
+            failures.append(f"Row {row_number}: Activity is required.")
+            continue
+
+        revision = normalize_text(revision_raw or "01")
+        revision_adjusted = False
+        while _check_duplicate(project, activity, revision):
+            revision = _next_revision(revision)
+            revision_adjusted = True
+
+        try:
+            Task.objects.create(
+                project=project,
+                proposal_date=_to_date(proposal_date),
+                activity=activity,
+                revision=revision,
+                start_date=_to_date(start_date),
+                end_date=_to_date(end_date),
+                no_of_days=_to_decimal(no_of_days, default="1"),
+                drawn_by=to_title_case(drawn_by),
+                approved_by=to_title_case(approved_by),
+                approved_date=_to_date(approved_date),
+                task_status=to_title_case(task_status),
+                project_owner=to_title_case(project_owner),
+                remarks=normalize_text(remarks),
+                updated_by=to_title_case(request.user.username),
+            )
+            created_count += 1
+            if revision_adjusted:
+                revised_count += 1
+        except Exception as exc:
+            failed_count += 1
+            failures.append(f"Row {row_number}: {str(exc)}")
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Task import completed.",
+            "summary": {
+                "created": created_count,
+                "skipped": skipped_count,
+                "failed": failed_count,
+                "revision_adjusted": revised_count,
+            },
+            "failures": failures[:30],
+        }
+    )
+
+
+@require_GET
+def download_task_template_api_view(request):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    template_path = os.path.join(str(settings.BASE_DIR), "erp_app", "media", "task_details.xlsx")
+    if not os.path.exists(template_path):
+        return JsonResponse({"message": "Template file not found."}, status=404)
+
+    return FileResponse(
+        open(template_path, "rb"),
+        as_attachment=True,
+        filename="task_import_template.xlsx",
+    )
 
 
 @require_http_methods(['PATCH', 'DELETE'])

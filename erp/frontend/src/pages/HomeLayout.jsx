@@ -49,6 +49,7 @@ function HomeLayout({ currentUser }) {
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
     { title: "Stock", stat: "Purchase and maintenance", to: "/stock-purchase", icon: BsBarChartFill },
     { title: "Tasks", stat: "Execution board", to: "/task", icon: BsListTask },
+    { title: "Import Tasks", stat: "Upload Excel to Tasks", to: "/task?import=excel", icon: BsListTask },
   ];
 
   return (

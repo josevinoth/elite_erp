@@ -21,7 +21,13 @@ from .stock_purchase_api import (
     list_stock_purchases_api_view,
     stock_purchase_detail_api_view,
 )
-from .task_api import create_task_api_view, list_tasks_api_view, task_detail_api_view
+from .task_api import (
+    create_task_api_view,
+    download_task_template_api_view,
+    import_tasks_excel_api_view,
+    list_tasks_api_view,
+    task_detail_api_view,
+)
 from .task_meta_api import (
     create_activity_option_api_view,
     create_project_status_option_api_view,
@@ -49,7 +55,7 @@ __all__ = [
     "list_stock_maintenance_api_view", "list_stock_maintenance_meta_api_view",
     "create_stock_maintenance_api_view", "stock_maintenance_detail_api_view",
     "create_stock_maintenance_type_option_api_view",
-    "list_tasks_api_view", "create_task_api_view", "task_detail_api_view",
+    "list_tasks_api_view", "create_task_api_view", "task_detail_api_view", "import_tasks_excel_api_view", "download_task_template_api_view",
     "list_task_meta_api_view", "create_task_status_option_api_view", "create_project_status_option_api_view",
     "create_activity_option_api_view",
 ]
