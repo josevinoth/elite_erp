@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap");
+
 :root {
   --bg: #0b3940;
   --bg-soft: #12515a;
@@ -22,7 +24,7 @@
 
 body {
   margin: 0;
-  font-family: "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+  font-family: "Roboto", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   color: var(--text);
   background: radial-gradient(circle at top right, #1a6872 0%, var(--bg) 40%, #082b30 100%);
 }
@@ -384,6 +386,10 @@ select.auth-input option {
   color: #ec4899;
 }
 
+.home-sidenav__icon--timesheet {
+  color: #22c55e;
+}
+
 .home-sidenav__icon--requirements {
   color: #06b6d4;
 }
@@ -423,18 +429,26 @@ select.auth-input option {
   box-shadow: inset 0 0 0 1px rgba(103, 220, 208, 0.34);
 }
 
-.home-sidenav__link:focus-visible,
-.home-sidenav__sublink:focus-visible {
-  outline: 2px solid rgba(139, 233, 224, 0.62);
-  outline-offset: 1px;
-  background: linear-gradient(90deg, rgba(22, 178, 165, 0.28) 0%, rgba(26, 126, 138, 0.22) 100%);
+.home-sidenav__link--disabled,
+.home-sidenav__sublink--disabled {
+  background: #455a64;
+  color: #d1d5db;
+  cursor: not-allowed;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25);
 }
 
-.home-sidenav__link--active,
-.home-sidenav__sublink--active {
-  background: linear-gradient(90deg, rgba(32, 201, 188, 0.36) 0%, rgba(18, 106, 116, 0.32) 100%);
-  color: #cffffa;
-  font-weight: 600;
+.home-sidenav__link--disabled .home-sidenav__icon,
+.home-sidenav__sublink--disabled .home-sidenav__icon,
+.home-sidenav__link--disabled .home-sidenav__label,
+.home-sidenav__sublink--disabled .home-sidenav__label {
+  color: #d1d5db;
+}
+
+.home-sidenav__link--disabled:hover,
+.home-sidenav__sublink--disabled:hover {
+  background: #455a64;
+  transform: none;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25);
 }
 
 .home-main {
@@ -467,6 +481,31 @@ select.auth-input option {
   transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
+.dashboard-card:hover {
+  background: rgba(20, 97, 104, 0.85);
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 10px 20px rgba(2, 12, 14, 0.4);
+}
+
+.dashboard-card--disabled {
+  background: #455a64;
+  border-color: #64748b;
+  color: #e5e7eb;
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.dashboard-card--disabled .dashboard-card__icon,
+.dashboard-card--disabled span {
+  color: #d1d5db;
+}
+
+.dashboard-card--disabled:hover {
+  background: #455a64;
+  transform: none;
+  box-shadow: none;
+}
+
 .dashboard-card__head {
   display: flex;
   align-items: center;
@@ -482,12 +521,6 @@ select.auth-input option {
 .dashboard-card span {
   color: var(--muted);
   font-size: 0.85rem;
-}
-
-.dashboard-card:hover {
-  background: rgba(20, 97, 104, 0.85);
-  transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 10px 20px rgba(2, 12, 14, 0.4);
 }
 
 .app-content > .module-page {
@@ -569,6 +602,51 @@ select.auth-input option {
   border-bottom: none;
 }
 
+/* Keep the task list fully visible by using compact fixed-width columns with wrapping. */
+.task-table-wrap .users-table {
+  table-layout: fixed;
+}
+
+.task-table-wrap .users-table th,
+.task-table-wrap .users-table td {
+  padding: 0.45rem 0.5rem;
+  font-size: 0.8rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.task-table-wrap .users-table__sort-btn {
+  gap: 0.2rem;
+  font-size: 0.78rem;
+}
+
+.task-table-wrap .users-table__filter-input {
+  font-size: 0.75rem;
+  padding: 0.32rem 0.38rem;
+}
+
+.expense-table-wrap .users-table {
+  table-layout: fixed;
+}
+
+.expense-table-wrap .users-table th,
+.expense-table-wrap .users-table td {
+  padding: 0.4rem 0.45rem;
+  font-size: 0.78rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.expense-table-wrap .users-table__sort-btn {
+  gap: 0.2rem;
+  font-size: 0.76rem;
+}
+
+.expense-table-wrap .users-table__filter-input {
+  font-size: 0.72rem;
+  padding: 0.3rem 0.34rem;
+}
+
 .users-actions {
   display: inline-flex;
   align-items: center;
@@ -592,6 +670,19 @@ select.auth-input option {
   filter: brightness(1.02);
 }
 
+.users-action:disabled {
+  background: #6b7280;
+  color: #e5e7eb;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+.users-action:disabled:hover {
+  transform: none;
+  filter: none;
+}
+
 .users-action--edit {
   background: #125962;
   color: #7af7ea;
@@ -600,6 +691,11 @@ select.auth-input option {
 .users-action--delete {
   background: #5f2d37;
   color: #ffc8d0;
+}
+
+.users-action--timesheet {
+  background: #1a3f6b;
+  color: #cfe7ff;
 }
 
 /* ── CRUD page header ─────────────────────────────────── */
@@ -628,6 +724,16 @@ select.auth-input option {
 
 .crud-add-btn:hover {
   background: var(--primary-hover);
+}
+
+.crud-add-btn:disabled {
+  background: #6b7280;
+  color: #e5e7eb;
+  cursor: not-allowed;
+}
+
+.crud-add-btn:disabled:hover {
+  background: #6b7280;
 }
 
 /* ── Modal overlay ────────────────────────────────────── */
@@ -701,6 +807,16 @@ select.auth-input option {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.45rem;
+}
+
+.modal-select-group {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.modal-select-search {
+  font-size: 0.84rem;
+  padding: 0.5rem 0.65rem;
 }
 
 .modal-add-option {
@@ -991,5 +1107,4 @@ select.auth-input option {
   background: rgba(239, 68, 68, 0.28);
   transform: translateY(-1px);
 }
-
 

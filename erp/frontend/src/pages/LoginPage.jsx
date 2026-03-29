@@ -41,6 +41,7 @@ function LoginPage({ onLoginSuccess }) {
       const resolvedUser = {
         username: data?.user?.username || submittedValues.username || "Guest",
         role: data?.user?.role || "User",
+        team: data?.user?.team || "",
       };
 
       setSessionUser(resolvedUser);

@@ -2,10 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import {
   BsCheckCircleFill,
   BsClockHistory,
+  BsDownload,
   BsPersonCheck,
   BsXCircleFill,
 } from "react-icons/bs";
 import { approveRegistration, listPendingRegistrations } from "../services/authApi";
+import { exportRowsToExcel } from "../utils/exportToExcel";
+
+const EXPORT_COLUMNS = [
+  { key: "username", label: "Username" },
+  { key: "email", label: "Email" },
+  { key: "date_joined", label: "Registered On" },
+];
 
 function PendingApprovalsPage() {
   const [rows, setRows] = useState([]);
@@ -13,6 +21,7 @@ function PendingApprovalsPage() {
   const [error, setError] = useState("");
   const [actionMsg, setActionMsg] = useState("");
   const [processing, setProcessing] = useState(null); // user id being processed
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -47,6 +56,23 @@ function PendingApprovalsPage() {
     }
   };
 
+  const handleExport = async () => {
+    setError("");
+    setExporting(true);
+    try {
+      await exportRowsToExcel({
+        fileName: "Pending Approvals",
+        sheetName: "Pending Approvals",
+        columns: EXPORT_COLUMNS,
+        rows,
+      });
+    } catch (e) {
+      setError(e.message || "Failed to export pending approvals.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
@@ -57,6 +83,15 @@ function PendingApprovalsPage() {
             <span className="pending-badge pending-badge--header">{rows.length}</span>
           )}
         </h1>
+        <button
+          type="button"
+          className="crud-add-btn"
+          onClick={handleExport}
+          disabled={loading || exporting}
+        >
+          <BsDownload aria-hidden="true" />
+          <span>{exporting ? "Exporting..." : "Download Excel"}</span>
+        </button>
       </div>
 
       {actionMsg ? <p className="pending-action-success">{actionMsg}</p> : null}

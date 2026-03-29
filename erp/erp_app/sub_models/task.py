@@ -21,7 +21,6 @@ class Task(models.Model):
         Project, null=True, blank=True, on_delete=models.SET_NULL, related_name="tasks"
     )
     project_id_name = models.CharField(max_length=255, blank=True)
-    proposal_date = models.DateField(null=True, blank=True)
     activity = models.CharField(max_length=255, blank=True)
     revision = models.CharField(max_length=50, blank=True)
     start_date = models.DateField(null=True, blank=True)

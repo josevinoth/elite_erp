@@ -8,10 +8,12 @@ import {
   listProjects,
   updateProject,
 } from "../services/crudApi";
+import { getSessionUser } from "../services/sessionUser";
 
 const COLUMNS = [
   { key: "project_id", label: "Project ID" },
   { key: "project_name", label: "Project Name" },
+  { key: "proposal_date", label: "Date of Proposal" },
   { key: "updated_by", label: "Updated By" },
   { key: "order_value_omr", label: "Order Value (OMR)" },
   { key: "status", label: "Status" },
@@ -20,6 +22,8 @@ const COLUMNS = [
 
 function ProjectsPage() {
   const [statusOptions, setStatusOptions] = useState([]);
+  const currentUser = useMemo(() => getSessionUser(), []);
+  const loggedInUsername = currentUser?.username || "";
 
   const mapOptions = (values = []) => {
     const unique = Array.from(new Set(values.filter(Boolean).map((v) => String(v).trim())));
@@ -47,7 +51,8 @@ function ProjectsPage() {
     () => [
       { key: "project_id", label: "Project ID", required: true },
       { key: "project_name", label: "Project Name" },
-      { key: "updated_by", label: "Updated By" },
+      { key: "proposal_date", label: "Date of Proposal", type: "date" },
+      { key: "updated_by", label: "Updated By", default: loggedInUsername },
       { key: "order_value_omr", label: "Order Value (OMR)", type: "number" },
       { key: "description", label: "Description", type: "textarea" },
       {
@@ -59,7 +64,7 @@ function ProjectsPage() {
       },
       { key: "expected_customer_need_date", label: "Expected Customer Need Date", type: "date" },
     ],
-    [statusOptions]
+    [statusOptions, loggedInUsername]
   );
 
   const fetchFn = useCallback(async () => {

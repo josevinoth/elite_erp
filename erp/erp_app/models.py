@@ -9,6 +9,7 @@ from .sub_models import (
 	StockPurchase,
 	Task,
 	TaskStatusOption,
+	TimeSheet,
 	UserProfile,
 	UserStatusOption,
 	Vendor,
@@ -24,6 +25,7 @@ __all__ = [
 	"Task",
 	"ProjectStatusOption",
 	"TaskStatusOption",
+	"TimeSheet",
 	"UserStatusOption",
 	"UserProfile",
 ]

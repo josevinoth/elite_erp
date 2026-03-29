@@ -322,3 +322,157 @@ export async function downloadTaskImportTemplate() {
   window.URL.revokeObjectURL(downloadUrl);
 }
 
+// ── Timesheets ───────────────────────────────────────────
+export async function listTimesheets() {
+  const res = await fetch("/api/timesheets/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createTimesheet(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/timesheets/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateTimesheet(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/timesheets/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteTimesheet(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/timesheets/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function listTimesheetMeta() {
+  const res = await fetch("/api/timesheets/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+
+export async function importTimesheetsExcel(file) {
+  await ensureCsrfCookie();
+  const token = getCookie("csrftoken");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/timesheets/import/", {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-CSRFToken": token },
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function downloadTimesheetImportTemplate() {
+  const res = await fetch("/api/timesheets/template/", { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || `Request failed (${res.status}).`);
+  }
+  const blob = await res.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = "timesheet_import_template.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
+// ── CDC Team Expence ────────────────────────────────────
+export async function listCdcTeamExpences() {
+  const res = await fetch("/api/cdc-team-expence/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createCdcTeamExpence(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/cdc-team-expence/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateCdcTeamExpence(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/cdc-team-expence/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteCdcTeamExpence(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/cdc-team-expence/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function listCdcTeamExpenceMeta() {
+  const res = await fetch("/api/cdc-team-expence/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function addExpenseItemOption(name) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/cdc-team-expence/item-options/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+
+export async function addExpenseStatusOption(name) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/cdc-team-expence/status-options/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+
+export async function addExpenseSessionOption(name) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/cdc-team-expence/session-options/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+

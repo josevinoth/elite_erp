@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BsClockHistory, BsDownload } from "react-icons/bs";
 import CrudPage from "../components/CrudPage";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { listUsers } from "../services/authApi";
 import {
   addActivityOption,
@@ -14,6 +15,7 @@ import {
   updateTask,
 } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
+import { exportRowsToExcel } from "../utils/exportToExcel";
 
 /** Counts non-Sunday days between two date strings (inclusive). Min 1. */
 function calcDaysExcludingSunday(startStr, endStr) {
@@ -36,7 +38,6 @@ function calcDaysExcludingSunday(startStr, endStr) {
 }
 
 const COLUMNS = [
-  { key: "proposal_date", label: "Date of Proposal" },
   { key: "project_id_name", label: "Project ID + Name" },
   { key: "activity", label: "Activity" },
   { key: "revision", label: "Revision" },
@@ -46,10 +47,22 @@ const COLUMNS = [
   { key: "task_status", label: "Status" },
 ];
 
+const IMPORT_REPORT_COLUMNS = [
+  { key: "row", label: "Row" },
+  { key: "status", label: "Status" },
+  { key: "message", label: "Details" },
+];
+
 function TaskPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const currentUser = useMemo(() => getSessionUser(), []);
   const loggedInUsername = currentUser?.username || "";
+
+  const isAdmin = useMemo(() => {
+    const role = (currentUser?.role || "").trim().toLowerCase();
+    return ["admin", "super admin", "staff"].includes(role);
+  }, [currentUser]);
 
   const [taskStatuses, setTaskStatuses] = useState([]);
   const [activityOptions, setActivityOptions] = useState([]);
@@ -58,7 +71,9 @@ function TaskPage() {
   const [projectOptions, setProjectOptions] = useState([]);
   const [importing, setImporting] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [exportingImportReport, setExportingImportReport] = useState(false);
   const [importStatus, setImportStatus] = useState("");
+  const [importRowReports, setImportRowReports] = useState([]);
   const [reloadKey, setReloadKey] = useState(0);
   const fileInputRef = useRef(null);
 
@@ -131,7 +146,6 @@ function TaskPage() {
           options: projectOptions,
           required: true,
         },
-        { key: "proposal_date", label: "Date of Proposal", type: "date" },
         {
           key: "activity",
           label: "Activity",
@@ -180,6 +194,54 @@ function TaskPage() {
     return data.task;
   }, []);
 
+  const openTimesheetForTask = useCallback(
+    (row) => {
+      const now = new Date();
+      const localToday = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 10);
+      const params = new URLSearchParams({
+        openAdd: "1",
+        task: String(row?.id || ""),
+        employee_name: loggedInUsername,
+        billing_date: localToday,
+      });
+      navigate(`/timesheet?${params.toString()}`);
+    },
+    [navigate, loggedInUsername]
+  );
+
+  const taskRowActions = useMemo(
+    () => [
+      {
+        key: "timesheet",
+        label: "Add Timesheet",
+        ariaLabel: "Add Timesheet",
+        className: "users-action--timesheet",
+        icon: BsClockHistory,
+        onClick: openTimesheetForTask,
+        disabled: (row) =>
+          !isAdmin &&
+          (row.task_status || "").trim().toLowerCase() !== "work in progress",
+        disabledTitle: "Only available when status is Work In Progress",
+      },
+    ],
+    [openTimesheetForTask, isAdmin]
+  );
+
+  const isCompletedStatus = (value) =>
+    String(value || "").trim().toLowerCase() === "completed";
+
+  const isTaskDeleteDisabled = (row) => !isAdmin && isCompletedStatus(row?.task_status);
+
+  const isTaskSaveDisabled = (editRow, formValues) => {
+    if (isAdmin) {
+      return false;
+    }
+
+    return isCompletedStatus(formValues?.task_status) || isCompletedStatus(editRow?.task_status);
+  };
+
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
@@ -187,12 +249,29 @@ function TaskPage() {
   const handleTemplateDownload = async () => {
     setDownloadingTemplate(true);
     setImportStatus("");
+    setImportRowReports([]);
     try {
       await downloadTaskImportTemplate();
     } catch (err) {
       setImportStatus(err.message || "Template download failed.");
     } finally {
       setDownloadingTemplate(false);
+    }
+  };
+
+  const handleImportReportExport = async () => {
+    setExportingImportReport(true);
+    try {
+      await exportRowsToExcel({
+        fileName: "Task Import Report",
+        sheetName: "Task Import Report",
+        columns: IMPORT_REPORT_COLUMNS,
+        rows: importRowReports,
+      });
+    } catch (err) {
+      setImportStatus(err.message || "Import report export failed.");
+    } finally {
+      setExportingImportReport(false);
     }
   };
 
@@ -205,15 +284,17 @@ function TaskPage() {
 
     setImporting(true);
     setImportStatus("");
+    setImportRowReports([]);
     try {
       const data = await importTasksExcel(file);
       const summary = data.summary || {};
-      const failures = Array.isArray(data.failures) ? data.failures : [];
-      const info = `Imported ${summary.created || 0}, Skipped ${summary.skipped || 0}, Failed ${summary.failed || 0}, Revision adjusted ${summary.revision_adjusted || 0}.`;
-      const detail = failures.length ? `\n${failures.slice(0, 5).join("\n")}` : "";
-      setImportStatus(`${info}${detail}`);
+      const blankRows = summary.blank_rows ?? summary.skipped ?? 0;
+      const info = `Imported ${summary.created || 0}, Blank rows ${blankRows}, Failed ${summary.failed || 0}, Revision adjusted ${summary.revision_adjusted || 0}.`;
+      setImportStatus(info);
+      setImportRowReports(Array.isArray(data.row_reports) ? data.row_reports : []);
       setReloadKey((prev) => prev + 1);
     } catch (err) {
+      setImportRowReports([]);
       setImportStatus(err.message || "Import failed.");
     } finally {
       setImporting(false);
@@ -232,37 +313,79 @@ function TaskPage() {
   return (
     <>
       <section className="module-page" style={{ paddingBottom: 0 }}>
-        <div className="crud-page__header" style={{ marginBottom: "0.75rem" }}>
-          <h2 className="module-page__title" style={{ margin: 0, fontSize: "1.05rem" }}>
-            Import Tasks from Excel
-          </h2>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              type="button"
-              className="crud-add-btn"
-              onClick={handleTemplateDownload}
-              disabled={downloadingTemplate || importing}
-            >
-              {downloadingTemplate ? "Downloading..." : "Download Template"}
-            </button>
-            <button
-              type="button"
-              className="crud-add-btn"
-              onClick={handleImportClick}
-              disabled={importing || downloadingTemplate}
-            >
-              {importing ? "Importing..." : "Import Excel"}
-            </button>
-          </div>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          style={{ display: "none" }}
-          onChange={handleImportFileChange}
-        />
-        {importStatus ? <p className="users-status">{importStatus}</p> : null}
+        {isAdmin && (
+          <>
+            <div className="crud-page__header" style={{ marginBottom: "0.75rem" }}>
+              <h2 className="module-page__title" style={{ margin: 0, fontSize: "1.05rem" }}>
+                Import Tasks from Excel
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="crud-add-btn"
+                  onClick={handleTemplateDownload}
+                  disabled={downloadingTemplate || importing}
+                >
+                  {downloadingTemplate ? "Downloading..." : "Download Template"}
+                </button>
+                <button
+                  type="button"
+                  className="crud-add-btn"
+                  onClick={handleImportClick}
+                  disabled={importing || downloadingTemplate}
+                >
+                  {importing ? "Importing..." : "Import Excel"}
+                </button>
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              style={{ display: "none" }}
+              onChange={handleImportFileChange}
+            />
+            {importStatus ? <p className="users-status">{importStatus}</p> : null}
+            {importRowReports.length ? (
+              <>
+                <div className="crud-page__header" style={{ margin: "0.5rem 0" }}>
+                  <h3 className="module-page__title" style={{ margin: 0, fontSize: "1rem" }}>
+                    Import Details
+                  </h3>
+                  <button
+                    type="button"
+                    className="crud-add-btn"
+                    onClick={handleImportReportExport}
+                    disabled={exportingImportReport}
+                  >
+                    <BsDownload aria-hidden="true" />
+                    <span>{exportingImportReport ? "Exporting..." : "Download Excel"}</span>
+                  </button>
+                </div>
+                <div className="users-table-wrap" style={{ maxHeight: "18rem", overflowY: "auto" }}>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Row</th>
+                        <th>Status</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importRowReports.map((report) => (
+                        <tr key={`${report.row}-${report.status}-${report.message}`}>
+                          <td>{report.row}</td>
+                          <td>{report.status}</td>
+                          <td>{report.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
       </section>
 
       <CrudPage
@@ -274,7 +397,15 @@ function TaskPage() {
         createFn={createFn}
         updateFn={updateFn}
         deleteFn={deleteTask}
+        rowActions={taskRowActions}
         computeValues={computeValues}
+        tableWrapClassName="task-table-wrap"
+        stickyHeader
+        tableMaxHeight="60vh"
+        deleteDisabledPredicate={isTaskDeleteDisabled}
+        deleteDisabledTitle="Completed tasks can only be deleted by admin users"
+        saveDisabledPredicate={isTaskSaveDisabled}
+        saveDisabledTitle="Completed tasks can only be saved by admin users"
       />
     </>
   );

@@ -36,6 +36,19 @@ from .views import (
     create_task_status_option_api_view,
     create_activity_option_api_view,
     create_project_status_option_api_view,
+    create_cdc_team_expense_api_view,
+    create_expense_item_option_api_view,
+    create_expense_session_option_api_view,
+    create_expense_status_option_api_view,
+    list_timesheet_meta_api_view,
+    list_timesheets_api_view,
+    list_cdc_team_expense_meta_api_view,
+    list_cdc_team_expenses_api_view,
+    create_timesheet_api_view,
+    cdc_team_expense_detail_api_view,
+    timesheet_detail_api_view,
+    import_timesheets_excel_api_view,
+    download_timesheet_template_api_view,
 )
 
 urlpatterns = [
@@ -83,4 +96,19 @@ urlpatterns = [
     path('api/tasks/status-options/add/', create_task_status_option_api_view, name='api-tasks-status-add'),
     path('api/tasks/activity-options/add/', create_activity_option_api_view, name='api-tasks-activity-add'),
     path('api/tasks/project-status-options/add/', create_project_status_option_api_view, name='api-project-status-add'),
+    # timesheets
+    path('api/timesheets/meta/', list_timesheet_meta_api_view, name='api-timesheets-meta'),
+    path('api/timesheets/', list_timesheets_api_view, name='api-timesheets-list'),
+    path('api/timesheets/create/', create_timesheet_api_view, name='api-timesheets-create'),
+    path('api/timesheets/import/', import_timesheets_excel_api_view, name='api-timesheets-import'),
+    path('api/timesheets/template/', download_timesheet_template_api_view, name='api-timesheets-template'),
+    path('api/timesheets/<int:pk>/', timesheet_detail_api_view, name='api-timesheets-detail'),
+    # CDC Team Expence
+    path('api/cdc-team-expence/meta/', list_cdc_team_expense_meta_api_view, name='api-cdc-team-expence-meta'),
+    path('api/cdc-team-expence/', list_cdc_team_expenses_api_view, name='api-cdc-team-expence-list'),
+    path('api/cdc-team-expence/create/', create_cdc_team_expense_api_view, name='api-cdc-team-expence-create'),
+    path('api/cdc-team-expence/<int:pk>/', cdc_team_expense_detail_api_view, name='api-cdc-team-expence-detail'),
+    path('api/cdc-team-expence/item-options/add/', create_expense_item_option_api_view, name='api-cdc-team-expence-item-add'),
+    path('api/cdc-team-expence/status-options/add/', create_expense_status_option_api_view, name='api-cdc-team-expence-status-add'),
+    path('api/cdc-team-expence/session-options/add/', create_expense_session_option_api_view, name='api-cdc-team-expence-session-add'),
 ]

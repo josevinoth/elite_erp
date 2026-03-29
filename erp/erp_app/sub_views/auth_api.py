@@ -19,6 +19,14 @@ def _resolve_user_role(user):
     return "User"
 
 
+def _resolve_user_team(user):
+    try:
+        profile = UserProfile.objects.select_related("team").get(user=user)
+    except UserProfile.DoesNotExist:
+        return ""
+    return profile.team.name if profile.team else ""
+
+
 @require_GET
 @ensure_csrf_cookie
 def csrf_token_view(request):
@@ -126,6 +134,7 @@ def login_api_view(request):
                 "username": user.username,
                 "email": user.email,
                 "role": _resolve_user_role(user),
+                "team": _resolve_user_team(user),
             },
         }
     )
