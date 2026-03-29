@@ -1,4 +1,5 @@
 import json
+import datetime
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -21,12 +22,24 @@ def _to_decimal_or_none(value):
     return str(value).strip()
 
 
+def _to_date(value):
+    if value in (None, ''):
+        return None
+    if isinstance(value, datetime.date):
+        return value
+    try:
+        return datetime.date.fromisoformat(str(value).split(' ')[0])
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def _serialize(project):
     return {
         'id': project.id,
         'project_id': project.project_id,
         'description': project.description,
         'project_name': project.project_name,
+        'proposal_date': str(project.proposal_date) if project.proposal_date else '',
         'updated_by': project.updated_by,
         'order_value_omr': '' if project.order_value_omr is None else str(project.order_value_omr),
         'status': project.status.name if project.status else '',
@@ -96,10 +109,11 @@ def create_project_api_view(request):
         project_id=project_id,
         description=normalize_text(payload.get('description', '')),
         project_name=project_name,
-        updated_by=normalize_text(payload.get('updated_by', '')),
+        proposal_date=_to_date(payload.get('proposal_date')),
+        updated_by=normalize_text(payload.get('updated_by') or request.user.username),
         order_value_omr=_to_decimal_or_none(payload.get('order_value_omr')),
         status=status_obj,
-        expected_customer_need_date=payload.get('expected_customer_need_date') or None,
+        expected_customer_need_date=_to_date(payload.get('expected_customer_need_date')),
     )
     return JsonResponse({'success': True, 'project': _serialize(project)}, status=201)
 @require_http_methods(['PATCH', 'DELETE'])
@@ -125,6 +139,7 @@ def project_detail_api_view(request, project_id):
     project.project_id = project_id
     project.description = normalize_text(payload.get('description', project.description))
     project.project_name = project_name
+    project.proposal_date = _to_date(payload.get('proposal_date', project.proposal_date))
     project.updated_by = normalize_text(payload.get('updated_by', project.updated_by))
     if 'order_value_omr' in payload:
         project.order_value_omr = _to_decimal_or_none(payload.get('order_value_omr'))
@@ -132,6 +147,8 @@ def project_detail_api_view(request, project_id):
     project.status = None
     if status_name:
         project.status, _ = ProjectStatusOption.objects.get_or_create(name=status_name)
-    project.expected_customer_need_date = payload.get('expected_customer_need_date') or project.expected_customer_need_date
+    project.expected_customer_need_date = _to_date(
+        payload.get('expected_customer_need_date', project.expected_customer_need_date)
+    )
     project.save()
     return JsonResponse({'success': True, 'project': _serialize(project)})

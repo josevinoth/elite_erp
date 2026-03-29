@@ -5,10 +5,11 @@ import re
 
 from django.conf import settings
 from django.http import FileResponse, JsonResponse
+from django.db.models import Q
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import Task, Project
+from ..sub_models import Activity, Task, Project
 from ..utils import normalize_text, to_title_case
 
 
@@ -92,7 +93,6 @@ def _serialize(obj):
         "id": obj.id,
         "project": str(obj.project_id) if obj.project_id else "",
         "project_id_name": obj.project_id_name,
-        "proposal_date": str(obj.proposal_date) if obj.proposal_date else "",
         "activity": obj.activity,
         "revision": obj.revision,
         "start_date": str(obj.start_date) if obj.start_date else "",
@@ -110,12 +110,29 @@ def _serialize(obj):
     }
 
 
+def _is_admin_user(user):
+    if user.is_superuser or user.is_staff:
+        return True
+    group_names = {g.name.strip().lower() for g in user.groups.all()}
+    return bool(group_names.intersection({"admin", "super admin", "staff"}))
+
+
 @require_GET
 def list_tasks_api_view(request):
     na = _ensure_authenticated(request)
     if na:
         return na
-    return JsonResponse({"tasks": [_serialize(o) for o in Task.objects.all()]})
+
+    queryset = Task.objects.all()
+    if not _is_admin_user(request.user):
+        username = request.user.username
+        queryset = queryset.filter(
+            Q(drawn_by__iexact=username)
+            | Q(approved_by__iexact=username)
+            | Q(project_owner__iexact=username)
+        )
+
+    return JsonResponse({"tasks": [_serialize(o) for o in queryset]})
 
 
 def _check_duplicate(project_instance, activity, revision, exclude_pk=None):
@@ -162,7 +179,6 @@ def create_task_api_view(request):
 
     obj = Task.objects.create(
         project=project_instance,
-        proposal_date=_to_date(p.get("proposal_date")),
         activity=activity,
         revision=revision,
         start_date=_to_date(p.get("start_date")),
@@ -207,14 +223,16 @@ def import_tasks_excel_api_view(request):
     failed_count = 0
     revised_count = 0
     failures = []
+    row_reports = []
+    activities_seen = set()  # track unique activities for Activity table population
 
     for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         values = list(row)
-        if len(values) < 16:
-            values.extend([None] * (16 - len(values)))
+        if len(values) < 20:
+            values.extend([None] * (20 - len(values)))
 
         project_id_name = values[3]
-        proposal_date = values[4]
+        proposal_date = _to_date(values[4])
         activity_raw = values[5]
         revision_raw = values[6]
         start_date = values[7]
@@ -226,8 +244,10 @@ def import_tasks_excel_api_view(request):
         task_status = values[13]
         project_owner = values[15]
         remarks = values[17] if len(values) > 17 else ""
+        drawn_by_month = values[18] if len(values) > 18 else ""
+        approved_by_month = values[19] if len(values) > 19 else ""
 
-        if not any([project_id_name, proposal_date, activity_raw, revision_raw, start_date, end_date]):
+        if not any([project_id_name, activity_raw, revision_raw, start_date, end_date]):
             skipped_count += 1
             continue
 
@@ -240,16 +260,30 @@ def import_tasks_excel_api_view(request):
         )
         if not project:
             failed_count += 1
-            failures.append(f"Row {row_number}: Project not found for '{project_id_name}'.")
+            message = f"Project not found for '{project_id_name}'."
+            failures.append(f"Row {row_number}: {message}")
+            row_reports.append({"row": row_number, "status": "failed", "message": message})
             continue
+
+        if proposal_date and not project.proposal_date:
+            project.proposal_date = proposal_date
+            project.save(update_fields=["proposal_date"])
 
         activity = normalize_text(activity_raw)
         if not activity:
             failed_count += 1
-            failures.append(f"Row {row_number}: Activity is required.")
+            message = "Activity is required."
+            failures.append(f"Row {row_number}: {message}")
+            row_reports.append({"row": row_number, "status": "failed", "message": message})
             continue
 
-        revision = normalize_text(revision_raw or "01")
+        # Collect unique title-cased activity for Activity table
+        activity_title = to_title_case(activity_raw)
+        if activity_title:
+            activities_seen.add(activity_title)
+
+        original_revision = normalize_text(revision_raw or "01")
+        revision = original_revision
         revision_adjusted = False
         while _check_duplicate(project, activity, revision):
             revision = _next_revision(revision)
@@ -258,7 +292,7 @@ def import_tasks_excel_api_view(request):
         try:
             Task.objects.create(
                 project=project,
-                proposal_date=_to_date(proposal_date),
+                project_id_name=normalize_text(str(project_id_name or "")),
                 activity=activity,
                 revision=revision,
                 start_date=_to_date(start_date),
@@ -270,14 +304,41 @@ def import_tasks_excel_api_view(request):
                 task_status=to_title_case(task_status),
                 project_owner=to_title_case(project_owner),
                 remarks=normalize_text(remarks),
+                drawn_by_month=normalize_text(drawn_by_month),
+                approved_by_month=normalize_text(approved_by_month),
                 updated_by=to_title_case(request.user.username),
             )
             created_count += 1
             if revision_adjusted:
                 revised_count += 1
+                row_reports.append(
+                    {
+                        "row": row_number,
+                        "status": "adjusted",
+                        "message": (
+                            f"Imported successfully. Revision changed from '{original_revision}' to '{revision}'."
+                        ),
+                    }
+                )
+            else:
+                row_reports.append(
+                    {"row": row_number, "status": "created", "message": "Imported successfully."}
+                )
         except Exception as exc:
             failed_count += 1
-            failures.append(f"Row {row_number}: {str(exc)}")
+            message = str(exc)
+            failures.append(f"Row {row_number}: {message}")
+            row_reports.append({"row": row_number, "status": "failed", "message": message})
+
+    # Populate Activity table with unique title-cased activities from this import
+    activities_added = 0
+    for activity_name in activities_seen:
+        _, created = Activity.objects.get_or_create(
+            name__iexact=activity_name,
+            defaults={"name": activity_name},
+        )
+        if created:
+            activities_added += 1
 
     return JsonResponse(
         {
@@ -285,11 +346,14 @@ def import_tasks_excel_api_view(request):
             "message": "Task import completed.",
             "summary": {
                 "created": created_count,
+                "blank_rows": skipped_count,
                 "skipped": skipped_count,
                 "failed": failed_count,
                 "revision_adjusted": revised_count,
+                "activities_added": activities_added,
             },
             "failures": failures[:30],
+            "row_reports": row_reports,
         }
     )
 
@@ -328,8 +392,6 @@ def task_detail_api_view(request, pk):
 
     p = _read_json(request)
 
-
-    obj.proposal_date = _to_date(p.get("proposal_date", obj.proposal_date))
 
     activity = normalize_text(p.get("activity", obj.activity))
     revision = normalize_text(p.get("revision", obj.revision))

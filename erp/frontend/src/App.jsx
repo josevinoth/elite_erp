@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import ProjectHeader from "./components/ProjectHeader";
+import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
 import HomeLayout from "./pages/HomeLayout";
 import LoginPage from "./pages/LoginPage";
 import ModulePage from "./pages/ModulePage";
@@ -10,6 +11,7 @@ import RegisterPage from "./pages/RegisterPage";
 import StockMaintenancePage from "./pages/StockMaintenancePage";
 import StockPurchasePage from "./pages/StockPurchasePage";
 import TaskPage from "./pages/TaskPage";
+import TimesheetPage from "./pages/TimesheetPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import VendorsPage from "./pages/VendorsPage";
 import { logoutUser } from "./services/authApi";
@@ -19,7 +21,9 @@ function App() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(() => getSessionUser());
   const roleName = String(currentUser?.role || "").toLowerCase();
+  const teamName = String(currentUser?.team || "").toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
+  const isCdcTeam = teamName === "cdc team";
 
   const displayUsername = currentUser?.username || "Guest";
   const displayRole = currentUser?.role || (currentUser ? "User" : "Visitor");
@@ -40,6 +44,10 @@ function App() {
   const secureRoute = (element) => (currentUser ? element : <Navigate to="/login" replace />);
   const adminRoute = (element) =>
     currentUser ? (isAdmin ? element : <Navigate to="/home" replace />) : <Navigate to="/login" replace />;
+  const cdcTeamRoute = (element) =>
+    currentUser
+      ? (isAdmin || isCdcTeam ? element : <Navigate to="/home" replace />)
+      : <Navigate to="/login" replace />;
 
   return (
     <div className="app-shell">
@@ -68,7 +76,9 @@ function App() {
           <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
           <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
           <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
+          <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage />)} />
           <Route path="/task" element={secureRoute(<TaskPage />)} />
+          <Route path="/timesheet" element={secureRoute(<TimesheetPage />)} />
 
           <Route
             path="/projects/requirements"

@@ -58,5 +58,12 @@ export const homeNavItems = [
     to: "/stock-maintenance",
     icon: "stockMaintenance",
   },
+  {
+    label: "CDC Team Expence",
+    to: "/cdc-team-expence",
+    icon: "cdcExpense",
+    cdcOnly: true,
+  },
   { label: "Task", to: "/task", icon: "task" },
+  { label: "Timesheet", to: "/timesheet", icon: "timesheet" },
 ];

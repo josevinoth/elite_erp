@@ -7,6 +7,7 @@ import {
   BsClipboardData,
   BsFileEarmarkTextFill,
   BsFolder2Open,
+  BsHourglassSplit,
   BsKanbanFill,
   BsListTask,
   BsPersonCheck,
@@ -22,7 +23,9 @@ const iconMap = {
   vendors: BsBuildingFill,
   stockPurchase: BsCartCheckFill,
   stockMaintenance: BsBoxes,
+  cdcExpense: BsCashCoin,
   task: BsListTask,
+  timesheet: BsHourglassSplit,
   requirements: BsClipboardData,
   quotation: BsFileEarmarkTextFill,
   customerPo: BsReceiptCutoff,
@@ -36,12 +39,15 @@ function NavIcon({ icon }) {
   return <IconComponent className={`home-sidenav__icon home-sidenav__icon--${icon}`} aria-hidden="true" />;
 }
 
-function HomeSideNav({ badges = {}, isAdmin = false }) {
+function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
   const visibleItems = homeNavItems
-    .filter((item) => !item.adminOnly || isAdmin)
+    .filter((item) => (!item.adminOnly || isAdmin) && (!item.cdcOnly || isAdmin || isCdcTeam))
     .map((item) => ({
       ...item,
-      children: item.children?.filter((child) => !child.adminOnly || isAdmin),
+      disabled: !isAdmin && item.to === "/timesheet",
+      children: item.children?.filter(
+        (child) => (!child.adminOnly || isAdmin) && (!child.cdcOnly || isAdmin || isCdcTeam)
+      ),
     }));
 
   return (
@@ -56,18 +62,33 @@ function HomeSideNav({ badges = {}, isAdmin = false }) {
 
           return (
             <div className="home-sidenav__group" key={item.label}>
-              <NavLink
-                to={item.to}
-                className={({ isActive }) =>
-                  `home-sidenav__link${isActive ? " home-sidenav__link--active" : ""}`
-                }
-              >
-                <NavIcon icon={item.icon} />
-                <span className="home-sidenav__label">{item.label}</span>
-                {itemBadge ? (
-                  <span className="pending-badge pending-badge--nav">{itemBadge}</span>
-                ) : null}
-              </NavLink>
+              {item.disabled ? (
+                <div
+                  className="home-sidenav__link home-sidenav__link--disabled"
+                  role="link"
+                  aria-disabled="true"
+                  title="Only admins can access"
+                >
+                  <NavIcon icon={item.icon} />
+                  <span className="home-sidenav__label">{item.label}</span>
+                  {itemBadge ? (
+                    <span className="pending-badge pending-badge--nav">{itemBadge}</span>
+                  ) : null}
+                </div>
+              ) : (
+                <NavLink
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `home-sidenav__link${isActive ? " home-sidenav__link--active" : ""}`
+                  }
+                >
+                  <NavIcon icon={item.icon} />
+                  <span className="home-sidenav__label">{item.label}</span>
+                  {itemBadge ? (
+                    <span className="pending-badge pending-badge--nav">{itemBadge}</span>
+                  ) : null}
+                </NavLink>
+              )}
 
               {item.children ? (
                 <div className="home-sidenav__children">

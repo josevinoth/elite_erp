@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
+import Select from "react-select";
+import { exportRowsToExcel } from "../utils/exportToExcel";
 
 /**
  * Reusable CRUD page with list table + add/edit modal.
@@ -27,7 +29,17 @@ function CrudPage({
   stickyHeader = false,
   tableWrapClassName = "",
   showAddButton = true,
+  showExportButton = true,
+  exportFileName = null,
+  openAddOnMount = false,
+  rowActions = [],
   computeValues = null,   // (changedKey, changedValue, allValues) => extraValues
+  editDisabledPredicate = null,  // (row) => boolean
+  deleteDisabledPredicate = null,  // (row) => boolean
+  editDisabledTitle = "Edit",
+  deleteDisabledTitle = "Delete",
+  saveDisabledPredicate = null,  // (editRow, formValues) => boolean
+  saveDisabledTitle = "Save",
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,8 +48,10 @@ function CrudPage({
   const [editRow, setEditRow] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [filters, setFilters] = useState({});
+  const autoOpenedRef = useRef(false);
 
   const emptyForm = () =>
     Object.fromEntries(fields.map((f) => [f.key, f.default ?? ""]));
@@ -67,6 +81,15 @@ function CrudPage({
     setShowModal(true);
   };
 
+  useEffect(() => {
+    if (openAddOnMount && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setEditRow(null);
+      setFormValues(emptyForm());
+      setShowModal(true);
+    }
+  }, [openAddOnMount, fields]);
+
   const openEdit = (row) => {
     setEditRow(row);
     setFormValues(
@@ -86,8 +109,7 @@ function CrudPage({
     setEditRow(null);
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  const handleFieldChange = (name, rawValue) => {
     const field = fields.find((f) => f.key === name);
     const isFreeTextField =
       field &&
@@ -95,11 +117,11 @@ function CrudPage({
       (!field.type || ["text", "textarea", "email", "tel", "search"].includes(field.type));
 
     const nextValue = isFreeTextField
-      ? value
+      ? String(rawValue ?? "")
           .replace(/\s+/g, " ")
           .replace(/\s*([-_])\s*/g, "$1")
           .trimStart()
-      : value;
+      : rawValue;
 
     setFormValues((prev) => {
       const nextValues = { ...prev, [name]: nextValue };
@@ -107,6 +129,35 @@ function CrudPage({
       return { ...nextValues, ...extras };
     });
   };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    handleFieldChange(name, value);
+  };
+
+  const selectStyles = useMemo(
+    () => ({
+      control: (base, state) => ({
+        ...base,
+        minHeight: 40,
+        backgroundColor: "#0a3338",
+        borderColor: state.isFocused ? "#16b2a5" : "#1e666d",
+        boxShadow: state.isFocused ? "0 0 0 3px rgba(22,178,165,0.2)" : "none",
+        ":hover": { borderColor: "#25d2c3" },
+      }),
+      singleValue: (base) => ({ ...base, color: "#f0fffe" }),
+      input: (base) => ({ ...base, color: "#f0fffe" }),
+      placeholder: (base) => ({ ...base, color: "#cce8e5" }),
+      menu: (base) => ({ ...base, backgroundColor: "#0b3a40", zIndex: 2000 }),
+      menuPortal: (base) => ({ ...base, zIndex: 3000 }),
+      option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isFocused ? "#11474f" : "#0b3a40",
+        color: "#f0fffe",
+      }),
+    }),
+    []
+  );
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -218,6 +269,23 @@ function CrudPage({
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleExport = async () => {
+    setError("");
+    setExporting(true);
+    try {
+      await exportRowsToExcel({
+        fileName: exportFileName || title,
+        sheetName: title,
+        columns,
+        rows: displayedRows,
+      });
+    } catch (err) {
+      setError(err.message || "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const displayedRows = useMemo(() => {
     const normalizedFilters = Object.entries(filters).filter(([, value]) =>
       String(value || "").trim()
@@ -261,16 +329,29 @@ function CrudPage({
     });
   }, [rows, filters, sortConfig]);
 
+  const saveDisabled =
+    typeof saveDisabledPredicate === "function"
+      ? saveDisabledPredicate(editRow, formValues)
+      : false;
+
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
         <h1 className="module-page__title">{title}</h1>
-        {showAddButton ? (
-          <button type="button" className="crud-add-btn" onClick={openAdd}>
-            <BsPlusCircleFill aria-hidden="true" />
-            <span>Add New</span>
-          </button>
-        ) : null}
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          {showExportButton ? (
+            <button type="button" className="crud-add-btn" onClick={handleExport} disabled={exporting || loading}>
+              <BsDownload aria-hidden="true" />
+              <span>{exporting ? "Exporting..." : "Download Excel"}</span>
+            </button>
+          ) : null}
+          {showAddButton ? (
+            <button type="button" className="crud-add-btn" onClick={openAdd}>
+              <BsPlusCircleFill aria-hidden="true" />
+              <span>Add New</span>
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {error ? <p className="users-status users-status--error">{error}</p> : null}
@@ -334,22 +415,62 @@ function CrudPage({
                 ))}
                 <td>
                   <div className="users-actions">
-                    <button
-                      type="button"
-                      className="users-action users-action--edit"
-                      aria-label="Edit"
-                      onClick={() => openEdit(row)}
-                    >
-                      <BsPencilSquare aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="users-action users-action--delete"
-                      aria-label="Delete"
-                      onClick={() => handleDelete(row[rowKey])}
-                    >
-                      <BsTrashFill aria-hidden="true" />
-                    </button>
+                    {rowActions.map((action) => {
+                      const Icon = action.icon;
+                      const isDisabled =
+                        typeof action.disabled === "function"
+                          ? action.disabled(row)
+                          : !!action.disabled;
+                      return (
+                        <button
+                          key={action.key || action.label}
+                          type="button"
+                          className={`users-action ${action.className || ""}`.trim()}
+                          aria-label={action.ariaLabel || action.label}
+                          title={isDisabled ? (action.disabledTitle || action.label) : action.label}
+                          disabled={isDisabled}
+                          onClick={() => !isDisabled && action.onClick?.(row)}
+                        >
+                          {Icon ? <Icon aria-hidden="true" /> : action.label}
+                        </button>
+                      );
+                    })}
+                    {(() => {
+                      const editDisabled =
+                        typeof editDisabledPredicate === "function"
+                          ? editDisabledPredicate(row)
+                          : false;
+                      return (
+                        <button
+                          type="button"
+                          className="users-action users-action--edit"
+                          aria-label="Edit"
+                          title={editDisabled ? editDisabledTitle : "Edit"}
+                          disabled={editDisabled}
+                          onClick={() => !editDisabled && openEdit(row)}
+                        >
+                          <BsPencilSquare aria-hidden="true" />
+                        </button>
+                      );
+                    })()}
+                    {(() => {
+                      const deleteDisabled =
+                        typeof deleteDisabledPredicate === "function"
+                          ? deleteDisabledPredicate(row)
+                          : false;
+                      return (
+                        <button
+                          type="button"
+                          className="users-action users-action--delete"
+                          aria-label="Delete"
+                          title={deleteDisabled ? deleteDisabledTitle : "Delete"}
+                          disabled={deleteDisabled}
+                          onClick={() => !deleteDisabled && handleDelete(row[rowKey])}
+                        >
+                          <BsTrashFill aria-hidden="true" />
+                        </button>
+                      );
+                    })()}
                   </div>
                 </td>
               </tr>
@@ -385,22 +506,37 @@ function CrudPage({
 
                   {field.options ? (
                     <div className="modal-select-row">
-                      <select
-                        id={`mf-${field.key}`}
-                        name={field.key}
-                        className={`auth-input${field.disabled ? " auth-input--readonly" : ""}`}
+                      <Select
+                        inputId={`mf-${field.key}`}
+                        className="crud-select"
+                        classNamePrefix="crud-select"
+                        isSearchable
+                        isDisabled={field.disabled}
+                        options={field.options}
+                        placeholder={`Select ${field.label}`}
+                        value={
+                          field.options.find(
+                            (opt) => String(opt.value) === String(formValues[field.key] ?? "")
+                          ) || null
+                        }
+                        onChange={(option) =>
+                          field.disabled ? undefined : handleFieldChange(field.key, option ? option.value : "")
+                        }
+                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                        menuPosition="fixed"
+                        styles={selectStyles}
+                      />
+
+                      {/* keep native required validation via hidden input */}
+                      <input
+                        type="text"
+                        tabIndex={-1}
+                        autoComplete="off"
                         value={formValues[field.key] ?? ""}
-                        onChange={field.disabled ? undefined : handleChange}
-                        disabled={field.disabled}
+                        onChange={() => {}}
                         required={field.required}
-                      >
-                        <option value="">Select {field.label}</option>
-                        {field.options.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
+                        style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+                      />
 
                       {field.onAppend ? (
                         <button
@@ -449,7 +585,8 @@ function CrudPage({
                 <button
                   type="submit"
                   className="modal-btn modal-btn--save"
-                  disabled={saving}
+                  title={saveDisabled ? saveDisabledTitle : "Save"}
+                  disabled={saving || saveDisabled}
                 >
                   {saving ? "Saving..." : "Save"}
                 </button>
