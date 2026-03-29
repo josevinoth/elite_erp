@@ -3,6 +3,10 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  base: "/static/",   // built asset URLs will be /static/assets/... matching Django's STATIC_URL
+  build: {
+    outDir: "dist",
+  },
   server: {
     port: 5173,
     proxy: {

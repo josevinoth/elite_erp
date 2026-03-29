@@ -28,3 +28,34 @@ Auth API routes (Django):
 - `/api/auth/register/`
 - `/api/auth/login/`
 - `/api/auth/logout/`
+
+## Windows LAN Production Run
+
+Use Waitress + Django from the `erp` folder.
+
+```powershell
+Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
+cmd /c start_prod.bat
+```
+
+Stop production server:
+
+```powershell
+Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
+cmd /c stop_prod.bat
+```
+
+Register automatic startup on Windows logon:
+
+```powershell
+Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
+powershell -ExecutionPolicy Bypass -File .\register_startup_task.ps1
+```
+
+Or use one-click elevated registration:
+
+```powershell
+Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
+cmd /c install_startup_task.bat
+```
+

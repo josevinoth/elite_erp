@@ -15,9 +15,14 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.generic import TemplateView
+
+spa = TemplateView.as_view(template_name='index.html')
 
 urlpatterns = [
-    path('', include('erp_app.urls')),
     path('admin/', admin.site.urls),
+    path('', include('erp_app.urls')),       # all /api/... routes
+    path('', spa),                            # root "/" → React SPA
+    re_path(r'^(?!api/|static/|admin/).*$' , spa),
 ]

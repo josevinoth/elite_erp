@@ -11,6 +11,10 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import os
+import re
+import socket
+import subprocess
+from ipaddress import ip_address
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -26,15 +30,66 @@ SECRET_KEY = 'django-insecure-z)m$9_v15g0%$cp070y8fsu4)l6u1&4zb@p%d9@1ie@tgg!=6e
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = os.getenv(
-    "DJANGO_ALLOWED_HOSTS",
-    "127.0.0.1,localhost,0.0.0.0",
-).split(",")
+def _discover_private_ipv4_hosts() -> list[str]:
+    """Collect current LAN IPv4 addresses so host checks survive DHCP IP changes."""
+    hosts = {"127.0.0.1", "localhost", "0.0.0.0"}
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            try:
+                if ip_address(ip).is_private:
+                    hosts.add(ip)
+            except ValueError:
+                continue
+    except OSError:
+        pass
 
-CSRF_TRUSTED_ORIGINS = os.getenv(
-    "DJANGO_CSRF_TRUSTED_ORIGINS",
-    "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000",
-).split(",")
+    # Windows fallback: hostname lookup may return only one adapter address.
+    try:
+        output = subprocess.check_output(["ipconfig"], text=True, encoding="utf-8", errors="ignore")
+        for ip in re.findall(r"IPv4[^:]*:\s*(\d+\.\d+\.\d+\.\d+)", output):
+            try:
+                if ip_address(ip).is_private:
+                    hosts.add(ip)
+            except ValueError:
+                continue
+    except Exception:
+        pass
+
+    return sorted(hosts)
+
+
+_default_allowed_hosts = set(_discover_private_ipv4_hosts())
+_env_allowed_hosts = {
+    h.strip()
+    for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",")
+    if h.strip()
+}
+ALLOWED_HOSTS = sorted(_default_allowed_hosts | _env_allowed_hosts)
+
+# For LAN testing, avoid Invalid HTTP_HOST when DHCP changes local IP.
+# IMPORTANT: For production/service deployment, always allow all hosts in DEBUG mode
+if DEBUG:
+    ALLOWED_HOSTS = ["*"]
+elif os.getenv("DJANGO_STRICT_HOST_CHECK", "0") != "1":
+    ALLOWED_HOSTS = ["*"]
+
+_default_csrf_origins = [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://192.168.1.6:8000",
+]
+for host in ALLOWED_HOSTS:
+    if host not in {"localhost", "0.0.0.0"}:
+        _default_csrf_origins.append(f"http://{host}:8000")
+
+_env_csrf_origins = {
+    o.strip()
+    for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+}
+CSRF_TRUSTED_ORIGINS = sorted(set(_default_csrf_origins) | _env_csrf_origins)
 
 
 # Application definition
@@ -51,6 +106,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -64,7 +120,7 @@ ROOT_URLCONF = 'erp.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'frontend' / 'dist'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -127,7 +183,12 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'frontend' / 'dist',
+]
+WHITENOISE_INDEX_FILE = True
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

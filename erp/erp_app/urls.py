@@ -1,7 +1,5 @@
 from django.urls import path
 from .views import (
-    LoginPageView,
-    RegisterView,
     csrf_token_view,
     approve_registration_api_view,
     create_project_api_view,
@@ -39,9 +37,6 @@ from .views import (
 )
 
 urlpatterns = [
-    path('', LoginPageView.as_view(), name='login'),
-    path('register/', RegisterView.as_view(), name='register'),
-    path('login/', LoginPageView.as_view(), name='login-page'),
     # auth API
     path('api/auth/csrf/', csrf_token_view, name='api-csrf'),
     path('api/auth/register/meta/', register_meta_api_view, name='api-register-meta'),

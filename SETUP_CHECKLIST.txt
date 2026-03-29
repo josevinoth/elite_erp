@@ -1,0 +1,186 @@
+SETUP CHECKLIST - EliteERP Auto-Start on Windows
+=================================================
+
+Copy and save this checklist. Follow each step in order.
+
+
+PREREQUISITES
+=============
+[ ] You have administrator access to your computer
+[ ] Python virtual environment (.venv) is set up
+[ ] Django application runs successfully manually
+[ ] You have access to your router settings (optional, for stable IP)
+
+
+STEP 1: TEST THE STARTUP
+========================
+[ ] Open PowerShell as Administrator
+[ ] Navigate to: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp
+[ ] Run: .\test_startup.bat
+[ ] Wait for the server to start (you'll see "Listening on" message)
+[ ] Server should be accessible at: http://localhost:8000
+[ ] Press Ctrl+C to stop the server
+[ ] Check that logs\server.log was created and contains output
+[ ] Check that logs\startup.log was created
+
+Note: If test_startup.bat fails, note the error message and check TROUBLESHOOTING section
+
+
+STEP 2: SET UP STABLE NETWORK IP (Optional but Recommended)
+===========================================================
+[ ] Open Command Prompt as Administrator
+[ ] Run: ipconfig /all
+[ ] Find and note:
+    - Your computer name: _______________________
+    - Your MAC address (Physical Address): _______________________
+    - Your current IP: _______________________
+
+[ ] Access your router settings (default: http://192.168.1.1)
+[ ] Login with router admin credentials
+[ ] Find DHCP Settings or "Connected Devices"
+[ ] Find your computer by MAC address
+[ ] Set IP to "Reserved" or "Static DHCP"
+[ ] Assign a preferred IP (example: 192.168.1.2)
+[ ] Save settings
+[ ] Restart your computer
+
+
+STEP 3: UPDATE ALLOWED_HOSTS (if needed)
+========================================
+[ ] Open: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\erp\settings.py
+[ ] Find: ALLOWED_HOSTS = [...]
+[ ] Add your network IP (example if your IP is 192.168.1.2):
+    ALLOWED_HOSTS = ['192.168.1.2', 'localhost', '127.0.0.1']
+[ ] Save the file
+
+
+STEP 4: REGISTER THE STARTUP TASK
+==================================
+[ ] Open PowerShell as Administrator (very important!)
+[ ] Run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+[ ] Press 'Y' to confirm
+[ ] Navigate to: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp
+[ ] Run: .\register_startup_task.ps1
+[ ] You should see: "[OK] Scheduled task 'EliteERP-Prod' registered successfully."
+[ ] Note the task details printed
+
+If this fails: Right-click PowerShell and select "Run as Administrator"
+
+
+STEP 5: VERIFY TASK WAS CREATED
+================================
+[ ] Open "Task Scheduler" (search for it in Windows)
+[ ] In the left panel, click "Task Scheduler Library"
+[ ] Look for "EliteERP-Prod" in the task list
+[ ] Right-click on it and select "Properties"
+[ ] Verify:
+    - Trigger tab: "At log on" is listed
+    - Action tab: Shows your start_prod.bat path
+[ ] Close Task Scheduler
+
+
+STEP 6: TEST WITH LOGOFF
+=========================
+[ ] Save any open work
+[ ] Press Alt+F4 to log off (or click Start > Sign out)
+[ ] Log back in with your username and password
+[ ] Wait about 30-45 seconds
+[ ] Open Command Prompt and run: netstat -aon | findstr :8000
+[ ] You should see a line with ":8000" and "LISTENING"
+[ ] Try accessing: http://localhost:8000
+[ ] You should see your EliteERP application
+
+
+STEP 7: TEST FROM ANOTHER COMPUTER (Optional)
+==============================================
+[ ] Get the IP address of your server computer (use: ipconfig)
+[ ] Example: 192.168.1.2
+[ ] Go to another computer on the same WiFi/LAN
+[ ] Open web browser
+[ ] Navigate to: http://192.168.1.2:8000
+[ ] You should see your EliteERP application
+[ ] Login and verify the application works
+
+
+STEP 8: VERIFY LOGS
+===================
+[ ] Navigate to: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\
+[ ] Open startup.log in a text editor
+[ ] Look for: "[OK] EliteERP started on port 8000"
+[ ] Open server.log
+[ ] Look for: "EliteERP Production Server" and "Listening on"
+
+
+TROUBLESHOOTING CHECKLIST
+=========================
+
+If test_startup.bat fails:
+  [ ] Check if Python path exists: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\.venv\Scripts\python.exe
+  [ ] Check if .venv is activated (was virtual environment created?)
+  [ ] Check error message in test_startup.bat output
+  [ ] Check logs/server.log for details
+
+If task doesn't run after logoff/login:
+  [ ] Open Task Scheduler and right-click EliteERP-Prod
+  [ ] Click "Run" to test it manually
+  [ ] Check logs/startup.log for errors
+  [ ] Verify working directory is set correctly
+
+If can't access from another computer:
+  [ ] Verify your network IP hasn't changed: ipconfig
+  [ ] Verify Windows Firewall allows port 8000
+  [ ] Try pinging your computer: ping 192.168.1.X
+  [ ] Verify server is running: netstat -aon | findstr :8000
+
+If you see "Invalid HTTP_HOST header" error:
+  [ ] Add your IP to ALLOWED_HOSTS in settings.py
+  [ ] Make sure you're accessing the correct IP address
+
+
+MAINTENANCE COMMANDS
+====================
+
+To stop the server manually:
+  - Run: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\stop_server.bat
+  - Or: taskkill /IM python.exe /F
+
+To remove the scheduled task:
+  - Open PowerShell as Administrator
+  - Run: schtasks /delete EliteERP-Prod /f
+
+To view startup logs:
+  - Type: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\startup.log
+
+To view server logs:
+  - Type: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\server.log
+
+
+SUPPORT
+=======
+
+If you encounter issues:
+
+1. First, run test_startup.bat to verify basic setup
+2. Check the log files (startup.log and server.log)
+3. Verify all directories and files exist
+4. Ensure you have administrator access
+5. Try removing and re-registering the task
+6. Check Windows Firewall settings for port 8000
+
+
+COMPLETION
+==========
+
+When all steps are complete:
+
+✅ Server starts automatically on computer startup (no manual intervention needed)
+✅ Server is accessible from other computers on the LAN
+✅ Logs track all startup and runtime information
+✅ You can stop the server using stop_server.bat if needed
+✅ Application is ready for production use on your local network
+
+Date Completed: _______________________
+Notes: ___________________________________________________________________________
+_________________________________________________________________________________
+
+
