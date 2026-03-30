@@ -113,7 +113,13 @@ function CdcTeamExpencePage() {
 
   const fields = useMemo(
     () => [
-      { key: "expense_date", label: "Expense Date", type: "date", default: currentDateDefault },
+      {
+        key: "expense_date",
+        label: "Expense Date",
+        type: "date",
+        default: currentDateDefault,
+        required: true,
+      },
       {
         key: "item",
         label: "Item",
@@ -128,8 +134,8 @@ function CdcTeamExpencePage() {
         onAppend: appendSession,
         required: true,
       },
-      { key: "qty", label: "Qty", type: "number", default: "0" },
-      { key: "price", label: "Price", type: "number", default: "0" },
+      { key: "qty", label: "Qty", type: "number", default: "0", required: true },
+      { key: "price", label: "Price", type: "number", default: "0", required: true },
       { key: "total_cost", label: "Total Cost", type: "number", readOnly: true, default: "0" },
       {
         key: "status",
@@ -139,7 +145,7 @@ function CdcTeamExpencePage() {
         required: true,
         default: unpaidStatusId,
       },
-      { key: "paid_by", label: "Paid By", options: paidByOptions },
+      { key: "paid_by", label: "Paid By", options: paidByOptions, required: true },
       { key: "settled_on", label: "Settled On", type: "date" },
       {
         key: "settled_by",
@@ -170,6 +176,12 @@ function CdcTeamExpencePage() {
     [isAdmin]
   );
 
+  const isExpenseSaveDisabled = useCallback((_, formValues) => {
+    const hasSettledBy = String(formValues?.settled_by || "").trim() !== "";
+    const hasSettledOn = String(formValues?.settled_on || "").trim() !== "";
+    return hasSettledBy && !hasSettledOn;
+  }, []);
+
   return (
     <CrudPage
       title="CDC Team Expence"
@@ -184,6 +196,8 @@ function CdcTeamExpencePage() {
       deleteDisabledPredicate={isPaidLocked}
       editDisabledTitle="Paid expense records can only be edited by admin users"
       deleteDisabledTitle="Paid expense records can only be deleted by admin users"
+      saveDisabledPredicate={isExpenseSaveDisabled}
+      saveDisabledTitle="Settled On is required when Settled By is selected"
       tableWrapClassName="expense-table-wrap"
       stickyHeader
       tableMaxHeight="60vh"

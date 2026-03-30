@@ -153,9 +153,9 @@ function TaskPage() {
           onAppend: appendActivity,
           required: true,
         },
-        { key: "revision", label: "Revision", default: "01" },
-        { key: "start_date", label: "Start Date", type: "date" },
-        { key: "end_date", label: "End Date", type: "date" },
+        { key: "revision", label: "Revision", default: "01", readOnly: !isAdmin },
+        { key: "start_date", label: "Start Date", type: "date", required: true },
+        { key: "end_date", label: "End Date", type: "date", required: true },
         {
           key: "no_of_days",
           label: "No of Days (auto)",
@@ -163,11 +163,11 @@ function TaskPage() {
           readOnly: true,
           default: "1",
         },
-        { key: "drawn_by", label: "Drawn By", options: userOptions },
+        { key: "drawn_by", label: "Drawn By", options: userOptions, required: true },
         { key: "approved_by", label: "Approved By", options: omanTeamUserOptions },
         { key: "approved_date", label: "Approved Date", type: "date" },
 
-        { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions },
+        { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions, required: true },
         {
           key: "task_status",
           label: "Status",
@@ -176,7 +176,7 @@ function TaskPage() {
         },
         { key: "remarks", label: "Remarks", type: "textarea" },
       ],
-      [taskStatuses, activityOptions, userOptions, omanTeamUserOptions, projectOptions, loggedInUsername]
+      [taskStatuses, activityOptions, userOptions, omanTeamUserOptions, projectOptions, loggedInUsername, isAdmin]
   );
 
   const fetchFn = useCallback(async () => {
@@ -235,11 +235,21 @@ function TaskPage() {
   const isTaskDeleteDisabled = (row) => !isAdmin && isCompletedStatus(row?.task_status);
 
   const isTaskSaveDisabled = (editRow, formValues) => {
+    const nextStatusCompleted = isCompletedStatus(formValues?.task_status);
+    const missingApprovalInfo =
+      nextStatusCompleted &&
+      (!String(formValues?.approved_by || "").trim() || !String(formValues?.approved_date || "").trim());
+
+    if (missingApprovalInfo) {
+      return true;
+    }
+
     if (isAdmin) {
       return false;
     }
 
-    return isCompletedStatus(formValues?.task_status) || isCompletedStatus(editRow?.task_status);
+    // Non-admins can mark a task as Completed once, but cannot edit it after completion.
+    return isCompletedStatus(editRow?.task_status);
   };
 
   const handleImportClick = () => {
@@ -405,7 +415,7 @@ function TaskPage() {
         deleteDisabledPredicate={isTaskDeleteDisabled}
         deleteDisabledTitle="Completed tasks can only be deleted by admin users"
         saveDisabledPredicate={isTaskSaveDisabled}
-        saveDisabledTitle="Completed tasks can only be saved by admin users"
+        saveDisabledTitle="Completed status requires Approved By and Approved Date; completed tasks can only be edited by admin users"
       />
     </>
   );

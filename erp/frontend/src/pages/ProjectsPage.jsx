@@ -49,20 +49,25 @@ function ProjectsPage() {
 
   const fields = useMemo(
     () => [
-      { key: "project_id", label: "Project ID", required: true },
-      { key: "project_name", label: "Project Name" },
-      { key: "proposal_date", label: "Date of Proposal", type: "date" },
-      { key: "updated_by", label: "Updated By", default: loggedInUsername },
+      { key: "project_id", label: "Project ID", required: true },      { key: "project_name", label: "Project Name", required: true },
+      { key: "proposal_date", label: "Date of Proposal", type: "date", required: true },
+      { key: "updated_by", label: "Updated By", default: loggedInUsername, required: true },
       { key: "order_value_omr", label: "Order Value (OMR)", type: "number" },
-      { key: "description", label: "Description", type: "textarea" },
+      { key: "description", label: "Description", type: "textarea", required: true },
       {
         key: "status",
         label: "Status",
         options: statusOptions,
         default: statusOptions[0]?.value || "",
         onAppend: appendStatus,
+        required: true,
       },
-      { key: "expected_customer_need_date", label: "Expected Customer Need Date", type: "date" },
+      {
+        key: "expected_customer_need_date",
+        label: "Expected Customer Need Date",
+        type: "date",
+        required: true,
+      },
     ],
     [statusOptions, loggedInUsername]
   );

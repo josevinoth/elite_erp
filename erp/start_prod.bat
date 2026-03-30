@@ -21,14 +21,23 @@ if not exist "%VENV_PY%" (
 REM Change to project root directory
 cd /d "C:\Users\Admin\PycharmProjects\elite_erp_v1.0"
 
+REM Build frontend (React/Vite) so latest changes are served
+echo [INFO] Building frontend...>> "%STARTUP_LOG%"
+cd /d "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\frontend"
+call npm run build >> "%STARTUP_LOG%" 2>&1
+cd /d "C:\Users\Admin\PycharmProjects\elite_erp_v1.0"
+
+REM Ensure DB schema is up to date (prevents missing-table 500 errors)
+echo [INFO] Running migrations...>> "%STARTUP_LOG%"
+"%VENV_PY%" erp\manage.py migrate --noinput >> "%STARTUP_LOG%" 2>&1
+
 REM Run collectstatic
 echo [INFO] Running collectstatic...>> "%STARTUP_LOG%"
-"%VENV_PY%" manage.py collectstatic --noinput >> "%STARTUP_LOG%" 2>&1
+"%VENV_PY%" erp\manage.py collectstatic --noinput >> "%STARTUP_LOG%" 2>&1
 
 REM Now run the server directly
 echo [INFO] Starting EliteERP server on port %PORT%>> "%STARTUP_LOG%"
 set "DJANGO_SETTINGS_MODULE=erp.settings"
 set "PYTHONUNBUFFERED=1"
 "%VENV_PY%" "%PROJECT_DIR%\serve.py" >> "%SERVER_LOG%" 2>&1
-
 
