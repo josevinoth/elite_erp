@@ -1,5 +1,6 @@
 from .activity import Activity
 from .cdc_team_expense import CDCTeamExpense
+from .comment import Comment, CommentAttachment
 from .expense_item import ExpenseItem
 from .expense_session import ExpenseSession
 from .expense_status_option import ExpenseStatusOption
@@ -19,6 +20,8 @@ from .vendor import Vendor
 
 __all__ = [
 	"Activity",
+	"Comment",
+	"CommentAttachment",
 	"CDCTeamExpense",
 	"ExpenseItem",
 	"ExpenseSession",
@@ -37,4 +40,3 @@ __all__ = [
 	"UserStatusOption",
 	"UserProfile",
 ]
-

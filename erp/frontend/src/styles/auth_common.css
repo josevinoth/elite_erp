@@ -629,6 +629,15 @@ select.auth-input option {
   table-layout: fixed;
 }
 
+.expense-table-wrap .users-table th:first-child,
+.expense-table-wrap .users-table td:first-child {
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  padding: 0.4rem 0.2rem;
+  text-align: center;
+}
+
 .expense-table-wrap .users-table th,
 .expense-table-wrap .users-table td {
   padding: 0.4rem 0.45rem;
@@ -645,6 +654,166 @@ select.auth-input option {
 .expense-table-wrap .users-table__filter-input {
   font-size: 0.72rem;
   padding: 0.3rem 0.34rem;
+}
+
+/* ── Expense Bar Chart ─────────────────────────────────── */
+.expense-chart-wrap {
+  margin-top: 1.5rem;
+  background: #072830;
+  border: 1px solid #1e666d;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem 1rem;
+}
+
+.expense-chart__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.expense-chart__title {
+  margin: 0 0 0.15rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f0fffe;
+}
+
+.expense-chart__total {
+  font-size: 0.82rem;
+  color: #cce8e5;
+}
+
+.expense-chart__total strong {
+  color: #25d2c3;
+}
+
+.expense-chart__group-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.expense-chart__group-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid #1e666d;
+  border-radius: 20px;
+  background: transparent;
+  color: #cce8e5;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+
+.expense-chart__group-btn:hover {
+  background: #11474f;
+  border-color: #25d2c3;
+  color: #f0fffe;
+}
+
+.expense-chart__group-btn--active {
+  background: #16b2a5;
+  border-color: #16b2a5;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── Chart Filters ── */
+.expense-chart__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: flex-end;
+  padding: 0.75rem 0.9rem;
+  background: #0a3338;
+  border: 1px solid #1e666d;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.expense-chart__filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.expense-chart__filter-group--clear {
+  justify-content: flex-end;
+}
+
+.expense-chart__filter-label {
+  font-size: 0.75rem;
+  color: #cce8e5;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.expense-chart__filter-range {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.expense-chart__filter-sep {
+  color: #cce8e5;
+  font-size: 0.8rem;
+}
+
+.expense-chart__filter-input {
+  background: #0d4a51;
+  border: 1px solid #1e666d;
+  border-radius: 6px;
+  color: #f0fffe;
+  font-size: 0.78rem;
+  padding: 0.32rem 0.45rem;
+  width: 130px;
+  cursor: pointer;
+}
+
+.expense-chart__filter-input:focus {
+  outline: none;
+  border-color: #16b2a5;
+  box-shadow: 0 0 0 2px rgba(22,178,165,0.18);
+}
+
+.expense-chart__filter-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
+.expense-chart__filter-select {
+  background: #0d4a51;
+  border: 1px solid #1e666d;
+  border-radius: 6px;
+  color: #f0fffe;
+  font-size: 0.78rem;
+  padding: 0.32rem 0.45rem;
+  min-width: 130px;
+  cursor: pointer;
+}
+
+.expense-chart__filter-select:focus {
+  outline: none;
+  border-color: #16b2a5;
+  box-shadow: 0 0 0 2px rgba(22,178,165,0.18);
+}
+
+.expense-chart__clear-btn {
+  background: rgba(255,100,100,0.12);
+  border: 1px solid rgba(255,100,100,0.35);
+  border-radius: 6px;
+  color: #ff8a8a;
+  font-size: 0.78rem;
+  padding: 0.32rem 0.75rem;
+  cursor: pointer;
+  transition: background 150ms;
+  white-space: nowrap;
+}
+
+.expense-chart__clear-btn:hover {
+  background: rgba(255,100,100,0.22);
 }
 
 .users-actions {
@@ -875,6 +1044,51 @@ select.auth-input option {
 
 .modal-btn--save:hover:not(:disabled) {
   background: var(--primary-hover);
+}
+
+/* ── Reusable comments modal ─────────────────────────── */
+.comments-modal {
+  max-width: 960px;
+}
+
+.comments-modal__list-wrap {
+  padding: 0 1.1rem 1rem;
+}
+
+/* ── Task comments section inside task modal ──────────── */
+.task-comments-panel {
+  border-top: 1px solid var(--border);
+  margin-top: 0.4rem;
+  padding-top: 0.8rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.task-comments-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.task-comments-panel__title {
+  margin: 0;
+  font-size: 0.96rem;
+  color: var(--text);
+}
+
+.task-comments-panel__new {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.task-comments-panel__add-btn-wrap {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.task-comments-panel__list {
+  display: grid;
+  gap: 0.35rem;
 }
 
 @media (max-width: 767px) {

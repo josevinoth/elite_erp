@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BsClockHistory, BsDownload } from "react-icons/bs";
 import CrudPage from "../components/CrudPage";
+import TaskBarChart from "../components/TaskBarChart";
+import TaskCommentsPanel from "../components/TaskCommentsPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { listUsers } from "../services/authApi";
 import {
@@ -75,7 +77,10 @@ function TaskPage() {
   const [importStatus, setImportStatus] = useState("");
   const [importRowReports, setImportRowReports] = useState([]);
   const [reloadKey, setReloadKey] = useState(0);
+  const [chartRows, setChartRows] = useState([]);
   const fileInputRef = useRef(null);
+
+  const handleRowsChange = useCallback((rows) => setChartRows(rows), []);
 
   const toTitleCase = (value) =>
       String(value || "")
@@ -174,7 +179,6 @@ function TaskPage() {
           options: taskStatuses,
           onAppend: appendTaskStatus,
         },
-        { key: "remarks", label: "Remarks", type: "textarea" },
       ],
       [taskStatuses, activityOptions, userOptions, omanTeamUserOptions, projectOptions, loggedInUsername, isAdmin]
   );
@@ -416,6 +420,14 @@ function TaskPage() {
         deleteDisabledTitle="Completed tasks can only be deleted by admin users"
         saveDisabledPredicate={isTaskSaveDisabled}
         saveDisabledTitle="Completed status requires Approved By and Approved Date; completed tasks can only be edited by admin users"
+        onRowsChange={handleRowsChange}
+        renderFooter={() => <TaskBarChart rows={chartRows} />}
+        renderFormExtension={({ editRow }) => (
+          <TaskCommentsPanel
+            taskId={editRow?.id || null}
+            taskStatus={editRow?.task_status || ""}
+          />
+        )}
       />
     </>
   );

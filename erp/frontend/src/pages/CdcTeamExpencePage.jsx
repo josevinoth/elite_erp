@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CrudPage from "../components/CrudPage";
+import BulkUpdateModal from "../components/BulkUpdateModal";
+import ErrorBoundary from "../components/ErrorBoundary";
+import ExpenseBarChart from "../components/ExpenseBarChart";
 import {
   addExpenseItemOption,
   addExpenseSessionOption,
   addExpenseStatusOption,
+  bulkUpdateCdcTeamExpences,
   createCdcTeamExpence,
   deleteCdcTeamExpence,
   listCdcTeamExpenceMeta,
@@ -44,6 +48,13 @@ function CdcTeamExpencePage() {
   const [sessionOptions, setSessionOptions] = useState([]);
   const [cdcUsers, setCdcUsers] = useState([]);
   const [paidByOptions, setPaidByOptions] = useState([]);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [chartRows, setChartRows] = useState([]);
+  const reloadRowsRef = useRef(null);
+
+  const handleRowsChange = useCallback((rows) => setChartRows(rows), []);
 
   const currentDateDefault = useMemo(() => {
     const now = new Date();
@@ -60,16 +71,26 @@ function CdcTeamExpencePage() {
   );
 
   const loadMeta = useCallback(async () => {
-    const data = await listCdcTeamExpenceMeta();
-    setItemOptions(data.items || []);
-    setStatusOptions(data.statuses || []);
-    setSessionOptions(data.sessions || []);
-    setCdcUsers(data.cdc_team_users || []);
-    setPaidByOptions(data.paid_by_options || []);
+    try {
+      const data = await listCdcTeamExpenceMeta();
+      setItemOptions(data.items || []);
+      setStatusOptions(data.statuses || []);
+      setSessionOptions(data.sessions || []);
+      setCdcUsers(data.cdc_team_users || []);
+      setPaidByOptions(data.paid_by_options || []);
+    } catch (error) {
+      console.error('Failed to load CDC expense metadata:', error);
+      setItemOptions([]);
+      setStatusOptions([]);
+      setSessionOptions([]);
+      setCdcUsers([]);
+      setPaidByOptions([]);
+    }
   }, []);
 
   useEffect(() => {
-    loadMeta().catch(() => {
+    loadMeta().catch((error) => {
+      console.error('Error loading metadata:', error);
       setItemOptions([]);
       setStatusOptions([]);
       setSessionOptions([]);
@@ -182,26 +203,66 @@ function CdcTeamExpencePage() {
     return hasSettledBy && !hasSettledOn;
   }, []);
 
+  const handleBulkUpdate = useCallback(async (payload) => {
+    if (!selectedRowIds || selectedRowIds.size === 0) return;
+    setBulkUpdating(true);
+    try {
+      const result = await bulkUpdateCdcTeamExpences(Array.from(selectedRowIds), payload);
+      // Reload the list inside CrudPage so updated values appear
+      if (reloadRowsRef.current) reloadRowsRef.current();
+      return result;
+    } catch (error) {
+      console.error("Bulk update error:", error);
+      throw error;
+    } finally {
+      setBulkUpdating(false);
+    }
+  }, [selectedRowIds]);
+
+  const handleBulkModalOpen = useCallback((rowIds, reloadFn) => {
+    setSelectedRowIds(rowIds);
+    reloadRowsRef.current = reloadFn;
+    setShowBulkModal(true);
+  }, []);
+
   return (
-    <CrudPage
-      title="CDC Team Expence"
-      columns={COLUMNS}
-      fields={fields}
-      fetchFn={fetchFn}
-      createFn={createFn}
-      updateFn={updateFn}
-      deleteFn={deleteCdcTeamExpence}
-      computeValues={computeValues}
-      editDisabledPredicate={isPaidLocked}
-      deleteDisabledPredicate={isPaidLocked}
-      editDisabledTitle="Paid expense records can only be edited by admin users"
-      deleteDisabledTitle="Paid expense records can only be deleted by admin users"
-      saveDisabledPredicate={isExpenseSaveDisabled}
-      saveDisabledTitle="Settled On is required when Settled By is selected"
-      tableWrapClassName="expense-table-wrap"
-      stickyHeader
-      tableMaxHeight="60vh"
-    />
+    <ErrorBoundary>
+      <CrudPage
+        title="CDC Team Expence"
+        columns={COLUMNS}
+        fields={fields}
+        fetchFn={fetchFn}
+        createFn={createFn}
+        updateFn={updateFn}
+        deleteFn={deleteCdcTeamExpence}
+        computeValues={computeValues}
+        editDisabledPredicate={isPaidLocked}
+        deleteDisabledPredicate={isPaidLocked}
+        editDisabledTitle="Paid expense records can only be edited by admin users"
+        deleteDisabledTitle="Paid expense records can only be deleted by admin users"
+        saveDisabledPredicate={isExpenseSaveDisabled}
+        saveDisabledTitle="Settled On is required when Settled By is selected"
+        tableWrapClassName="expense-table-wrap"
+        stickyHeader
+        tableMaxHeight="60vh"
+        enableBulkSelect={true}
+        onBulkModalOpen={handleBulkModalOpen}
+        onRowsChange={handleRowsChange}
+        renderFooter={() => <ExpenseBarChart rows={chartRows} />}
+      />
+      <BulkUpdateModal
+        isOpen={showBulkModal}
+        selectedCount={selectedRowIds.size}
+        statusOptions={statusOptions}
+        cdcUsers={cdcUsers}
+        onClose={() => {
+          setShowBulkModal(false);
+          setSelectedRowIds(new Set());
+        }}
+        onSubmit={handleBulkUpdate}
+        isSubmitting={bulkUpdating}
+      />
+    </ErrorBoundary>
   );
 }
 

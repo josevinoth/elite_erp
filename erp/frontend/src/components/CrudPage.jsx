@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
@@ -40,6 +40,12 @@ function CrudPage({
   deleteDisabledTitle = "Delete",
   saveDisabledPredicate = null,  // (editRow, formValues) => boolean
   saveDisabledTitle = "Save",
+  bulkUpdateFn = null,  // async (selectedIds, payload) => result
+  enableBulkSelect = false,  // boolean, enable row selection checkboxes
+  onBulkModalOpen = null,  // (selectedIds, reloadRows) => void
+  onRowsChange = null,     // (rows) => void – called whenever rows are updated
+  renderFooter = null,     // () => ReactNode – rendered inside the section, below table
+  renderFormExtension = null, // ({ editRow, formValues, setFormValues }) => ReactNode
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +57,11 @@ function CrudPage({
   const [exporting, setExporting] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [filters, setFilters] = useState({});
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [refreshKey, setRefreshKey] = useState(0);
   const autoOpenedRef = useRef(false);
+
+  const reloadRows = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   const emptyForm = () =>
     Object.fromEntries(fields.map((f) => [f.key, f.default ?? ""]));
@@ -62,10 +72,18 @@ function CrudPage({
     setError("");
     fetchFn()
       .then((data) => {
-        if (alive) setRows(Array.isArray(data) ? data : []);
+        if (alive) {
+          const next = Array.isArray(data) ? data : [];
+          setRows(next);
+          if (onRowsChange) onRowsChange(next);
+        }
       })
       .catch((e) => {
-        if (alive) setError(e.message || "Failed to load data.");
+        if (alive) {
+          const errorMsg = e.message || "Failed to load data.";
+          console.error(`[${title}] Data fetch error:`, e);
+          setError(errorMsg);
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -73,7 +91,7 @@ function CrudPage({
     return () => {
       alive = false;
     };
-  }, [fetchFn]);
+  }, [fetchFn, title, refreshKey, onRowsChange]);
 
   const openAdd = () => {
     setEditRow(null);
@@ -213,11 +231,17 @@ function CrudPage({
       }
 
       if (editRow) {
-        setRows((prev) =>
-          prev.map((r) => (r[rowKey] === editRow[rowKey] ? savedRow : r))
-        );
+        setRows((prev) => {
+          const next = prev.map((r) => (r[rowKey] === editRow[rowKey] ? savedRow : r));
+          if (onRowsChange) onRowsChange(next);
+          return next;
+        });
       } else {
-        setRows((prev) => [savedRow, ...prev]);
+        setRows((prev) => {
+          const next = [savedRow, ...prev];
+          if (onRowsChange) onRowsChange(next);
+          return next;
+        });
       }
       closeModal();
     } catch (err) {
@@ -252,7 +276,11 @@ function CrudPage({
     setError("");
     try {
       await deleteFn(id);
-      setRows((prev) => prev.filter((r) => r[rowKey] !== id));
+      setRows((prev) => {
+        const next = prev.filter((r) => r[rowKey] !== id);
+        if (onRowsChange) onRowsChange(next);
+        return next;
+      });
     } catch (err) {
       setError(err.message || "Delete failed.");
     }
@@ -267,23 +295,6 @@ function CrudPage({
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleExport = async () => {
-    setError("");
-    setExporting(true);
-    try {
-      await exportRowsToExcel({
-        fileName: exportFileName || title,
-        sheetName: title,
-        columns,
-        rows: displayedRows,
-      });
-    } catch (err) {
-      setError(err.message || "Export failed.");
-    } finally {
-      setExporting(false);
-    }
   };
 
   const displayedRows = useMemo(() => {
@@ -329,6 +340,51 @@ function CrudPage({
     });
   }, [rows, filters, sortConfig]);
 
+  const handleRowSelection = (id) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedRowIds(new Set(displayedRows.map((row) => row[rowKey])));
+    } else {
+      setSelectedRowIds(new Set());
+    }
+  };
+
+  const allDisplayedSelected =
+    displayedRows.length > 0 &&
+    displayedRows.every((row) => selectedRowIds.has(row[rowKey]));
+  const someDisplayedSelected =
+    displayedRows.length > 0 &&
+    displayedRows.some((row) => selectedRowIds.has(row[rowKey]));
+
+  const handleExport = async () => {
+    setError("");
+    setExporting(true);
+    try {
+      await exportRowsToExcel({
+        fileName: exportFileName || title,
+        sheetName: title,
+        columns,
+        rows: displayedRows,
+      });
+    } catch (err) {
+      setError(err.message || "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+
   const saveDisabled =
     typeof saveDisabledPredicate === "function"
       ? saveDisabledPredicate(editRow, formValues)
@@ -338,7 +394,24 @@ function CrudPage({
     <section className="module-page crud-page">
       <div className="crud-page__header">
         <h1 className="module-page__title">{title}</h1>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {enableBulkSelect && selectedRowIds.size > 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ color: "#cce8e5" }}>
+                {selectedRowIds.size} selected
+              </span>
+              {onBulkModalOpen ? (
+                <button
+                  type="button"
+                  className="crud-add-btn"
+                  onClick={() => onBulkModalOpen(selectedRowIds, reloadRows)}
+                  disabled={loading}
+                >
+                  <span>Bulk Update</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {showExportButton ? (
             <button type="button" className="crud-add-btn" onClick={handleExport} disabled={exporting || loading}>
               <BsDownload aria-hidden="true" />
@@ -364,6 +437,19 @@ function CrudPage({
         <table className="users-table">
           <thead>
             <tr>
+              {enableBulkSelect ? (
+                <th className={stickyHeader ? "users-table__sticky-head" : undefined}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all displayed rows"
+                    checked={allDisplayedSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someDisplayedSelected && !allDisplayedSelected;
+                    }}
+                    onChange={handleSelectAll}
+                  />
+                </th>
+              ) : null}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -388,6 +474,7 @@ function CrudPage({
               <th className={stickyHeader ? "users-table__sticky-head" : undefined}>Actions</th>
             </tr>
             <tr>
+              {enableBulkSelect ? <th /> : null}
               {columns.map((col) => (
                 <th key={`filter-${col.key}`}>
                   <input
@@ -405,11 +492,21 @@ function CrudPage({
           <tbody>
             {!loading && displayedRows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + 1}>No records found.</td>
+                <td colSpan={columns.length + (enableBulkSelect ? 2 : 1)}>No records found.</td>
               </tr>
             ) : null}
             {displayedRows.map((row) => (
               <tr key={row[rowKey]}>
+                {enableBulkSelect ? (
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.has(row[rowKey])}
+                      onChange={() => handleRowSelection(row[rowKey])}
+                      aria-label={`Select row ${row[rowKey]}`}
+                    />
+                  </td>
+                ) : null}
                 {columns.map((col) => (
                   <td key={col.key}>{row[col.key]}</td>
                 ))}
@@ -421,13 +518,17 @@ function CrudPage({
                         typeof action.disabled === "function"
                           ? action.disabled(row)
                           : !!action.disabled;
+                      const actionTitle =
+                        typeof action.title === "function"
+                          ? action.title(row)
+                          : (action.title || action.label);
                       return (
                         <button
                           key={action.key || action.label}
                           type="button"
                           className={`users-action ${action.className || ""}`.trim()}
                           aria-label={action.ariaLabel || action.label}
-                          title={isDisabled ? (action.disabledTitle || action.label) : action.label}
+                          title={isDisabled ? (action.disabledTitle || actionTitle) : actionTitle}
                           disabled={isDisabled}
                           onClick={() => !isDisabled && action.onClick?.(row)}
                         >
@@ -574,6 +675,14 @@ function CrudPage({
                 </div>
               ))}
 
+              {renderFormExtension
+                ? renderFormExtension({
+                    editRow,
+                    formValues,
+                    setFormValues,
+                  })
+                : null}
+
               <div className="modal-form__actions">
                 <button
                   type="button"
@@ -595,6 +704,8 @@ function CrudPage({
           </div>
         </div>
       ) : null}
+
+      {renderFooter ? renderFooter() : null}
     </section>
   );
 }

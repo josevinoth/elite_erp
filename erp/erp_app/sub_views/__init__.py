@@ -2,12 +2,21 @@ from .auth_api import csrf_token_view, login_api_view, logout_api_view, register
 from .base_auth_form_view import BaseAuthFormView
 from .cdc_team_expense_api import (
     cdc_team_expense_detail_api_view,
+    cdc_team_expense_bulk_update_api_view,
     create_cdc_team_expense_api_view,
     create_expense_item_option_api_view,
     create_expense_session_option_api_view,
     create_expense_status_option_api_view,
     list_cdc_team_expense_meta_api_view,
     list_cdc_team_expenses_api_view,
+)
+from .comments_api import (
+    list_comments_api_view,
+    create_comment_api_view,
+    comment_detail_api_view,
+    download_comment_attachment_api_view,
+    view_comment_attachment_api_view,
+    delete_comment_attachment_api_view,
 )
 from .login_page_view import LoginPageView
 from .projects_api import (
@@ -79,11 +88,18 @@ __all__ = [
     "list_cdc_team_expenses_api_view",
     "create_cdc_team_expense_api_view",
     "cdc_team_expense_detail_api_view",
+    "cdc_team_expense_bulk_update_api_view",
     "create_expense_item_option_api_view",
     "create_expense_status_option_api_view",
     "create_expense_session_option_api_view",
     "list_timesheet_meta_api_view",
     "list_timesheets_api_view", "create_timesheet_api_view", "timesheet_detail_api_view",
     "import_timesheets_excel_api_view", "download_timesheet_template_api_view",
+    "list_comments_api_view",
+    "create_comment_api_view",
+    "comment_detail_api_view",
+    "download_comment_attachment_api_view",
+    "view_comment_attachment_api_view",
+    "delete_comment_attachment_api_view",
 ]
 

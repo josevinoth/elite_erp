@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import ProjectHeader from "./components/ProjectHeader";
+import ErrorBoundary from "./components/ErrorBoundary";
 import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
 import HomeLayout from "./pages/HomeLayout";
 import LoginPage from "./pages/LoginPage";
@@ -60,73 +61,75 @@ function App() {
       />
 
       <div className="app-content">
-        <Routes>
-          <Route path="/" element={<Navigate to={homePath} replace />} />
-          <Route path="/login" element={<LoginPage onLoginSuccess={setCurrentUser} />} />
-          <Route
-            path="/register"
-            element={currentUser && !isAdmin ? <Navigate to="/home" replace /> : <RegisterPage />}
-          />
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<Navigate to={homePath} replace />} />
+            <Route path="/login" element={<LoginPage onLoginSuccess={setCurrentUser} />} />
+            <Route
+              path="/register"
+              element={currentUser && !isAdmin ? <Navigate to="/home" replace /> : <RegisterPage />}
+            />
 
-          <Route path="/home" element={secureRoute(<HomeLayout currentUser={currentUser} />)} />
+            <Route path="/home" element={secureRoute(<HomeLayout currentUser={currentUser} />)} />
 
-          <Route path="/users-management" element={adminRoute(<UsersManagementPage />)} />
-          <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage />)} />
-          <Route path="/projects" element={secureRoute(<ProjectsPage />)} />
-          <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
-          <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
-          <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
-          <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage />)} />
-          <Route path="/task" element={secureRoute(<TaskPage />)} />
-          <Route path="/timesheet" element={secureRoute(<TimesheetPage />)} />
+            <Route path="/users-management" element={adminRoute(<UsersManagementPage />)} />
+            <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage />)} />
+            <Route path="/projects" element={secureRoute(<ProjectsPage />)} />
+            <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
+            <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
+            <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
+            <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage />)} />
+            <Route path="/task" element={secureRoute(<TaskPage />)} />
+            <Route path="/timesheet" element={secureRoute(<TimesheetPage />)} />
 
-          <Route
-            path="/projects/requirements"
-            element={
-              secureRoute(
-                <ModulePage
-                  title="Requirements"
-                  description="Capture and track customer requirements for each project."
-                />
-              )
-            }
-          />
-          <Route
-            path="/projects/quotation"
-            element={
-              secureRoute(
-                <ModulePage
-                  title="Quotation"
-                  description="Create and manage project quotations before order confirmation."
-                />
-              )
-            }
-          />
-          <Route
-            path="/projects/customer-po"
-            element={
-              secureRoute(
-                <ModulePage
-                  title="Customer PO"
-                  description="Maintain customer purchase orders and associated project references."
-                />
-              )
-            }
-          />
-          <Route
-            path="/projects/costing"
-            element={
-              secureRoute(
-                <ModulePage
-                  title="Costing"
-                  description="Track estimated and actual project costing details."
-                />
-              )
-            }
-          />
+            <Route
+              path="/projects/requirements"
+              element={
+                secureRoute(
+                  <ModulePage
+                    title="Requirements"
+                    description="Capture and track customer requirements for each project."
+                  />
+                )
+              }
+            />
+            <Route
+              path="/projects/quotation"
+              element={
+                secureRoute(
+                  <ModulePage
+                    title="Quotation"
+                    description="Create and manage project quotations before order confirmation."
+                  />
+                )
+              }
+            />
+            <Route
+              path="/projects/customer-po"
+              element={
+                secureRoute(
+                  <ModulePage
+                    title="Customer PO"
+                    description="Maintain customer purchase orders and associated project references."
+                  />
+                )
+              }
+            />
+            <Route
+              path="/projects/costing"
+              element={
+                secureRoute(
+                  <ModulePage
+                    title="Costing"
+                    description="Track estimated and actual project costing details."
+                  />
+                )
+              }
+            />
 
-          <Route path="*" element={<Navigate to={homePath} replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to={homePath} replace />} />
+          </Routes>
+        </ErrorBoundary>
       </div>
     </div>
   );

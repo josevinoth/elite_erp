@@ -443,6 +443,17 @@ export async function listCdcTeamExpenceMeta() {
   return parseJson(res);
 }
 
+export async function bulkUpdateCdcTeamExpences(ids, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/cdc-team-expence/bulk-update/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ ids, ...payload }),
+  });
+  return parseJson(res);
+}
+
 export async function addExpenseItemOption(name) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/cdc-team-expence/item-options/add/", {
@@ -472,6 +483,70 @@ export async function addExpenseSessionOption(name) {
     credentials: "include",
     headers,
     body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+
+// ── Reusable Comments ───────────────────────────────────
+export async function listComments(moduleName, recordId) {
+  const query = new URLSearchParams({
+    module_name: String(moduleName || ""),
+    record_id: String(recordId || ""),
+  }).toString();
+  const res = await fetch(`/api/comments/?${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createComment(payload) {
+  await ensureCsrfCookie();
+  const token = getCookie("csrftoken");
+  const isFormData = typeof FormData !== "undefined" && payload instanceof FormData;
+  const headers = isFormData
+    ? { "X-CSRFToken": token }
+    : { "Content-Type": "application/json", "X-CSRFToken": token };
+  const res = await fetch("/api/comments/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: isFormData ? payload : JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateComment(id, payload) {
+  await ensureCsrfCookie();
+  const token = getCookie("csrftoken");
+  const isFormData = typeof FormData !== "undefined" && payload instanceof FormData;
+  const headers = isFormData
+    ? { "X-CSRFToken": token }
+    : { "Content-Type": "application/json", "X-CSRFToken": token };
+  const res = await fetch(`/api/comments/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: isFormData ? payload : JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteComment(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/comments/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function deleteCommentAttachment(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/comment-attachments/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
   });
   return parseJson(res);
 }

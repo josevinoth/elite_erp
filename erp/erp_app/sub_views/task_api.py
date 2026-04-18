@@ -6,10 +6,12 @@ import re
 from django.conf import settings
 from django.http import FileResponse, JsonResponse
 from django.db.models import Q
+from django.db.models import Count
+from django.db import ProgrammingError, OperationalError
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import Activity, Task, Project
+from ..sub_models import Activity, Comment, Task, Project
 from ..utils import normalize_text, to_title_case
 
 
@@ -88,7 +90,7 @@ def _resolve_project(project_id_name, project_no, project_name, lookup_by_compou
     return None
 
 
-def _serialize(obj):
+def _serialize(obj, comment_count=0):
     return {
         "id": obj.id,
         "project": str(obj.project_id) if obj.project_id else "",
@@ -107,6 +109,7 @@ def _serialize(obj):
         "drawn_by_month": obj.drawn_by_month,
         "approved_by_month": obj.approved_by_month,
         "updated_by": obj.updated_by,
+        "comment_count": int(comment_count or 0),
     }
 
 
@@ -132,7 +135,30 @@ def list_tasks_api_view(request):
             | Q(project_owner__iexact=username)
         )
 
-    return JsonResponse({"tasks": [_serialize(o) for o in queryset]})
+    tasks = list(queryset)
+    task_ids = [t.id for t in tasks]
+
+    comment_counts = {}
+    if task_ids:
+        try:
+            rows = (
+                Comment.objects.filter(module_name="task", record_id__in=task_ids)
+                .values("record_id")
+                .annotate(total=Count("id"))
+            )
+            comment_counts = {int(r["record_id"]): int(r["total"]) for r in rows}
+        except (ProgrammingError, OperationalError):
+            # Comments table may not exist yet if migration is pending.
+            comment_counts = {}
+
+    return JsonResponse(
+        {
+            "tasks": [
+                _serialize(o, comment_count=comment_counts.get(int(o.id), 0))
+                for o in tasks
+            ]
+        }
+    )
 
 
 def _check_duplicate(project_instance, activity, revision, exclude_pk=None):

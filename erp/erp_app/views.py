@@ -3,6 +3,7 @@ from .sub_views import (
     LoginPageView,
     RegisterView,
     cdc_team_expense_detail_api_view,
+    cdc_team_expense_bulk_update_api_view,
     csrf_token_view,
     approve_registration_api_view,
     create_cdc_team_expense_api_view,
@@ -49,6 +50,12 @@ from .sub_views import (
     list_timesheet_meta_api_view,
     list_timesheets_api_view,
     timesheet_detail_api_view,
+    list_comments_api_view,
+    create_comment_api_view,
+    comment_detail_api_view,
+    download_comment_attachment_api_view,
+    view_comment_attachment_api_view,
+    delete_comment_attachment_api_view,
 )
 
 __all__ = [
@@ -98,7 +105,14 @@ __all__ = [
     "list_cdc_team_expenses_api_view",
     "create_cdc_team_expense_api_view",
     "cdc_team_expense_detail_api_view",
+    "cdc_team_expense_bulk_update_api_view",
     "create_expense_item_option_api_view",
     "create_expense_status_option_api_view",
     "create_expense_session_option_api_view",
+    "list_comments_api_view",
+    "create_comment_api_view",
+    "comment_detail_api_view",
+    "download_comment_attachment_api_view",
+    "view_comment_attachment_api_view",
+    "delete_comment_attachment_api_view",
 ]
