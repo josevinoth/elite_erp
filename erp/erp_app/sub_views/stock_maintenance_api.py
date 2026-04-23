@@ -34,7 +34,7 @@ def list_stock_maintenance_meta_api_view(request):
     if na:
         return na
 
-    movement_types = list(StockMaintenanceTypeOption.objects.values_list("name", flat=True))
+    movement_types = list(StockMaintenanceTypeOption.objects.order_by("name").values_list("name", flat=True))
     return JsonResponse({"movement_types": movement_types})
 
 
@@ -57,7 +57,7 @@ def list_stock_maintenance_api_view(request):
     na = _ensure_authenticated(request)
     if na:
         return na
-    return JsonResponse({'stock_maintenance': [_serialize(o) for o in StockMaintenance.objects.all()]})
+    return JsonResponse({'stock_maintenance': [_serialize(o) for o in StockMaintenance.objects.order_by('-id')]})
 @require_POST
 @csrf_protect
 def create_stock_maintenance_api_view(request):

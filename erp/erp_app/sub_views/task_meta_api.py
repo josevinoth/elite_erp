@@ -48,14 +48,17 @@ def list_task_meta_api_view(request):
     if not_allowed:
         return not_allowed
 
-    task_statuses = list(TaskStatusOption.objects.values_list("name", flat=True))
-    project_statuses = list(ProjectStatusOption.objects.values_list("name", flat=True))
+    task_statuses = list(TaskStatusOption.objects.order_by("name").values_list("name", flat=True))
+    project_statuses = list(ProjectStatusOption.objects.order_by("name").values_list("name", flat=True))
     activity_options = list(Activity.objects.order_by("name").values_list("name", flat=True))
-    project_options = [
+    project_options = sorted(
+        [
         {"value": str(p.id), "label": f"{p.project_id}_{p.project_name}"}
         for p in Project.objects.all()
         if p.project_id or p.project_name
-    ]
+        ],
+        key=lambda option: option["label"].casefold(),
+    )
 
     # Filter users who belong to Oman Team (by team ID for robustness)
     try:

@@ -261,6 +261,46 @@ select.auth-input option {
   font-size: 0.9rem;
 }
 
+.auth-forgot-wrap {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.auth-forgot-toggle {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.auth-forgot-toggle:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.auth-forgot-form {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem;
+  background: rgba(10, 51, 56, 0.65);
+}
+
+.auth-forgot-form label {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.auth-forgot-success {
+  color: #8ff5e9;
+  font-size: 0.83rem;
+}
+
 .alt-link a {
   color: var(--primary);
   text-decoration: none;

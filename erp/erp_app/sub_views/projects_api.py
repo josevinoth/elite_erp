@@ -62,7 +62,7 @@ def list_project_lifecycle_meta_api_view(request):
     if not_allowed:
         return not_allowed
 
-    statuses = list(ProjectStatusOption.objects.values_list("name", flat=True))
+    statuses = list(ProjectStatusOption.objects.order_by("name").values_list("name", flat=True))
     return JsonResponse({"statuses": statuses})
 
 
@@ -85,7 +85,7 @@ def list_projects_api_view(request):
     not_allowed = _ensure_authenticated(request)
     if not_allowed:
         return not_allowed
-    projects = Project.objects.all()
+    projects = Project.objects.order_by('-id')
     return JsonResponse({'projects': [_serialize(p) for p in projects]})
 @require_POST
 @csrf_protect

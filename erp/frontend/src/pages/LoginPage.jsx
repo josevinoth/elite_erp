@@ -2,8 +2,9 @@ import { useNavigate } from "react-router-dom";
 import AuthForm from "../components/AuthForm";
 import AuthLayout from "../components/AuthLayout";
 import useAuthForm from "../hooks/useAuthForm";
-import { loginUser } from "../services/authApi";
+import { forgotPasswordRequest, loginUser } from "../services/authApi";
 import { setSessionUser } from "../services/sessionUser";
+import { useState } from "react";
 
 const loginFields = [
   {
@@ -25,6 +26,12 @@ const loginFields = [
 ];
 
 function LoginPage({ onLoginSuccess }) {
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [forgotSuccess, setForgotSuccess] = useState("");
+
   const navigate = useNavigate();
   const {
     values,
@@ -56,6 +63,35 @@ function LoginPage({ onLoginSuccess }) {
     }
   );
 
+  const onForgotSubmit = async (e) => {
+    e.preventDefault();
+    setForgotError("");
+    setForgotSuccess("");
+
+    const email = String(forgotEmail || "").trim();
+    if (!email) {
+      setForgotError("Registered email is required.");
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      setForgotError("Please enter a valid email address.");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const data = await forgotPasswordRequest({ email });
+      setForgotSuccess(data.message || "Reset link sent to your registered email.");
+      setForgotEmail("");
+    } catch (err) {
+      setForgotError(err.message || "Unable to process forgot password request.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <AuthLayout
       title="Login Into Your Account"
@@ -73,6 +109,40 @@ function LoginPage({ onLoginSuccess }) {
         onChange={handleChange}
         onSubmit={handleSubmit}
       />
+
+      <div className="auth-forgot-wrap">
+        <button
+          type="button"
+          className="auth-forgot-toggle"
+          onClick={() => {
+            setShowForgot((v) => !v);
+            setForgotError("");
+            setForgotSuccess("");
+          }}
+        >
+          Forgot Password?
+        </button>
+
+        {showForgot ? (
+          <form className="auth-forgot-form" onSubmit={onForgotSubmit}>
+            <label htmlFor="forgot-email">Registered Email</label>
+            <input
+              id="forgot-email"
+              type="email"
+              className="auth-input"
+              value={forgotEmail}
+              onChange={(e) => setForgotEmail(e.target.value)}
+              placeholder="Enter your registered email"
+              required
+            />
+            {forgotError ? <small className="field-error">{forgotError}</small> : null}
+            {forgotSuccess ? <small className="auth-forgot-success">{forgotSuccess}</small> : null}
+            <button type="submit" className="auth-button" disabled={forgotLoading}>
+              {forgotLoading ? "Validating..." : "Send Reset Link"}
+            </button>
+          </form>
+        ) : null}
+      </div>
     </AuthLayout>
   );
 }
