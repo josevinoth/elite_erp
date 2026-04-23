@@ -102,7 +102,7 @@ def _is_admin_user(user):
 
 
 def _task_options(username, is_admin=False):
-    return [
+    options = [
         {
             "value": str(task.id),
             "label": f"{task.project_id_name} | {task.activity} | Rev {task.revision}",
@@ -112,6 +112,7 @@ def _task_options(username, is_admin=False):
         if (task.project_id_name or task.activity)
         and (is_admin or _task_assigned_to_user(task, username))
     ]
+    return sorted(options, key=lambda option: option["label"].casefold())
 
 
 def _build_user_lookup():
@@ -225,11 +226,11 @@ def list_timesheets_api_view(request):
     if not_allowed:
         return not_allowed
 
-    rows = TimeSheet.objects.select_related("task").all()
+    rows = TimeSheet.objects.select_related("task")
     if not _is_admin_user(request.user):
         rows = rows.filter(employee_name__iexact=request.user.username)
 
-    return JsonResponse({"timesheets": [_serialize(row) for row in rows]})
+    return JsonResponse({"timesheets": [_serialize(row) for row in rows.order_by("-id")]})
 
 
 @require_POST

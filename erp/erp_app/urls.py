@@ -12,6 +12,8 @@ from .views import (
     list_vendors_api_view,
     login_api_view,
     logout_api_view,
+    forgot_password_api_view,
+    reset_password_api_view,
     project_detail_api_view,
     register_api_view,
     register_meta_api_view,
@@ -63,6 +65,8 @@ urlpatterns = [
     path('api/auth/register/', register_api_view, name='api-register'),
     path('api/auth/login/', login_api_view, name='api-login'),
     path('api/auth/logout/', logout_api_view, name='api-logout'),
+    path('api/auth/forgot-password/', forgot_password_api_view, name='api-forgot-password'),
+    path('api/auth/reset-password/', reset_password_api_view, name='api-reset-password'),
     # users
     path('api/users/', list_users_api_view, name='api-users-list'),
     path('api/users/pending/', list_pending_registrations_api_view, name='api-users-pending'),

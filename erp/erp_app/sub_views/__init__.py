@@ -1,4 +1,12 @@
-from .auth_api import csrf_token_view, login_api_view, logout_api_view, register_api_view, register_meta_api_view
+from .auth_api import (
+    csrf_token_view,
+    forgot_password_api_view,
+    login_api_view,
+    logout_api_view,
+    register_api_view,
+    register_meta_api_view,
+    reset_password_api_view,
+)
 from .base_auth_form_view import BaseAuthFormView
 from .cdc_team_expense_api import (
     cdc_team_expense_detail_api_view,
@@ -71,6 +79,7 @@ from .vendors_api import create_vendor_api_view, list_vendors_api_view, vendor_d
 __all__ = [
     "BaseAuthFormView", "RegisterView", "LoginPageView",
     "csrf_token_view", "register_meta_api_view", "register_api_view", "login_api_view", "logout_api_view",
+    "forgot_password_api_view", "reset_password_api_view",
     "list_users_api_view", "user_detail_api_view",
     "list_pending_registrations_api_view", "approve_registration_api_view",
     "list_vendors_api_view", "create_vendor_api_view", "vendor_detail_api_view",

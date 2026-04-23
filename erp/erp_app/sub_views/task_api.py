@@ -135,7 +135,7 @@ def list_tasks_api_view(request):
             | Q(project_owner__iexact=username)
         )
 
-    tasks = list(queryset)
+    tasks = list(queryset.order_by("-id"))
     task_ids = [t.id for t in tasks]
 
     comment_counts = {}

@@ -34,7 +34,7 @@ def list_stock_purchases_api_view(request):
     na = _ensure_authenticated(request)
     if na:
         return na
-    return JsonResponse({'stock_purchases': [_serialize(o) for o in StockPurchase.objects.all()]})
+    return JsonResponse({'stock_purchases': [_serialize(o) for o in StockPurchase.objects.order_by('-id')]})
 @require_POST
 @csrf_protect
 def create_stock_purchase_api_view(request):

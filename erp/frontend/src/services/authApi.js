@@ -118,6 +118,40 @@ export async function logoutUser() {
   return parseJson(response);
 }
 
+export async function forgotPasswordRequest(payload) {
+  await ensureCsrfCookie();
+  const csrftoken = getCookie("csrftoken");
+
+  const response = await fetch("/api/auth/forgot-password/", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-CSRFToken": csrftoken,
+    },
+    body: new URLSearchParams(payload).toString(),
+  });
+
+  return parseJson(response);
+}
+
+export async function resetPassword(payload) {
+  await ensureCsrfCookie();
+  const csrftoken = getCookie("csrftoken");
+
+  const response = await fetch("/api/auth/reset-password/", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-CSRFToken": csrftoken,
+    },
+    body: new URLSearchParams(payload).toString(),
+  });
+
+  return parseJson(response);
+}
+
 export async function listUsers() {
   const response = await fetch("/api/users/", {
     method: "GET",

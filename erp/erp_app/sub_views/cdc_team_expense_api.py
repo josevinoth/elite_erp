@@ -228,7 +228,7 @@ def list_cdc_team_expenses_api_view(request):
         queryset = queryset.filter(
             Q(paid_by__iexact=username) | Q(settled_by__username__iexact=username)
         )
-    return JsonResponse({"expenses": [_serialize(obj) for obj in queryset]})
+    return JsonResponse({"expenses": [_serialize(obj) for obj in queryset.order_by("-id")]})
 
 
 @require_POST

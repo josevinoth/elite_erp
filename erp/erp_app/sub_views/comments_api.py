@@ -158,7 +158,11 @@ def list_comments_api_view(request):
         return denied
 
     try:
-        queryset = Comment.objects.filter(module_name=module_name, record_id=record_id).prefetch_related("attachments")
+        queryset = (
+            Comment.objects.filter(module_name=module_name, record_id=record_id)
+            .order_by("-id")
+            .prefetch_related("attachments")
+        )
         return JsonResponse({"comments": [_serialize(c, request) for c in queryset]})
     except (ProgrammingError, OperationalError):
         # Comments storage is not ready yet (usually migration not applied).

@@ -9,6 +9,7 @@ import ModulePage from "./pages/ModulePage";
 import PendingApprovalsPage from "./pages/PendingApprovalsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import RegisterPage from "./pages/RegisterPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import StockMaintenancePage from "./pages/StockMaintenancePage";
 import StockPurchasePage from "./pages/StockPurchasePage";
 import TaskPage from "./pages/TaskPage";
@@ -65,6 +66,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to={homePath} replace />} />
             <Route path="/login" element={<LoginPage onLoginSuccess={setCurrentUser} />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route
               path="/register"
               element={currentUser && !isAdmin ? <Navigate to="/home" replace /> : <RegisterPage />}
