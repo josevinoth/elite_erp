@@ -78,6 +78,17 @@ function TimesheetPage() {
     setTaskOptions(
       (metaData.tasks || []).map((task) => ({ value: task.value, label: task.label }))
     );
+    const linkedUsers = Array.isArray(metaData.users_linked)
+      ? metaData.users_linked.map((u) => ({ value: String(u.value), label: String(u.label) }))
+      : [];
+    if (linkedUsers.length) {
+      if (loggedInUsername && !linkedUsers.some((u) => u.label === loggedInUsername)) {
+        linkedUsers.unshift({ value: loggedInUsername, label: loggedInUsername });
+      }
+      setEmployeeOptions(linkedUsers);
+      return;
+    }
+
     const users = Array.isArray(metaData.users) ? [...metaData.users] : [];
     if (loggedInUsername && !users.includes(loggedInUsername)) {
       users.unshift(loggedInUsername);
@@ -97,6 +108,7 @@ function TimesheetPage() {
       {
         key: "employee_name",
         label: "Employee Name",
+        valueKey: "employee_id",
         options: employeeOptions,
         default: initialDefaults.employeeName || loggedInUsername,
         required: true,
