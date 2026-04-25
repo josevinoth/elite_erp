@@ -84,19 +84,14 @@ def _can_access_task(user, task_id):
     if _is_admin_user(user):
         return task, None
 
-    username = str(user.username or "").strip().lower()
-    allowed = (
-        str(task.drawn_by or "").strip().lower() == username
-        or str(task.approved_by or "").strip().lower() == username
-        or str(task.project_owner or "").strip().lower() == username
-    )
+    allowed = user.id in {task.drawn_by_id, task.approved_by_id, task.project_owner_id}
     if not allowed:
         return None, JsonResponse({"message": "Access denied for this task."}, status=403)
     return task, None
 
 
 def _can_add_comment_to_task(task):
-    status = str(task.task_status or "").strip().lower()
+    status = str(task.task_status.name if task.task_status_id else "").strip().lower()
     return status in ALLOWED_TASK_COMMENT_STATUSES
 
 

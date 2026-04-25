@@ -40,6 +40,18 @@ echo [INFO] Starting EliteERP on %HOST%:%PORT% ...
 echo [INFO] Root dir: %ROOT_DIR%>> "%STARTUP_LOG%"
 echo [INFO] Target URL: http://%HOST%:%PORT%>> "%STARTUP_LOG%"
 
+REM Ensure only one server instance owns the target port.
+set "FOUND_RUNNING=0"
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr ":%PORT%" ^| findstr "LISTENING"') do (
+    set "FOUND_RUNNING=1"
+    echo [WARN] Port %PORT% already in use by PID %%p. Stopping it...
+    echo [WARN] Port %PORT% already in use by PID %%p. Stopping it...>> "%STARTUP_LOG%"
+    taskkill /PID %%p /F >nul 2>&1
+)
+if "!FOUND_RUNNING!"=="1" (
+    timeout /t 1 /nobreak >nul
+)
+
 if exist "%VENV_DOT_PY%" (
     set "PY_CMD=%VENV_DOT_PY%"
 ) else if exist "%VENV_PY%" (
@@ -64,9 +76,42 @@ if errorlevel 1 (
 
 cd /d "%ROOT_DIR%"
 
+REM Build frontend so latest UI changes are always included.
+set "FRONTEND_DIR=%SCRIPT_DIR%frontend"
+if exist "%FRONTEND_DIR%\package.json" (
+    where npm >nul 2>&1
+    if errorlevel 1 (
+        echo [WARN] npm not found in PATH. Skipping frontend build.
+        echo [WARN] npm not found in PATH. Skipping frontend build.>> "%STARTUP_LOG%"
+    ) else (
+        echo [INFO] Building frontend...>> "%STARTUP_LOG%"
+        pushd "%FRONTEND_DIR%"
+        call npm run build >> "%STARTUP_LOG%" 2>&1
+        set "NPM_EXIT=!errorlevel!"
+        popd
+        if not "!NPM_EXIT!"=="0" (
+            echo [ERROR] Frontend build failed. Check "%STARTUP_LOG%"
+            exit /b 1
+        )
+        echo [INFO] Frontend build completed.>> "%STARTUP_LOG%"
+    )
+) else (
+    echo [WARN] Frontend package.json not found at %FRONTEND_DIR%. Skipping build.
+    echo [WARN] Frontend package.json not found at %FRONTEND_DIR%. Skipping build.>> "%STARTUP_LOG%"
+)
+
 if not exist "%SCRIPT_DIR%frontend\dist\index.html" (
-    echo [WARN] Frontend build not found: %SCRIPT_DIR%frontend\dist\index.html
-    echo [WARN] Frontend build not found: %SCRIPT_DIR%frontend\dist\index.html>> "%STARTUP_LOG%"
+    echo [WARN] Frontend build output missing: %SCRIPT_DIR%frontend\dist\index.html
+    echo [WARN] Frontend build output missing: %SCRIPT_DIR%frontend\dist\index.html>> "%STARTUP_LOG%"
+)
+
+REM Fail fast if models changed but migration files are missing.
+echo [INFO] Checking migration drift...>> "%STARTUP_LOG%"
+"%PY_CMD%" erp\manage.py makemigrations --check --dry-run >> "%STARTUP_LOG%" 2>&1
+if errorlevel 1 (
+    echo [ERROR] Model changes detected without migration files. Create migrations first.
+    echo [ERROR] Model changes detected without migration files. Create migrations first.>> "%STARTUP_LOG%"
+    exit /b 1
 )
 
 echo [INFO] Running migrations...>> "%STARTUP_LOG%"

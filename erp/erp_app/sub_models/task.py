@@ -1,7 +1,10 @@
 from django.db import models
+from django.conf import settings
 from datetime import date as _date, timedelta
-from ..utils import normalize_text, to_title_case
+from ..utils import normalize_text
+from .activity import Activity
 from .project import Project
+from .task_status_option import TaskStatusOption
 
 
 def _coerce_date(value):
@@ -21,20 +24,56 @@ class Task(models.Model):
         Project, null=True, blank=True, on_delete=models.SET_NULL, related_name="tasks"
     )
     project_id_name = models.CharField(max_length=255, blank=True)
-    activity = models.CharField(max_length=255, blank=True)
+    activity = models.ForeignKey(
+        Activity,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks",
+    )
     revision = models.CharField(max_length=50, blank=True)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     no_of_days = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    drawn_by = models.CharField(max_length=255, blank=True)
-    approved_by = models.CharField(max_length=255, blank=True)
+    drawn_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks_drawn",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks_approved",
+    )
     approved_date = models.DateField(null=True, blank=True)
-    task_status = models.CharField(max_length=100, blank=True)
-    project_owner = models.CharField(max_length=150, blank=True)
+    task_status = models.ForeignKey(
+        TaskStatusOption,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks",
+    )
+    project_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks_owned",
+    )
     remarks = models.TextField(blank=True)
     drawn_by_month = models.CharField(max_length=120, blank=True)
     approved_by_month = models.CharField(max_length=120, blank=True)
-    updated_by = models.CharField(max_length=255, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tasks_updated",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -68,16 +107,10 @@ class Task(models.Model):
 
     def save(self, *args, **kwargs):
         self.project_id_name = normalize_text(self.project_id_name)
-        self.activity = normalize_text(self.activity)
         self.revision = normalize_text(self.revision)
-        self.drawn_by = to_title_case(self.drawn_by)
-        self.approved_by = to_title_case(self.approved_by)
-        self.task_status = to_title_case(self.task_status)
-        self.project_owner = to_title_case(self.project_owner)
         self.remarks = normalize_text(self.remarks)
         self.drawn_by_month = normalize_text(self.drawn_by_month)
         self.approved_by_month = normalize_text(self.approved_by_month)
-        self.updated_by = normalize_text(self.updated_by)
 
         if self.project_id:
             proj = self.project
