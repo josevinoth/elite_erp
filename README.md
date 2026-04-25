@@ -53,14 +53,14 @@ Use Waitress + Django from the `erp` folder.
 
 ```powershell
 Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
-cmd /c start_prod.bat
+cmd /c erp_control.bat start 8010
 ```
 
 Stop production server:
 
 ```powershell
 Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
-cmd /c stop_prod.bat
+cmd /c erp_control.bat stop 8010
 ```
 
 Register automatic startup on Windows logon:
@@ -70,9 +70,9 @@ Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
 powershell -ExecutionPolicy Bypass -File .\register_startup_task.ps1
 ```
 
-Or use one-click elevated registration:
+Check status anytime:
 
 ```powershell
 Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
-cmd /c install_startup_task.bat
+cmd /c erp_control.bat status 8010
 ```

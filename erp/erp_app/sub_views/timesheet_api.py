@@ -4,9 +4,8 @@ import os
 import re
 
 from django.conf import settings
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.db import IntegrityError
-from django.db.models import Q
 from django.http import FileResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -64,6 +63,10 @@ def _normalized_activity(value):
     return normalize_text(str(value or "")).casefold()
 
 
+def _task_activity_name(task):
+    return task.activity.name if getattr(task, "activity_id", None) else ""
+
+
 def _split_pk_link(value):
     raw = str(value or "").strip()
     if not raw:
@@ -75,105 +78,115 @@ def _split_pk_link(value):
 
 
 def _resolve_employee_storage(value):
+    user_model = get_user_model()
+
+    if isinstance(value, user_model):
+        return value, value.username
+
     pk, label = _split_pk_link(value)
     if pk:
-        user_obj = User.objects.filter(pk=pk).first()
+        user_obj = user_model.objects.filter(pk=pk).first()
         if user_obj:
-            return str(user_obj.id), user_obj.username
+            return user_obj, user_obj.username
 
     raw = normalize_text(label or value)
     if not raw:
-        return "", ""
+        return None, ""
 
     if str(raw).isdigit():
-        user_obj = User.objects.filter(pk=int(raw)).first()
+        user_obj = user_model.objects.filter(pk=int(raw)).first()
         if user_obj:
-            return str(user_obj.id), user_obj.username
+            return user_obj, user_obj.username
 
-    user_obj = User.objects.filter(username__iexact=raw).first()
+    user_obj = user_model.objects.filter(username__iexact=raw).first()
     if user_obj:
-        return str(user_obj.id), user_obj.username
+        return user_obj, user_obj.username
 
-    return raw, raw
+    return None, raw
 
 
 def _employee_label(value):
+    user_model = get_user_model()
+    if isinstance(value, user_model):
+        return value.username
+
     raw = normalize_text(value)
     if not raw:
         return ""
     if str(raw).isdigit():
-        user_obj = User.objects.filter(pk=int(raw)).first()
+        user_obj = user_model.objects.filter(pk=int(raw)).first()
         if user_obj:
             return user_obj.username
     return raw
 
 
 def _employee_id(value):
+    user_model = get_user_model()
+    if isinstance(value, user_model):
+        return str(value.id)
+
     raw = normalize_text(value)
     if not raw:
         return ""
-    if str(raw).isdigit() and User.objects.filter(pk=int(raw)).exists():
+    if str(raw).isdigit() and user_model.objects.filter(pk=int(raw)).exists():
         return str(raw)
-    user_obj = User.objects.filter(username__iexact=raw).first()
+    user_obj = user_model.objects.filter(username__iexact=raw).first()
     return str(user_obj.id) if user_obj else ""
 
 
 def _employee_filter(qs, employee_value):
-    raw = normalize_text(employee_value)
-    employee_id = _employee_id(raw)
-    employee_label = _employee_label(raw)
+    employee_user, _ = _resolve_employee_storage(employee_value)
+    if employee_user:
+        return qs.filter(employee_name_id=employee_user.id)
 
-    candidates = {str(v).strip() for v in [raw, employee_id, employee_label] if str(v or "").strip()}
-    if not candidates:
+    raw = normalize_text(employee_value)
+    if not raw:
         return qs.none()
 
-    query = Q()
-    for candidate in candidates:
-        query |= Q(employee_name__iexact=candidate)
-    return qs.filter(query)
+    if str(raw).isdigit():
+        return qs.filter(employee_name_id=int(raw))
+
+    user_model = get_user_model()
+    employee_user = user_model.objects.filter(username__iexact=raw).first()
+    if not employee_user:
+        return qs.none()
+    return qs.filter(employee_name_id=employee_user.id)
 
 
 def _serialize(obj):
+    task_activity = _task_activity_name(obj.task)
     return {
         "id": obj.id,
         "task": str(obj.task_id),
-        "task_label": f"{obj.task.project_id_name} | {obj.task.activity} | Rev {obj.task.revision}",
-        "employee_name": _employee_label(obj.employee_name),
-        "employee_id": _employee_id(obj.employee_name),
+        "task_label": f"{obj.task.project_id_name} | {task_activity} | Rev {obj.task.revision}",
+        "employee_name": obj.employee_name.username if obj.employee_name_id else "",
+        "employee_id": str(obj.employee_name_id or ""),
         "billing_date": str(obj.billing_date) if obj.billing_date else "",
         "efforts": str(obj.efforts),
         "remarks": obj.remarks,
     }
 
 
-def _duplicate_exists(employee_name, task_obj, billing_date, exclude_pk=None):
+def _duplicate_exists(employee_user, task_obj, billing_date, exclude_pk=None):
     qs = TimeSheet.objects.filter(task=task_obj, billing_date=billing_date)
-    qs = _employee_filter(qs, employee_name)
+    qs = _employee_filter(qs, employee_user)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
     return qs.exists()
 
 
 def _task_assigned_to_user(task, user):
-    username = str(getattr(user, "username", user) or "").strip().lower()
     user_id = str(getattr(user, "id", "") or "").strip()
-    if not username and not user_id:
+    if not user_id:
         return False
 
-    assignees = [task.drawn_by, task.approved_by, task.project_owner, task.updated_by]
-    for value in assignees:
-        raw = str(value or "").strip()
-        if not raw:
-            continue
-        if user_id and raw == user_id:
-            return True
-        if username and raw.lower() == username:
-            return True
-        if user_id and _employee_id(raw) == user_id:
-            return True
-        if username and _employee_label(raw).strip().lower() == username:
-            return True
-    return False
+    assignee_ids = {
+        str(task.drawn_by_id or ""),
+        str(task.approved_by_id or ""),
+        str(task.project_owner_id or ""),
+        str(task.updated_by_id or ""),
+    }
+    return user_id in assignee_ids
 
 
 def _is_admin_user(user):
@@ -187,11 +200,11 @@ def _task_options(user, is_admin=False):
     options = [
         {
             "value": str(task.id),
-            "label": f"{task.project_id_name} | {task.activity} | Rev {task.revision}",
+            "label": f"{task.project_id_name} | {_task_activity_name(task)} | Rev {task.revision}",
             "project_id_name": task.project_id_name,
         }
-        for task in Task.objects.select_related("project").all()
-        if (task.project_id_name or task.activity)
+        for task in Task.objects.select_related("project", "activity").all()
+        if (task.project_id_name or task.activity_id)
         and (is_admin or _task_assigned_to_user(task, user))
     ]
     return sorted(options, key=lambda option: option["label"].casefold())
@@ -208,26 +221,27 @@ def _build_user_lookup():
         ).values_list("user_id", flat=True)
     )
 
-    for user in User.objects.filter(is_active=True).exclude(id__in=inactive_user_ids):
-        lookup[user.username.lower()] = {"id": str(user.id), "username": user.username}
+    user_model = get_user_model()
+    for user in user_model.objects.filter(is_active=True).exclude(id__in=inactive_user_ids):
+        lookup[user.username.lower()] = {"id": str(user.id), "username": user.username, "obj": user}
 
     return lookup
 
 
 def _resolve_employee(raw_name, user_lookup):
-    """Match raw name from Excel to a known user. Returns (id, username) or (None, None)."""
+    """Match raw name from Excel to a known user. Returns (user_obj, username) or (None, None)."""
     if not raw_name:
         return None, None
     key = str(raw_name).strip().lower()
     user_payload = user_lookup.get(key)
     if not user_payload:
         return None, None
-    return user_payload.get("id"), user_payload.get("username")
+    return user_payload.get("obj"), user_payload.get("username")
 
 
 def _build_task_lookup():
     by_project = {}
-    for task in Task.objects.select_related("project").all():
+    for task in Task.objects.select_related("project", "activity").all():
         keys = []
         if task.project and task.project.project_id:
             keys.append(_normalized_key(task.project.project_id))
@@ -252,7 +266,7 @@ def _matching_tasks(project_text, activity_text, lookup):
         return []
 
     return sorted(
-        [task for task in candidates if _normalized_activity(task.activity) == activity_key],
+        [task for task in candidates if _normalized_activity(_task_activity_name(task)) == activity_key],
         key=lambda t: t.id,
         reverse=True,
     )
@@ -290,8 +304,9 @@ def list_timesheet_meta_api_view(request):
             status__name__iexact="inactive"
         ).values_list("user_id", flat=True)
     )
+    user_model = get_user_model()
     active_users = list(
-        User.objects.filter(is_active=True)
+        user_model.objects.filter(is_active=True)
         .exclude(id__in=inactive_user_ids)
         .order_by("username")
         .values("id", "username")
@@ -318,9 +333,9 @@ def list_timesheets_api_view(request):
     if not_allowed:
         return not_allowed
 
-    rows = TimeSheet.objects.select_related("task")
+    rows = TimeSheet.objects.select_related("task", "employee_name")
     if not _is_admin_user(request.user):
-        rows = rows.filter(Q(employee_name=str(request.user.id)) | Q(employee_name__iexact=request.user.username))
+        rows = rows.filter(employee_name_id=request.user.id)
 
     return JsonResponse({"timesheets": [_serialize(row) for row in rows.order_by("-id")]})
 
@@ -336,13 +351,13 @@ def create_timesheet_api_view(request):
 
     task_id = payload.get("task", "")
     billing_date = _to_date(payload.get("billing_date"))
-    employee_name, _employee_label_value = _resolve_employee_storage(payload.get("employee_name", ""))
+    employee_user, _employee_label_value = _resolve_employee_storage(payload.get("employee_name", ""))
 
     if not task_id:
         return JsonResponse({"message": "Task is required."}, status=400)
     if not billing_date:
         return JsonResponse({"message": "Billing date is required."}, status=400)
-    if not employee_name:
+    if not employee_user:
         return JsonResponse({"message": "Employee name is required."}, status=400)
 
     try:
@@ -353,7 +368,7 @@ def create_timesheet_api_view(request):
     if not _task_assigned_to_user(task, request.user):
         return JsonResponse({"message": "You can only log timesheet for tasks assigned to you."}, status=403)
 
-    if _duplicate_exists(employee_name, task, billing_date):
+    if _duplicate_exists(employee_user, task, billing_date):
         return JsonResponse(
             {
                 "message": (
@@ -367,7 +382,7 @@ def create_timesheet_api_view(request):
     try:
         row = TimeSheet.objects.create(
             task=task,
-            employee_name=employee_name,
+            employee_name=employee_user,
             billing_date=billing_date,
             efforts=_to_decimal(payload.get("efforts"), default="0"),
             remarks=normalize_text(payload.get("remarks", "")),
@@ -412,17 +427,17 @@ def timesheet_detail_api_view(request, pk):
         if not _task_assigned_to_user(row.task, request.user):
             return JsonResponse({"message": "You can only log timesheet for tasks assigned to you."}, status=403)
 
-    employee_name, _employee_label_value = _resolve_employee_storage(
+    employee_user, _employee_label_value = _resolve_employee_storage(
         payload.get("employee_name", row.employee_name)
     )
     billing_date = _to_date(payload.get("billing_date", row.billing_date))
 
-    if not employee_name:
+    if not employee_user:
         return JsonResponse({"message": "Employee name is required."}, status=400)
     if not billing_date:
         return JsonResponse({"message": "Billing date is required."}, status=400)
 
-    if _duplicate_exists(employee_name, row.task, billing_date, exclude_pk=row.id):
+    if _duplicate_exists(employee_user, row.task, billing_date, exclude_pk=row.id):
         return JsonResponse(
             {
                 "message": (
@@ -433,7 +448,7 @@ def timesheet_detail_api_view(request, pk):
             status=409,
         )
 
-    row.employee_name = employee_name
+    row.employee_name = employee_user
     row.billing_date = billing_date
     row.efforts = _to_decimal(payload.get("efforts", row.efforts), default=str(row.efforts or 0))
     row.remarks = normalize_text(payload.get("remarks", row.remarks))
@@ -511,8 +526,8 @@ def import_timesheets_excel_api_view(request):
             continue
 
         # Validate employee name against registered active users
-        employee_name, employee_label = _resolve_employee(employee_name_raw, user_lookup)
-        if not employee_name:
+        employee_user, employee_label = _resolve_employee(employee_name_raw, user_lookup)
+        if not employee_user:
             failed_count += 1
             row_reports.append(
                 {
@@ -540,7 +555,7 @@ def import_timesheets_excel_api_view(request):
 
         billing_date = _to_date(billing_date_raw)
 
-        if not employee_name or not billing_date:
+        if not employee_user or not billing_date:
             failed_count += 1
             row_reports.append(
                 {
@@ -563,7 +578,7 @@ def import_timesheets_excel_api_view(request):
             )
             continue
 
-        if _import_duplicate_exists(employee_name, project_text, activity_name, billing_date, task_lookup):
+        if _import_duplicate_exists(employee_user, project_text, activity_name, billing_date, task_lookup):
             duplicate_count += 1
             row_reports.append(
                 {
@@ -577,7 +592,7 @@ def import_timesheets_excel_api_view(request):
         try:
             TimeSheet.objects.create(
                 task=task,
-                employee_name=employee_name,
+                employee_name=employee_user,
                 billing_date=billing_date,
                 efforts=_to_decimal(efforts_raw, default="0"),
                 remarks=normalize_text(remarks_raw),

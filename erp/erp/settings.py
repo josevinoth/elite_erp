@@ -96,12 +96,21 @@ _default_csrf_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://127.0.0.1:8000",
+    "http://127.0.0.1:8010",
     "http://localhost:8000",
+    "http://localhost:8010",
     "http://192.168.1.6:8000",
+    "http://192.168.1.6:8010",
 ]
+_csrf_ports = {"8000", "8010"}
+_erp_port = os.getenv("ERP_PORT", "").strip()
+if _erp_port.isdigit() and 1 <= int(_erp_port) <= 65535:
+    _csrf_ports.add(_erp_port)
+
 for host in ALLOWED_HOSTS:
     if host not in {"localhost", "0.0.0.0"}:
-        _default_csrf_origins.append(f"http://{host}:8000")
+        for port in _csrf_ports:
+            _default_csrf_origins.append(f"http://{host}:{port}")
 
 _env_csrf_origins = {
     o.strip()
@@ -161,7 +170,7 @@ WSGI_APPLICATION = 'erp.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'erp_001',
+        'NAME': 'erp_002',
         'USER': 'postgres',
         'PASSWORD': '244613',
         'HOST': 'localhost'

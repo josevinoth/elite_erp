@@ -96,23 +96,24 @@ def _resolve_activity_storage(value):
     if pk:
         activity_obj = Activity.objects.filter(pk=pk).first()
         if activity_obj:
-            return str(activity_obj.id), activity_obj.name
+            return activity_obj, activity_obj.name
 
     raw = normalize_text(label or value)
     if not raw:
-        return "", ""
+        return None, ""
 
     if str(raw).isdigit():
         activity_obj = Activity.objects.filter(pk=int(raw)).first()
         if activity_obj:
-            return str(activity_obj.id), activity_obj.name
+            return activity_obj, activity_obj.name
 
     activity_obj = Activity.objects.filter(name__iexact=raw).first()
     if activity_obj:
-        return str(activity_obj.id), activity_obj.name
+        return activity_obj, activity_obj.name
 
     pretty = to_title_case(raw)
-    return pretty, pretty
+    activity_obj, _ = Activity.objects.get_or_create(name=pretty)
+    return activity_obj, activity_obj.name
 
 
 def _resolve_status_storage(value):
@@ -120,109 +121,85 @@ def _resolve_status_storage(value):
     if pk:
         status_obj = TaskStatusOption.objects.filter(pk=pk).first()
         if status_obj:
-            return str(status_obj.id), status_obj.name
+            return status_obj, status_obj.name
 
     raw = normalize_text(label or value)
     if not raw:
-        return "", ""
+        return None, ""
 
     if str(raw).isdigit():
         status_obj = TaskStatusOption.objects.filter(pk=int(raw)).first()
         if status_obj:
-            return str(status_obj.id), status_obj.name
+            return status_obj, status_obj.name
 
     status_obj = TaskStatusOption.objects.filter(name__iexact=raw).first()
     if status_obj:
-        return str(status_obj.id), status_obj.name
+        return status_obj, status_obj.name
 
     pretty = to_title_case(raw)
-    return pretty, pretty
+    status_obj, _ = TaskStatusOption.objects.get_or_create(name=pretty)
+    return status_obj, status_obj.name
 
 
 def _resolve_user_storage(value):
     user_model = get_user_model()
+
+    if isinstance(value, user_model):
+        return value, value.username
+
     pk, label = _split_pk_link(value)
     if pk:
         user_obj = user_model.objects.filter(pk=pk).first()
         if user_obj:
-            return str(user_obj.id), user_obj.username
+            return user_obj, user_obj.username
 
     raw = normalize_text(label or value)
     if not raw:
-        return "", ""
+        return None, ""
 
     if str(raw).isdigit():
         user_obj = user_model.objects.filter(pk=int(raw)).first()
         if user_obj:
-            return str(user_obj.id), user_obj.username
+            return user_obj, user_obj.username
 
     user_obj = user_model.objects.filter(username__iexact=raw).first()
     if user_obj:
-        return str(user_obj.id), user_obj.username
+        return user_obj, user_obj.username
 
-    pretty = to_title_case(raw)
-    return pretty, pretty
-
-
-def _activity_label(value):
-    raw = normalize_text(value)
-    if not raw:
-        return ""
-    if str(raw).isdigit():
-        obj = Activity.objects.filter(pk=int(raw)).first()
-        if obj:
-            return obj.name
-    return to_title_case(raw)
-
-
-def _activity_id(value):
-    raw = normalize_text(value)
-    if not raw:
-        return ""
-    if str(raw).isdigit() and Activity.objects.filter(pk=int(raw)).exists():
-        return str(raw)
-    obj = Activity.objects.filter(name__iexact=raw).first()
-    return str(obj.id) if obj else ""
-
-
-def _status_label(value):
-    raw = normalize_text(value)
-    if not raw:
-        return ""
-    if str(raw).isdigit():
-        obj = TaskStatusOption.objects.filter(pk=int(raw)).first()
-        if obj:
-            return obj.name
-    return to_title_case(raw)
-
-
-def _status_id(value):
-    raw = normalize_text(value)
-    if not raw:
-        return ""
-    if str(raw).isdigit() and TaskStatusOption.objects.filter(pk=int(raw)).exists():
-        return str(raw)
-    obj = TaskStatusOption.objects.filter(name__iexact=raw).first()
-    return str(obj.id) if obj else ""
+    return None, to_title_case(raw)
 
 
 def _user_label(value):
+    if not value:
+        return ""
+
+    user_model = get_user_model()
+    if isinstance(value, user_model):
+        return value.username
+
     raw = normalize_text(value)
     if not raw:
         return ""
-    user_model = get_user_model()
+
     if str(raw).isdigit():
         user_obj = user_model.objects.filter(pk=int(raw)).first()
         if user_obj:
             return user_obj.username
-    return to_title_case(raw)
+    return raw
 
 
 def _user_id(value):
+    if not value:
+        return ""
+
+    user_model = get_user_model()
+    if isinstance(value, user_model):
+        return str(value.id)
+
     raw = normalize_text(value)
     if not raw:
         return ""
-    user_model = get_user_model()
+
     if str(raw).isdigit() and user_model.objects.filter(pk=int(raw)).exists():
         return str(raw)
     user_obj = user_model.objects.filter(username__iexact=raw).first()
@@ -373,36 +350,34 @@ def _create_task_import_template_bytes():
 
 
 def _serialize(obj, comment_count=0):
-    activity_id = _activity_id(obj.activity)
-    task_status_id = _status_id(obj.task_status)
-    drawn_by_id = _user_id(obj.drawn_by)
-    approved_by_id = _user_id(obj.approved_by)
-    project_owner_id = _user_id(obj.project_owner)
-    updated_by_id = _user_id(obj.updated_by)
+    drawn_by_id = str(obj.drawn_by_id or "")
+    approved_by_id = str(obj.approved_by_id or "")
+    project_owner_id = str(obj.project_owner_id or "")
+    updated_by_id = str(obj.updated_by_id or "")
 
     return {
         "id": obj.id,
         "project": str(obj.project_id) if obj.project_id else "",
         "project_id_name": obj.project_id_name,
-        "activity": _activity_label(obj.activity),
-        "activity_id": activity_id,
+        "activity": obj.activity.name if obj.activity_id else "",
+        "activity_id": str(obj.activity_id or ""),
         "revision": obj.revision,
         "start_date": str(obj.start_date) if obj.start_date else "",
         "end_date": str(obj.end_date) if obj.end_date else "",
         "no_of_days": str(obj.no_of_days),
-        "drawn_by": _user_label(obj.drawn_by),
+        "drawn_by": obj.drawn_by.username if obj.drawn_by_id else "",
         "drawn_by_id": drawn_by_id,
-        "approved_by": _user_label(obj.approved_by),
+        "approved_by": obj.approved_by.username if obj.approved_by_id else "",
         "approved_by_id": approved_by_id,
         "approved_date": str(obj.approved_date) if obj.approved_date else "",
-        "task_status": _status_label(obj.task_status),
-        "task_status_id": task_status_id,
-        "project_owner": _user_label(obj.project_owner),
+        "task_status": obj.task_status.name if obj.task_status_id else "",
+        "task_status_id": str(obj.task_status_id or ""),
+        "project_owner": obj.project_owner.username if obj.project_owner_id else "",
         "project_owner_id": project_owner_id,
         "remarks": obj.remarks,
         "drawn_by_month": obj.drawn_by_month,
         "approved_by_month": obj.approved_by_month,
-        "updated_by": _user_label(obj.updated_by),
+        "updated_by": obj.updated_by.username if obj.updated_by_id else "",
         "updated_by_id": updated_by_id,
         "comment_count": int(comment_count or 0),
     }
@@ -423,15 +398,10 @@ def list_tasks_api_view(request):
 
     queryset = Task.objects.all()
     if not _is_admin_user(request.user):
-        username = request.user.username
-        user_id = str(request.user.id)
         queryset = queryset.filter(
-            Q(drawn_by__iexact=username)
-            | Q(approved_by__iexact=username)
-            | Q(project_owner__iexact=username)
-            | Q(drawn_by=user_id)
-            | Q(approved_by=user_id)
-            | Q(project_owner=user_id)
+            Q(drawn_by_id=request.user.id)
+            | Q(approved_by_id=request.user.id)
+            | Q(project_owner_id=request.user.id)
         )
 
     tasks = list(queryset.order_by("-id"))
@@ -460,22 +430,21 @@ def list_tasks_api_view(request):
     )
 
 
-def _check_duplicate(project_instance, activity, revision, exclude_pk=None, activity_label=""):
+def _check_duplicate(project_instance, activity_obj, revision, exclude_pk=None, activity_label=""):
     """Return error message string if Project+Revision+Activity combo already exists, else None."""
-    activity_filter = Q(activity__iexact=activity)
-    if activity_label and _normalized_key(activity_label) != _normalized_key(activity):
-        activity_filter |= Q(activity__iexact=activity_label)
+    qs = Task.objects.filter(project=project_instance, revision__iexact=revision)
+    if activity_obj:
+        qs = qs.filter(activity=activity_obj)
+    else:
+        qs = qs.filter(activity__isnull=True)
 
-    qs = Task.objects.filter(
-        project=project_instance,
-        revision__iexact=revision,
-    ).filter(activity_filter)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
     if qs.exists():
+        activity_name = activity_label or (activity_obj.name if activity_obj else "")
         return (
             f"A task with Project '{project_instance.project_id}', "
-            f"Revision '{revision}' and Activity '{activity}' already exists."
+            f"Revision '{revision}' and Activity '{activity_name}' already exists."
         )
     return None
 
@@ -496,10 +465,13 @@ def create_task_api_view(request):
     except (Project.DoesNotExist, ValueError, TypeError):
         return JsonResponse({"message": "Invalid project selected."}, status=400)
 
-    activity, activity_label = _resolve_activity_storage(p.get("activity", ""))
+    activity_obj, activity_label = _resolve_activity_storage(p.get("activity", ""))
+    if not activity_obj:
+        return JsonResponse({"message": "Invalid activity selected."}, status=400)
+
     revision = normalize_text(p.get("revision", "01"))
 
-    dup_msg = _check_duplicate(project_instance, activity, revision, activity_label=activity_label)
+    dup_msg = _check_duplicate(project_instance, activity_obj, revision, activity_label=activity_label)
     if dup_msg:
         return JsonResponse(
             {"message": dup_msg, "suggested_revision": _next_revision(revision)}, status=409
@@ -514,12 +486,17 @@ def create_task_api_view(request):
 
     drawn_by, _drawn_by_label = _resolve_user_storage(p.get("drawn_by", ""))
     approved_by, _approved_by_label = _resolve_user_storage(p.get("approved_by", ""))
-    task_status, _task_status_label = _resolve_status_storage(p.get("task_status", ""))
+    task_status_obj, _task_status_label = _resolve_status_storage(p.get("task_status", ""))
     project_owner, _project_owner_label = _resolve_user_storage(p.get("project_owner", ""))
+
+    if not drawn_by:
+        return JsonResponse({"message": "Invalid drawn by user selected."}, status=400)
+    if not project_owner:
+        return JsonResponse({"message": "Invalid project owner selected."}, status=400)
 
     obj = Task.objects.create(
         project=project_instance,
-        activity=activity,
+        activity=activity_obj,
         revision=revision,
         start_date=start_date,
         end_date=end_date,
@@ -527,10 +504,10 @@ def create_task_api_view(request):
         drawn_by=drawn_by,
         approved_by=approved_by,
         approved_date=approved_date,
-        task_status=task_status,
+        task_status=task_status_obj,
         project_owner=project_owner,
         remarks=normalize_text(p.get("remarks", "")),
-        updated_by=str(request.user.id),
+        updated_by=request.user,
     )
     return JsonResponse({"success": True, "task": _serialize(obj)}, status=201)
 
@@ -616,8 +593,8 @@ def import_tasks_excel_api_view(request):
         else:
             activity_source = activity_label
 
-        activity, activity_label = _resolve_activity_storage(activity_source)
-        if not activity:
+        activity_obj, activity_label = _resolve_activity_storage(activity_source)
+        if not activity_obj:
             failed_count += 1
             message = "Activity is required."
             failures.append(f"Row {row_number}: {message}")
@@ -632,12 +609,33 @@ def import_tasks_excel_api_view(request):
         drawn_by_value, _drawn_by_label = _resolve_user_storage(drawn_by)
         approved_by_value, _approved_by_label = _resolve_user_storage(approved_by)
         project_owner_value, _project_owner_label = _resolve_user_storage(project_owner)
-        task_status_value, task_status_source = _resolve_status_storage(task_status)
+        task_status_obj, _task_status_source = _resolve_status_storage(task_status)
+
+        if not drawn_by_value:
+            failed_count += 1
+            message = "Drawn By user not found."
+            failures.append(f"Row {row_number}: {message}")
+            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            continue
+
+        if normalize_text(approved_by) and not approved_by_value:
+            failed_count += 1
+            message = "Approved By user not found."
+            failures.append(f"Row {row_number}: {message}")
+            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            continue
+
+        if not project_owner_value:
+            failed_count += 1
+            message = "Project Owner user not found."
+            failures.append(f"Row {row_number}: {message}")
+            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            continue
 
         original_revision = normalize_text(revision_raw or "01")
         revision = original_revision
         revision_adjusted = False
-        while _check_duplicate(project, activity, revision, activity_label=activity_label):
+        while _check_duplicate(project, activity_obj, revision, activity_label=activity_label):
             revision = _next_revision(revision)
             revision_adjusted = True
 
@@ -656,7 +654,7 @@ def import_tasks_excel_api_view(request):
             Task.objects.create(
                 project=project,
                 project_id_name=normalize_text(str(project_id_name or "")),
-                activity=activity,
+                activity=activity_obj,
                 revision=revision,
                 start_date=parsed_start_date,
                 end_date=parsed_end_date,
@@ -664,12 +662,12 @@ def import_tasks_excel_api_view(request):
                 drawn_by=drawn_by_value,
                 approved_by=approved_by_value,
                 approved_date=parsed_approved_date,
-                task_status=task_status_value,
+                task_status=task_status_obj,
                 project_owner=project_owner_value,
                 remarks=normalize_text(remarks),
                 drawn_by_month=normalize_text(drawn_by_month),
                 approved_by_month=normalize_text(approved_by_month),
-                updated_by=str(request.user.id),
+                updated_by=request.user,
             )
             created_count += 1
             if revision_adjusted:
@@ -752,7 +750,13 @@ def task_detail_api_view(request, pk):
     p = _read_json(request)
 
 
-    activity, activity_label = _resolve_activity_storage(p.get("activity", obj.activity))
+    activity_default = str(obj.activity_id or "")
+    status_default = str(obj.task_status_id or "")
+
+    activity_obj, activity_label = _resolve_activity_storage(p.get("activity", activity_default))
+    if not activity_obj:
+        return JsonResponse({"message": "Invalid activity selected."}, status=400)
+
     revision = normalize_text(p.get("revision", obj.revision))
 
     # Resolve project for duplicate check
@@ -767,7 +771,7 @@ def task_detail_api_view(request, pk):
 
     dup_msg = _check_duplicate(
         project_for_check,
-        activity,
+        activity_obj,
         revision,
         exclude_pk=pk,
         activity_label=activity_label,
@@ -777,7 +781,7 @@ def task_detail_api_view(request, pk):
             {"message": dup_msg, "suggested_revision": _next_revision(revision)}, status=409
         )
 
-    obj.activity = activity
+    obj.activity = activity_obj
     obj.revision = revision
     next_start_date = _to_date(p.get("start_date", obj.start_date))
     next_end_date = _to_date(p.get("end_date", obj.end_date))
@@ -796,9 +800,15 @@ def task_detail_api_view(request, pk):
     obj.drawn_by, _drawn_by_label = _resolve_user_storage(p.get("drawn_by", obj.drawn_by))
     obj.approved_by, _approved_by_label = _resolve_user_storage(p.get("approved_by", obj.approved_by))
     obj.approved_date = next_approved_date
-    obj.task_status, _task_status_label = _resolve_status_storage(p.get("task_status", obj.task_status))
+    obj.task_status, _task_status_label = _resolve_status_storage(
+        p.get("task_status", status_default)
+    )
     obj.project_owner, _project_owner_label = _resolve_user_storage(p.get("project_owner", obj.project_owner))
+    if not obj.drawn_by:
+        return JsonResponse({"message": "Invalid drawn by user selected."}, status=400)
+    if not obj.project_owner:
+        return JsonResponse({"message": "Invalid project owner selected."}, status=400)
     obj.remarks = normalize_text(p.get("remarks", obj.remarks))
-    obj.updated_by = str(request.user.id)
+    obj.updated_by = request.user
     obj.save()
     return JsonResponse({"success": True, "task": _serialize(obj)})
