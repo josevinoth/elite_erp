@@ -25,6 +25,7 @@ function calcDaysExcludingSunday(startStr, endStr) {
   const s = new Date(startStr);
   const e = new Date(endStr);
   if (isNaN(s) || isNaN(e)) return "";
+  if (s > e) return "";
   // Work with calendar dates only (avoid TZ offsets)
   let start = new Date(s.getFullYear(), s.getMonth(), s.getDate());
   let end = new Date(e.getFullYear(), e.getMonth(), e.getDate());
@@ -37,6 +38,20 @@ function calcDaysExcludingSunday(startStr, endStr) {
     cur.setDate(cur.getDate() + 1);
   }
   return String(Math.max(days, 1));
+}
+
+function getTaskDateValidationError(values) {
+  const start = String(values?.start_date || "").trim();
+  const end = String(values?.end_date || "").trim();
+  const approved = String(values?.approved_date || "").trim();
+
+  if (start && end && end < start) {
+    return "End Date must be greater than or equal to Start Date.";
+  }
+  if (end && approved && approved < end) {
+    return "Approved Date must be greater than or equal to End Date.";
+  }
+  return "";
 }
 
 const COLUMNS = [
@@ -130,8 +145,31 @@ function TaskPage() {
     if (changedKey === "start_date" || changedKey === "end_date") {
       const start = changedKey === "start_date" ? changedValue : allValues.start_date;
       const end = changedKey === "end_date" ? changedValue : allValues.end_date;
+      const approved = String(allValues.approved_date || "");
+      const extra = {};
+
+      if (start && end && String(end) < String(start)) {
+        extra.end_date = "";
+        extra.approved_date = "";
+        extra.no_of_days = "";
+        return extra;
+      }
+
+      if (approved && end && approved < String(end)) {
+        extra.approved_date = "";
+      }
+
       const days = calcDaysExcludingSunday(start, end);
-      if (days !== "") return { no_of_days: days };
+      extra.no_of_days = days || "";
+      return extra;
+    }
+
+    if (changedKey === "approved_date") {
+      const approved = String(changedValue || "");
+      const end = String(allValues.end_date || "");
+      if (approved && end && approved < end) {
+        return { approved_date: "" };
+      }
     }
     return {};
   }, []);
@@ -160,7 +198,13 @@ function TaskPage() {
         },
         { key: "revision", label: "Revision", default: "01", readOnly: !isAdmin },
         { key: "start_date", label: "Start Date", type: "date", required: true },
-        { key: "end_date", label: "End Date", type: "date", required: true },
+        {
+          key: "end_date",
+          label: "End Date",
+          type: "date",
+          required: true,
+          min: (formValues) => formValues.start_date || undefined,
+        },
         {
           key: "no_of_days",
           label: "No of Days (auto)",
@@ -170,7 +214,12 @@ function TaskPage() {
         },
         { key: "drawn_by", label: "Drawn By", options: userOptions, required: true },
         { key: "approved_by", label: "Approved By", options: omanTeamUserOptions },
-        { key: "approved_date", label: "Approved Date", type: "date" },
+        {
+          key: "approved_date",
+          label: "Approved Date",
+          type: "date",
+          min: (formValues) => formValues.end_date || undefined,
+        },
 
         { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions, required: true },
         {
@@ -224,10 +273,16 @@ function TaskPage() {
         className: "users-action--timesheet",
         icon: BsClockHistory,
         onClick: openTimesheetForTask,
-        disabled: (row) =>
-          !isAdmin &&
-          (row.task_status || "").trim().toLowerCase() !== "work in progress",
-        disabledTitle: "Only available when status is Work In Progress",
+        disabled: (row) => {
+          const allowedStatuses = ["yet to start", "awaiting for approval", "work in progress"];
+          const status = (row.task_status || "").trim().toLowerCase();
+          const endDate = row.end_date ? new Date(row.end_date) : null;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const endDateValid = endDate && endDate >= today;
+          return !(endDateValid && allowedStatuses.includes(status));
+        },
+        disabledTitle: "Only available when end date is today or in the future and status is Yet To Start, Awaiting For Approval, or Work In Progress",
       },
     ],
     [openTimesheetForTask, isAdmin]
@@ -239,6 +294,10 @@ function TaskPage() {
   const isTaskDeleteDisabled = (row) => !isAdmin && isCompletedStatus(row?.task_status);
 
   const isTaskSaveDisabled = (editRow, formValues) => {
+    if (getTaskDateValidationError(formValues)) {
+      return true;
+    }
+
     const nextStatusCompleted = isCompletedStatus(formValues?.task_status);
     const missingApprovalInfo =
       nextStatusCompleted &&
@@ -419,14 +478,18 @@ function TaskPage() {
         deleteDisabledPredicate={isTaskDeleteDisabled}
         deleteDisabledTitle="Completed tasks can only be deleted by admin users"
         saveDisabledPredicate={isTaskSaveDisabled}
-        saveDisabledTitle="Completed status requires Approved By and Approved Date; completed tasks can only be edited by admin users"
+        saveDisabledTitle={
+          "End Date must be >= Start Date, Approved Date must be >= End Date, and Completed status requires Approved By + Approved Date; completed tasks can only be edited by admin users"
+        }
         onRowsChange={handleRowsChange}
         renderFooter={() => <TaskBarChart rows={chartRows} />}
-        renderFormExtension={({ editRow }) => (
-          <TaskCommentsPanel
-            taskId={editRow?.id || null}
-            taskStatus={editRow?.task_status || ""}
-          />
+        renderFormExtension={({ editRow, formValues }) => (
+          <>
+            {getTaskDateValidationError(formValues) ? (
+              <p className="users-status users-status--error">{getTaskDateValidationError(formValues)}</p>
+            ) : null}
+            <TaskCommentsPanel taskId={editRow?.id || null} />
+          </>
         )}
       />
     </>

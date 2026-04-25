@@ -66,7 +66,7 @@ function isAllowedAttachment(fileName) {
   return ALLOWED_ATTACHMENT_EXTENSIONS.has(ext);
 }
 
-function TaskCommentsPanel({ taskId, taskStatus }) {
+function TaskCommentsPanel({ taskId }) {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -75,10 +75,7 @@ function TaskCommentsPanel({ taskId, taskStatus }) {
   const [commentDateTime, setCommentDateTime] = useState(toLocalDatetimeInputValue(""));
   const [attachments, setAttachments] = useState([]);
 
-  const canAddComment = useMemo(() => {
-    const status = String(taskStatus || "").trim().toLowerCase();
-    return status === "work in progress" || status === "awaiting for approval";
-  }, [taskStatus]);
+  const canAddComment = !!taskId;
 
   const loadComments = useCallback(async () => {
     if (!taskId) {
@@ -103,10 +100,7 @@ function TaskCommentsPanel({ taskId, taskStatus }) {
   }, [loadComments]);
 
   const onAddComment = async () => {
-    if (!canAddComment) {
-      setError("Comments can only be added for Work In Progress or Awaiting For Approval tasks.");
-      return;
-    }
+    if (!canAddComment) return;
 
     const text = String(newComment || "").trim();
     if (!text) {
@@ -197,11 +191,6 @@ function TaskCommentsPanel({ taskId, taskStatus }) {
       {error ? <p className="users-status users-status--error">{error}</p> : null}
 
       <div className="task-comments-panel__new">
-        {!canAddComment ? (
-          <p className="users-status users-status--error">
-            New comments are allowed only when task status is Work In Progress or Awaiting For Approval.
-          </p>
-        ) : null}
 
         <div className="modal-form__row">
           <label className="modal-form__label" htmlFor="task-comment-datetime">Date & Time *</label>
@@ -211,7 +200,6 @@ function TaskCommentsPanel({ taskId, taskStatus }) {
             className="auth-input"
             value={commentDateTime}
             onChange={(e) => setCommentDateTime(e.target.value)}
-            disabled={!canAddComment}
           />
         </div>
 
@@ -223,7 +211,6 @@ function TaskCommentsPanel({ taskId, taskStatus }) {
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Add your comment..."
-            disabled={!canAddComment}
           />
         </div>
 
@@ -235,7 +222,6 @@ function TaskCommentsPanel({ taskId, taskStatus }) {
             className="auth-input"
             multiple
             onChange={onSelectAttachments}
-            disabled={!canAddComment}
           />
           {attachments.length > 0 ? (
             <div style={{ display: "grid", gap: "0.2rem" }}>
@@ -256,7 +242,7 @@ function TaskCommentsPanel({ taskId, taskStatus }) {
             type="button"
             className="modal-btn modal-btn--save"
             onClick={onAddComment}
-            disabled={saving || !canAddComment}
+            disabled={saving}
           >
             {saving ? "Adding..." : "Add Comment"}
           </button>
