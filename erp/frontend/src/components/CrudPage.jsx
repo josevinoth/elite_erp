@@ -612,6 +612,7 @@ function CrudPage({
                         className="crud-select"
                         classNamePrefix="crud-select"
                         isSearchable
+                        isClearable={field.isClearable !== false}
                         isDisabled={field.disabled}
                         options={field.options}
                         placeholder={`Select ${field.label}`}
@@ -667,6 +668,7 @@ function CrudPage({
                       className={`auth-input${(field.readOnly || field.disabled) ? " auth-input--readonly" : ""}`}
                       value={formValues[field.key] ?? ""}
                       onChange={(!field.readOnly && !field.disabled) ? handleChange : undefined}
+                      min={typeof field.min === "function" ? field.min(formValues, editRow) : field.min}
                       readOnly={field.readOnly}
                       disabled={field.disabled}
                       required={field.required}

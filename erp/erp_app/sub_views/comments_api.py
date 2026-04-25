@@ -113,19 +113,49 @@ def _can_modify_comment(request, comment_obj):
     return str(comment_obj.updated_by or "").strip().lower() == str(request.user.username or "").strip().lower()
 
 
+def _safe_file_name(file_field):
+    try:
+        return str(getattr(file_field, "name", "") or "")
+    except (FileNotFoundError, OSError, ValueError):
+        return ""
+
+
+def _safe_file_exists(file_field):
+    name = _safe_file_name(file_field)
+    if not name:
+        return False
+    try:
+        return bool(file_field.storage.exists(name))
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+
+
+def _safe_file_size(file_field):
+    try:
+        return int(getattr(file_field, "size", 0) or 0)
+    except (FileNotFoundError, OSError, ValueError):
+        return 0
+
+
 def _serialize(comment_obj, request):
-    attachments = [
-        {
-            "id": a.id,
-            "name": a.original_name or a.file.name.split("/")[-1],
-            "size": int(getattr(a.file, "size", 0) or 0),
-            "ext": (a.original_name or a.file.name).split(".")[-1].lower() if "." in (a.original_name or a.file.name) else "",
-            "is_image": ((a.original_name or a.file.name).split(".")[-1].lower() in IMAGE_EXTENSIONS) if "." in (a.original_name or a.file.name) else False,
-            "download_url": f"/api/comment-attachments/{a.id}/download/",
-            "view_url": f"/api/comment-attachments/{a.id}/view/",
-        }
-        for a in comment_obj.attachments.all()
-    ]
+    attachments = []
+    for a in comment_obj.attachments.all():
+        file_name = _safe_file_name(a.file)
+        display_name = a.original_name or file_name.split("/")[-1]
+        ext = display_name.split(".")[-1].lower() if "." in display_name else ""
+        file_exists = _safe_file_exists(a.file)
+        attachments.append(
+            {
+                "id": a.id,
+                "name": display_name,
+                "size": _safe_file_size(a.file) if file_exists else 0,
+                "ext": ext,
+                "is_image": ext in IMAGE_EXTENSIONS,
+                "download_url": f"/api/comment-attachments/{a.id}/download/",
+                "view_url": f"/api/comment-attachments/{a.id}/view/",
+                "is_missing": not file_exists,
+            }
+        )
     return {
         "id": comment_obj.id,
         "module_name": comment_obj.module_name,
@@ -347,11 +377,14 @@ def download_comment_attachment_api_view(request, pk):
     if denied:
         return denied
 
-    if not attachment.file:
+    if not attachment.file or not _safe_file_exists(attachment.file):
         return JsonResponse({"message": "Attachment file is missing."}, status=404)
 
-    filename = attachment.original_name or attachment.file.name.split("/")[-1]
-    return FileResponse(attachment.file.open("rb"), as_attachment=True, filename=filename)
+    filename = attachment.original_name or _safe_file_name(attachment.file).split("/")[-1]
+    try:
+        return FileResponse(attachment.file.open("rb"), as_attachment=True, filename=filename)
+    except (FileNotFoundError, OSError):
+        return JsonResponse({"message": "Attachment file is missing."}, status=404)
 
 
 @require_GET
@@ -381,10 +414,10 @@ def view_comment_attachment_api_view(request, pk):
     if denied:
         return denied
 
-    if not attachment.file:
+    if not attachment.file or not _safe_file_exists(attachment.file):
         return JsonResponse({"message": "Attachment file is missing."}, status=404)
 
-    filename = attachment.original_name or attachment.file.name.split("/")[-1]
+    filename = attachment.original_name or _safe_file_name(attachment.file).split("/")[-1]
     ext = filename.split(".")[-1].lower() if "." in filename else ""
     content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
@@ -392,12 +425,15 @@ def view_comment_attachment_api_view(request, pk):
     inline_ext = IMAGE_EXTENSIONS.union({"pdf", "txt", "csv"})
     as_attachment = ext not in inline_ext
 
-    return FileResponse(
-        attachment.file.open("rb"),
-        as_attachment=as_attachment,
-        filename=filename,
-        content_type=content_type,
-    )
+    try:
+        return FileResponse(
+            attachment.file.open("rb"),
+            as_attachment=as_attachment,
+            filename=filename,
+            content_type=content_type,
+        )
+    except (FileNotFoundError, OSError):
+        return JsonResponse({"message": "Attachment file is missing."}, status=404)
 
 
 @require_http_methods(["DELETE"])

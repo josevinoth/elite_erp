@@ -47,6 +47,20 @@ def _to_date(value):
         return None
 
 
+def _validate_task_dates(start_date, end_date, approved_date):
+    errors = {}
+    if start_date and end_date and end_date < start_date:
+        errors["end_date"] = "End Date must be greater than or equal to Start Date."
+    if end_date and approved_date and approved_date < end_date:
+        errors["approved_date"] = "Approved Date must be greater than or equal to End Date."
+    if errors:
+        return {
+            "message": "Invalid task date sequence.",
+            "errors": errors,
+        }
+    return None
+
+
 def _next_revision(revision: str) -> str:
     """Auto-increment the trailing number in a revision string.
 
@@ -203,16 +217,23 @@ def create_task_api_view(request):
             {"message": dup_msg, "suggested_revision": _next_revision(revision)}, status=409
         )
 
+    start_date = _to_date(p.get("start_date"))
+    end_date = _to_date(p.get("end_date"))
+    approved_date = _to_date(p.get("approved_date"))
+    date_error = _validate_task_dates(start_date, end_date, approved_date)
+    if date_error:
+        return JsonResponse(date_error, status=400)
+
     obj = Task.objects.create(
         project=project_instance,
         activity=activity,
         revision=revision,
-        start_date=_to_date(p.get("start_date")),
-        end_date=_to_date(p.get("end_date")),
+        start_date=start_date,
+        end_date=end_date,
         no_of_days=_to_decimal(p.get("no_of_days"), default="1"),
         drawn_by=to_title_case(p.get("drawn_by", "")),
         approved_by=to_title_case(p.get("approved_by", "")),
-        approved_date=_to_date(p.get("approved_date")),
+        approved_date=approved_date,
         task_status=to_title_case(p.get("task_status", "")),
         project_owner=to_title_case(p.get("project_owner", "")),
         remarks=normalize_text(p.get("remarks", "")),
@@ -315,18 +336,29 @@ def import_tasks_excel_api_view(request):
             revision = _next_revision(revision)
             revision_adjusted = True
 
+        parsed_start_date = _to_date(start_date)
+        parsed_end_date = _to_date(end_date)
+        parsed_approved_date = _to_date(approved_date)
+        row_date_error = _validate_task_dates(parsed_start_date, parsed_end_date, parsed_approved_date)
+        if row_date_error:
+            failed_count += 1
+            message = "; ".join(row_date_error["errors"].values())
+            failures.append(f"Row {row_number}: {message}")
+            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            continue
+
         try:
             Task.objects.create(
                 project=project,
                 project_id_name=normalize_text(str(project_id_name or "")),
                 activity=activity,
                 revision=revision,
-                start_date=_to_date(start_date),
-                end_date=_to_date(end_date),
+                start_date=parsed_start_date,
+                end_date=parsed_end_date,
                 no_of_days=_to_decimal(no_of_days, default="1"),
                 drawn_by=to_title_case(drawn_by),
                 approved_by=to_title_case(approved_by),
-                approved_date=_to_date(approved_date),
+                approved_date=parsed_approved_date,
                 task_status=to_title_case(task_status),
                 project_owner=to_title_case(project_owner),
                 remarks=normalize_text(remarks),
@@ -440,15 +472,23 @@ def task_detail_api_view(request, pk):
 
     obj.activity = activity
     obj.revision = revision
-    obj.start_date = _to_date(p.get("start_date", obj.start_date))
-    obj.end_date = _to_date(p.get("end_date", obj.end_date))
+    next_start_date = _to_date(p.get("start_date", obj.start_date))
+    next_end_date = _to_date(p.get("end_date", obj.end_date))
+    next_approved_date = _to_date(p.get("approved_date", obj.approved_date))
+
+    date_error = _validate_task_dates(next_start_date, next_end_date, next_approved_date)
+    if date_error:
+        return JsonResponse(date_error, status=400)
+
+    obj.start_date = next_start_date
+    obj.end_date = next_end_date
 
     raw_days = _to_decimal(p.get("no_of_days", obj.no_of_days), default=str(obj.no_of_days))
     obj.no_of_days = max(1, float(raw_days or 1))
 
     obj.drawn_by = to_title_case(p.get("drawn_by", obj.drawn_by))
     obj.approved_by = to_title_case(p.get("approved_by", obj.approved_by))
-    obj.approved_date = _to_date(p.get("approved_date", obj.approved_date))
+    obj.approved_date = next_approved_date
     obj.task_status = to_title_case(p.get("task_status", obj.task_status))
     obj.project_owner = to_title_case(p.get("project_owner", obj.project_owner))
     obj.remarks = normalize_text(p.get("remarks", obj.remarks))
