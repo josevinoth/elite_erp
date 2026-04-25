@@ -1,6 +1,6 @@
 from django.db import models
 
-from ..utils import normalize_text, to_title_case
+from ..utils import normalize_text
 from .task import Task
 
 
@@ -26,7 +26,7 @@ class TimeSheet(models.Model):
         return f"{self.employee_name} - {self.billing_date}"
 
     def save(self, *args, **kwargs):
-        self.employee_name = to_title_case(self.employee_name)
+        self.employee_name = normalize_text(self.employee_name)
         self.remarks = normalize_text(self.remarks)
         super().save(*args, **kwargs)
 

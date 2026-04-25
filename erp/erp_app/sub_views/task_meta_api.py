@@ -48,9 +48,21 @@ def list_task_meta_api_view(request):
     if not_allowed:
         return not_allowed
 
-    task_statuses = list(TaskStatusOption.objects.order_by("name").values_list("name", flat=True))
+    task_status_rows = list(TaskStatusOption.objects.order_by("name").values("id", "name"))
+    task_statuses = [row["name"] for row in task_status_rows]
+    task_statuses_linked = [
+        {"value": str(row["id"]), "label": row["name"]}
+        for row in task_status_rows
+        if row.get("name")
+    ]
     project_statuses = list(ProjectStatusOption.objects.order_by("name").values_list("name", flat=True))
-    activity_options = list(Activity.objects.order_by("name").values_list("name", flat=True))
+    activity_rows = list(Activity.objects.order_by("name").values("id", "name"))
+    activity_options = [row["name"] for row in activity_rows]
+    activity_options_linked = [
+        {"value": str(row["id"]), "label": row["name"]}
+        for row in activity_rows
+        if row.get("name")
+    ]
     project_options = sorted(
         [
         {"value": str(p.id), "label": f"{p.project_id}_{p.project_name}"}
@@ -66,16 +78,25 @@ def list_task_meta_api_view(request):
         oman_profiles = UserProfile.objects.filter(
             team_id=oman_team.id
         ).select_related("user").order_by("user__username")
-        oman_team_users = [p.user.username for p in oman_profiles if p.user.is_active]
+        oman_team_users_linked = [
+            {"value": str(p.user.id), "label": p.user.username}
+            for p in oman_profiles
+            if p.user.is_active
+        ]
+        oman_team_users = [item["label"] for item in oman_team_users_linked]
     except Team.DoesNotExist:
         oman_team_users = []
+        oman_team_users_linked = []
 
     return JsonResponse(
         {
             "task_statuses": task_statuses,
+            "task_statuses_linked": task_statuses_linked,
             "project_statuses": project_statuses,
             "activity_options": activity_options,
+            "activity_options_linked": activity_options_linked,
             "oman_team_users": oman_team_users,
+            "oman_team_users_linked": oman_team_users_linked,
             "project_options": project_options,
         }
     )

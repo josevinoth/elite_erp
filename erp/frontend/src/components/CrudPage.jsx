@@ -115,7 +115,9 @@ function CrudPage({
         fields.map((f) => [
           f.key,
           // Disabled fields always use their default (e.g. updated_by = logged-in user)
-          f.disabled ? (f.default ?? "") : (row[f.key] ?? ""),
+          f.disabled
+            ? (f.default ?? "")
+            : (row[(f.valueKey || f.key)] ?? row[f.key] ?? ""),
         ])
       )
     );
@@ -151,6 +153,16 @@ function CrudPage({
   const handleChange = (e) => {
     const { name, value } = e.target;
     handleFieldChange(name, value);
+  };
+
+  const resolveSelectValue = (options, rawValue) => {
+    const value = String(rawValue ?? "").trim();
+    if (!value) return null;
+    return (
+      options.find((opt) => String(opt.value) === value) ||
+      options.find((opt) => String(opt.label) === value) ||
+      null
+    );
   };
 
   const selectStyles = useMemo(
@@ -616,11 +628,7 @@ function CrudPage({
                         isDisabled={field.disabled}
                         options={field.options}
                         placeholder={`Select ${field.label}`}
-                        value={
-                          field.options.find(
-                            (opt) => String(opt.value) === String(formValues[field.key] ?? "")
-                          ) || null
-                        }
+                        value={resolveSelectValue(field.options, formValues[field.key])}
                         onChange={(option) =>
                           field.disabled ? undefined : handleFieldChange(field.key, option ? option.value : "")
                         }

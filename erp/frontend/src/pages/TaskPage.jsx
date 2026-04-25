@@ -98,24 +98,51 @@ function TaskPage() {
   const handleRowsChange = useCallback((rows) => setChartRows(rows), []);
 
   const toTitleCase = (value) =>
-      String(value || "")
-          .trim()
-          .toLowerCase()
-          .replace(/\b\w/g, (ch) => ch.toUpperCase());
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
 
-  const mapOptions = (values = []) => {
-    const unique = Array.from(new Set(values.filter(Boolean).map((v) => toTitleCase(v))));
-    return unique.map((v) => ({ value: v, label: v }));
+  const normalizeOptions = (values = []) => {
+    const normalized = values
+      .map((item) => {
+        if (item && typeof item === "object") {
+          const label = toTitleCase(item.label ?? item.name ?? "");
+          const value = String(item.value ?? item.id ?? "").trim();
+          if (!label || !value) return null;
+          return { value, label };
+        }
+        const label = toTitleCase(item);
+        return label ? { value: label, label } : null;
+      })
+      .filter(Boolean);
+
+    const seen = new Set();
+    return normalized.filter((opt) => {
+      const key = `${String(opt.value).toLowerCase()}|${String(opt.label).toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const optionValueByAny = (options = [], rawValue = "") => {
+    const value = String(rawValue ?? "").trim();
+    if (!value) return "";
+    const byValue = options.find((opt) => String(opt.value) === value);
+    if (byValue) return String(byValue.value);
+    const byLabel = options.find((opt) => String(opt.label) === value);
+    return byLabel ? String(byLabel.value) : value;
   };
 
   const loadMeta = useCallback(async () => {
     const [metaData, usersData] = await Promise.all([listTaskMeta(), listUsers()]);
-    setTaskStatuses(mapOptions(metaData.task_statuses));
-    setActivityOptions(mapOptions(metaData.activity_options || []));
-    setUserOptions(mapOptions((usersData.users || []).map((u) => u.username)));
-    setOmanTeamUserOptions(mapOptions(metaData.oman_team_users || []));
+    setTaskStatuses(normalizeOptions(metaData.task_statuses_linked || metaData.task_statuses || []));
+    setActivityOptions(normalizeOptions(metaData.activity_options_linked || metaData.activity_options || []));
+    setUserOptions(normalizeOptions((usersData.users || []).map((u) => ({ value: String(u.id), label: u.username }))));
+    setOmanTeamUserOptions(normalizeOptions(metaData.oman_team_users_linked || metaData.oman_team_users || []));
     setProjectOptions(
-        (metaData.project_options || []).map((p) => ({ value: p.value, label: p.label }))
+      (metaData.project_options || []).map((p) => ({ value: String(p.value), label: p.label }))
     );
   }, []);
 
@@ -192,6 +219,7 @@ function TaskPage() {
         {
           key: "activity",
           label: "Activity",
+          valueKey: "activity_id",
           options: activityOptions,
           onAppend: appendActivity,
           required: true,
@@ -212,8 +240,8 @@ function TaskPage() {
           readOnly: true,
           default: "1",
         },
-        { key: "drawn_by", label: "Drawn By", options: userOptions, required: true },
-        { key: "approved_by", label: "Approved By", options: omanTeamUserOptions },
+        { key: "drawn_by", label: "Drawn By", valueKey: "drawn_by_id", options: userOptions, required: true },
+        { key: "approved_by", label: "Approved By", valueKey: "approved_by_id", options: omanTeamUserOptions },
         {
           key: "approved_date",
           label: "Approved Date",
@@ -221,10 +249,11 @@ function TaskPage() {
           min: (formValues) => formValues.end_date || undefined,
         },
 
-        { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions, required: true },
+        { key: "project_owner", label: "Project Owner", valueKey: "project_owner_id", options: omanTeamUserOptions, required: true },
         {
           key: "task_status",
           label: "Status",
+          valueKey: "task_status_id",
           options: taskStatuses,
           onAppend: appendTaskStatus,
         },
@@ -237,15 +266,27 @@ function TaskPage() {
     return data.tasks || [];
   }, []);
 
+  const toApiPayload = useCallback(
+    (payload) => ({
+      ...payload,
+      activity: optionValueByAny(activityOptions, payload.activity),
+      drawn_by: optionValueByAny(userOptions, payload.drawn_by),
+      approved_by: optionValueByAny(omanTeamUserOptions, payload.approved_by),
+      project_owner: optionValueByAny(omanTeamUserOptions, payload.project_owner),
+      task_status: optionValueByAny(taskStatuses, payload.task_status),
+    }),
+    [activityOptions, userOptions, omanTeamUserOptions, taskStatuses]
+  );
+
   const createFn = useCallback(async (payload) => {
-    const data = await createTask(payload);
+    const data = await createTask(toApiPayload(payload));
     return data.task;
-  }, []);
+  }, [toApiPayload]);
 
   const updateFn = useCallback(async (id, payload) => {
-    const data = await updateTask(id, payload);
+    const data = await updateTask(id, toApiPayload(payload));
     return data.task;
-  }, []);
+  }, [toApiPayload]);
 
   const openTimesheetForTask = useCallback(
     (row) => {

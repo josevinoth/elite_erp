@@ -77,7 +77,7 @@ class Task(models.Model):
         self.remarks = normalize_text(self.remarks)
         self.drawn_by_month = normalize_text(self.drawn_by_month)
         self.approved_by_month = normalize_text(self.approved_by_month)
-        self.updated_by = to_title_case(self.updated_by)
+        self.updated_by = normalize_text(self.updated_by)
 
         if self.project_id:
             proj = self.project
