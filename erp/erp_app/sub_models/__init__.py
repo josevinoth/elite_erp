@@ -17,6 +17,7 @@ from .timesheet import TimeSheet
 from .user_profile import UserProfile
 from .user_status_option import UserStatusOption
 from .vendor import Vendor
+from .notification_read import TaskNotificationRead, CommentNotificationRead
 
 __all__ = [
 	"Activity",
@@ -39,4 +40,6 @@ __all__ = [
 	"Team",
 	"UserStatusOption",
 	"UserProfile",
+	"TaskNotificationRead",
+	"CommentNotificationRead",
 ]

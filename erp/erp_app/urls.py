@@ -56,6 +56,11 @@ from .views import (
     download_comment_attachment_api_view,
     view_comment_attachment_api_view,
     delete_comment_attachment_api_view,
+    list_header_notifications_api_view,
+    list_unread_task_notifications_api_view,
+    list_unread_message_notifications_api_view,
+    mark_task_notifications_read_api_view,
+    mark_message_notifications_read_api_view,
 )
 
 urlpatterns = [
@@ -125,4 +130,10 @@ urlpatterns = [
     path('api/comment-attachments/<int:pk>/download/', download_comment_attachment_api_view, name='api-comment-attachments-download'),
     path('api/comment-attachments/<int:pk>/view/', view_comment_attachment_api_view, name='api-comment-attachments-view'),
     path('api/comment-attachments/<int:pk>/', delete_comment_attachment_api_view, name='api-comment-attachments-delete'),
+    # header notifications
+    path('api/notifications/header/', list_header_notifications_api_view, name='api-notifications-header'),
+    path('api/notifications/tasks/unread/', list_unread_task_notifications_api_view, name='api-notifications-tasks-unread'),
+    path('api/notifications/messages/unread/', list_unread_message_notifications_api_view, name='api-notifications-messages-unread'),
+    path('api/notifications/tasks/mark-read/', mark_task_notifications_read_api_view, name='api-notifications-tasks-mark-read'),
+    path('api/notifications/messages/mark-read/', mark_message_notifications_read_api_view, name='api-notifications-messages-mark-read'),
 ]

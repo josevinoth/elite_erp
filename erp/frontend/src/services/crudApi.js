@@ -257,6 +257,47 @@ export async function listTaskMeta() {
   return parseJson(res);
 }
 
+export async function listHeaderNotifications() {
+  const res = await fetch("/api/notifications/header/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listUnreadTaskNotifications() {
+  const res = await fetch("/api/notifications/tasks/unread/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listUnreadMessageNotifications() {
+  const res = await fetch("/api/notifications/messages/unread/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function markTaskNotificationsRead(taskIds = []) {
+  const headers = await csrfHeaders();
+  const normalizedIds = Array.isArray(taskIds)
+    ? taskIds
+    : [taskIds];
+
+  const res = await fetch("/api/notifications/tasks/mark-read/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ task_ids: normalizedIds }),
+  });
+  return parseJson(res);
+}
+
+export async function markMessageNotificationsReadByTask(taskId) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/notifications/messages/mark-read/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ task_id: taskId }),
+  });
+  return parseJson(res);
+}
+
 export async function addTaskStatusOption(name) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/tasks/status-options/add/", {

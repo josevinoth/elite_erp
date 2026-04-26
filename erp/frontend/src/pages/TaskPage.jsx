@@ -7,6 +7,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listUsers } from "../services/authApi";
 import {
   addActivityOption,
+  listUnreadMessageNotifications,
+  listUnreadTaskNotifications,
+  markMessageNotificationsReadByTask,
+  markTaskNotificationsRead,
   addTaskStatusOption,
   createTask,
   deleteTask,
@@ -70,7 +74,7 @@ const IMPORT_REPORT_COLUMNS = [
   { key: "message", label: "Details" },
 ];
 
-function TaskPage() {
+function TaskPage({ onNotificationsChanged = null }) {
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = useMemo(() => getSessionUser(), []);
@@ -95,25 +99,79 @@ function TaskPage() {
   const [chartRows, setChartRows] = useState([]);
   const fileInputRef = useRef(null);
 
+  const openEditTaskId = useMemo(() => {
+    const query = new URLSearchParams(location.search);
+    return query.get("editTask") || "";
+  }, [location.search]);
+
+  const alertMode = useMemo(() => {
+    const query = new URLSearchParams(location.search);
+    const raw = String(query.get("alert") || "").trim().toLowerCase();
+    return raw === "tasks" || raw === "messages" ? raw : "";
+  }, [location.search]);
+
+  const [unreadTaskIds, setUnreadTaskIds] = useState(null);
+  const [loadingUnreadFilter, setLoadingUnreadFilter] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    if (!alertMode) {
+      setUnreadTaskIds(null);
+      setLoadingUnreadFilter(false);
+      return;
+    }
+
+    const loadUnreadFilter = async () => {
+      setLoadingUnreadFilter(true);
+      try {
+        if (alertMode === "tasks") {
+          const data = await listUnreadTaskNotifications();
+          const ids = Array.isArray(data.tasks) ? data.tasks.map((item) => Number(item.task_id)).filter(Boolean) : [];
+          if (!alive) return;
+          setUnreadTaskIds(Array.from(new Set(ids)));
+          return;
+        }
+
+        const data = await listUnreadMessageNotifications();
+        const ids = Array.isArray(data.messages) ? data.messages.map((item) => Number(item.task_id)).filter(Boolean) : [];
+        if (!alive) return;
+        setUnreadTaskIds(Array.from(new Set(ids)));
+      } catch (_error) {
+        if (!alive) return;
+        setUnreadTaskIds([]);
+      } finally {
+        if (alive) setLoadingUnreadFilter(false);
+      }
+    };
+
+    loadUnreadFilter();
+    return () => {
+      alive = false;
+    };
+  }, [alertMode]);
+
   const handleRowsChange = useCallback((rows) => setChartRows(rows), []);
 
   const toTitleCase = (value) =>
-    String(value || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+      String(value || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\b\w/g, (ch) => ch.toUpperCase());
 
-  const normalizeOptions = (values = []) => {
-    const normalized = values
+  const mapOptions = (values = []) => {
+    const normalized = (values || [])
       .map((item) => {
         if (item && typeof item === "object") {
-          const label = toTitleCase(item.label ?? item.name ?? "");
           const value = String(item.value ?? item.id ?? "").trim();
-          if (!label || !value) return null;
+          const label = toTitleCase(item.label ?? item.name ?? "");
+          if (!value || !label) return null;
           return { value, label };
         }
+
         const label = toTitleCase(item);
-        return label ? { value: label, label } : null;
+        if (!label) return null;
+        return { value: label, label };
       })
       .filter(Boolean);
 
@@ -126,23 +184,14 @@ function TaskPage() {
     });
   };
 
-  const optionValueByAny = (options = [], rawValue = "") => {
-    const value = String(rawValue ?? "").trim();
-    if (!value) return "";
-    const byValue = options.find((opt) => String(opt.value) === value);
-    if (byValue) return String(byValue.value);
-    const byLabel = options.find((opt) => String(opt.label) === value);
-    return byLabel ? String(byLabel.value) : value;
-  };
-
   const loadMeta = useCallback(async () => {
     const [metaData, usersData] = await Promise.all([listTaskMeta(), listUsers()]);
-    setTaskStatuses(normalizeOptions(metaData.task_statuses_linked || metaData.task_statuses || []));
-    setActivityOptions(normalizeOptions(metaData.activity_options_linked || metaData.activity_options || []));
-    setUserOptions(normalizeOptions((usersData.users || []).map((u) => ({ value: String(u.id), label: u.username }))));
-    setOmanTeamUserOptions(normalizeOptions(metaData.oman_team_users_linked || metaData.oman_team_users || []));
+    setTaskStatuses(mapOptions(metaData.task_statuses_linked || metaData.task_statuses || []));
+    setActivityOptions(mapOptions(metaData.activity_options || []));
+    setUserOptions(mapOptions((usersData.users || []).map((u) => u.username)));
+    setOmanTeamUserOptions(mapOptions(metaData.oman_team_users || []));
     setProjectOptions(
-      (metaData.project_options || []).map((p) => ({ value: String(p.value), label: p.label }))
+        (metaData.project_options || []).map((p) => ({ value: p.value, label: p.label }))
     );
   }, []);
 
@@ -201,6 +250,13 @@ function TaskPage() {
     return {};
   }, []);
 
+  const defaultTaskStatusValue = useMemo(() => {
+    const match = (taskStatuses || []).find(
+      (opt) => String(opt?.label || "").trim().toLowerCase() === "yet to start"
+    );
+    return match ? String(match.value) : "Yet To Start";
+  }, [taskStatuses]);
+
   const fields = useMemo(
       () => [
         {
@@ -219,12 +275,16 @@ function TaskPage() {
         {
           key: "activity",
           label: "Activity",
-          valueKey: "activity_id",
           options: activityOptions,
           onAppend: appendActivity,
           required: true,
         },
-        { key: "revision", label: "Revision", default: "01", readOnly: !isAdmin },
+        {
+          key: "revision",
+          label: "Revision",
+          default: "01",
+          readOnly: true,
+        },
         { key: "start_date", label: "Start Date", type: "date", required: true },
         {
           key: "end_date",
@@ -240,8 +300,8 @@ function TaskPage() {
           readOnly: true,
           default: "1",
         },
-        { key: "drawn_by", label: "Drawn By", valueKey: "drawn_by_id", options: userOptions, required: true },
-        { key: "approved_by", label: "Approved By", valueKey: "approved_by_id", options: omanTeamUserOptions },
+        { key: "drawn_by", label: "Drawn By", options: userOptions, required: true },
+        { key: "approved_by", label: "Approved By", options: omanTeamUserOptions },
         {
           key: "approved_date",
           label: "Approved Date",
@@ -249,44 +309,78 @@ function TaskPage() {
           min: (formValues) => formValues.end_date || undefined,
         },
 
-        { key: "project_owner", label: "Project Owner", valueKey: "project_owner_id", options: omanTeamUserOptions, required: true },
+        { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions, required: true },
         {
           key: "task_status",
           label: "Status",
-          valueKey: "task_status_id",
           options: taskStatuses,
           onAppend: appendTaskStatus,
+          required: true,
+          default: defaultTaskStatusValue,
         },
       ],
-      [taskStatuses, activityOptions, userOptions, omanTeamUserOptions, projectOptions, loggedInUsername, isAdmin]
+      [
+        taskStatuses,
+        activityOptions,
+        userOptions,
+        omanTeamUserOptions,
+        projectOptions,
+        loggedInUsername,
+        isAdmin,
+        defaultTaskStatusValue,
+      ]
   );
 
   const fetchFn = useCallback(async () => {
     const data = await listTasks();
-    return data.tasks || [];
-  }, []);
+    const rows = data.tasks || [];
 
-  const toApiPayload = useCallback(
-    (payload) => ({
-      ...payload,
-      activity: optionValueByAny(activityOptions, payload.activity),
-      drawn_by: optionValueByAny(userOptions, payload.drawn_by),
-      approved_by: optionValueByAny(omanTeamUserOptions, payload.approved_by),
-      project_owner: optionValueByAny(omanTeamUserOptions, payload.project_owner),
-      task_status: optionValueByAny(taskStatuses, payload.task_status),
-    }),
-    [activityOptions, userOptions, omanTeamUserOptions, taskStatuses]
+    if (!alertMode) {
+      return rows;
+    }
+    if (unreadTaskIds === null) {
+      return [];
+    }
+
+    const unreadSet = new Set((unreadTaskIds || []).map((id) => String(id)));
+    return rows.filter((row) => unreadSet.has(String(row.id)));
+  }, [alertMode, unreadTaskIds]);
+
+  const handleTaskEditOpen = useCallback(
+    async (row) => {
+      const taskId = Number(row?.id || 0);
+      if (!taskId) return;
+
+      let didMark = false;
+
+      if (alertMode === "tasks") {
+        await markTaskNotificationsRead([taskId]);
+        setUnreadTaskIds((prev) => (Array.isArray(prev) ? prev.filter((id) => Number(id) !== taskId) : prev));
+        didMark = true;
+      }
+
+      if (alertMode === "messages") {
+        await markMessageNotificationsReadByTask(taskId);
+        setUnreadTaskIds((prev) => (Array.isArray(prev) ? prev.filter((id) => Number(id) !== taskId) : prev));
+        didMark = true;
+      }
+
+      if (didMark && typeof onNotificationsChanged === "function") {
+        onNotificationsChanged();
+      }
+    },
+    [alertMode, onNotificationsChanged]
   );
 
   const createFn = useCallback(async (payload) => {
-    const data = await createTask(toApiPayload(payload));
+    const data = await createTask(payload);
     return data.task;
-  }, [toApiPayload]);
+  }, []);
 
   const updateFn = useCallback(async (id, payload) => {
-    const data = await updateTask(id, toApiPayload(payload));
+    const data = await updateTask(id, payload);
     return data.task;
-  }, [toApiPayload]);
+  }, []);
 
   const openTimesheetForTask = useCallback(
     (row) => {
@@ -502,6 +596,18 @@ function TaskPage() {
         )}
       </section>
 
+      {alertMode ? (
+        <section className="module-page" style={{ paddingTop: 0, paddingBottom: "0.5rem" }}>
+          <p className="users-status">
+            {loadingUnreadFilter
+              ? "Loading unread alerts..."
+              : alertMode === "messages"
+                ? "Showing tasks that have unread messages. Open a task to mark its messages as viewed."
+                : "Showing unread new tasks. Open a task to mark it as viewed."}
+          </p>
+        </section>
+      ) : null}
+
       <CrudPage
         key={reloadKey}
         title="Tasks"
@@ -511,6 +617,8 @@ function TaskPage() {
         createFn={createFn}
         updateFn={updateFn}
         deleteFn={deleteTask}
+        openEditIdOnMount={openEditTaskId || null}
+        onEditOpen={handleTaskEditOpen}
         rowActions={taskRowActions}
         computeValues={computeValues}
         tableWrapClassName="task-table-wrap"
@@ -529,7 +637,10 @@ function TaskPage() {
             {getTaskDateValidationError(formValues) ? (
               <p className="users-status users-status--error">{getTaskDateValidationError(formValues)}</p>
             ) : null}
-            <TaskCommentsPanel taskId={editRow?.id || null} />
+            <TaskCommentsPanel
+              taskId={editRow?.id || null}
+              onCommentCreated={onNotificationsChanged}
+            />
           </>
         )}
       />

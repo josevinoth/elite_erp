@@ -66,7 +66,7 @@ function isAllowedAttachment(fileName) {
   return ALLOWED_ATTACHMENT_EXTENSIONS.has(ext);
 }
 
-function TaskCommentsPanel({ taskId }) {
+function TaskCommentsPanel({ taskId, onCommentCreated = null }) {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -126,6 +126,9 @@ function TaskCommentsPanel({ taskId }) {
       setCommentDateTime(toLocalDatetimeInputValue(""));
       setAttachments([]);
       await loadComments();
+      if (typeof onCommentCreated === "function") {
+        onCommentCreated();
+      }
     } catch (err) {
       setError(err.message || "Unable to add comment.");
     } finally {

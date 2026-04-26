@@ -26,6 +26,13 @@ from .comments_api import (
     view_comment_attachment_api_view,
     delete_comment_attachment_api_view,
 )
+from .notifications_api import (
+    list_header_notifications_api_view,
+    list_unread_task_notifications_api_view,
+    list_unread_message_notifications_api_view,
+    mark_task_notifications_read_api_view,
+    mark_message_notifications_read_api_view,
+)
 from .login_page_view import LoginPageView
 from .projects_api import (
     create_project_api_view,
@@ -110,5 +117,10 @@ __all__ = [
     "download_comment_attachment_api_view",
     "view_comment_attachment_api_view",
     "delete_comment_attachment_api_view",
+    "list_header_notifications_api_view",
+    "list_unread_task_notifications_api_view",
+    "list_unread_message_notifications_api_view",
+    "mark_task_notifications_read_api_view",
+    "mark_message_notifications_read_api_view",
 ]
 

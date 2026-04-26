@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import ProjectHeader from "./components/ProjectHeader";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -17,6 +17,7 @@ import TimesheetPage from "./pages/TimesheetPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import VendorsPage from "./pages/VendorsPage";
 import { logoutUser } from "./services/authApi";
+import { listHeaderNotifications } from "./services/crudApi";
 import { clearSessionUser, getSessionUser } from "./services/sessionUser";
 
 function App() {
@@ -29,6 +30,43 @@ function App() {
 
   const displayUsername = currentUser?.username || "Guest";
   const displayRole = currentUser?.role || (currentUser ? "User" : "Visitor");
+
+  const [taskAlerts, setTaskAlerts] = useState({ count: 0, items: [] });
+  const [messageAlerts, setMessageAlerts] = useState({ count: 0, items: [] });
+  const [notificationRefreshToken, setNotificationRefreshToken] = useState(0);
+
+  const triggerNotificationRefresh = useCallback(() => {
+    setNotificationRefreshToken((prev) => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setTaskAlerts({ count: 0, items: [] });
+      setMessageAlerts({ count: 0, items: [] });
+      return;
+    }
+
+    let alive = true;
+    const refreshAlerts = async () => {
+      try {
+        const data = await listHeaderNotifications();
+        if (!alive) return;
+        setTaskAlerts(data.task_alerts || { count: 0, items: [] });
+        setMessageAlerts(data.message_alerts || { count: 0, items: [] });
+      } catch (_error) {
+        if (!alive) return;
+        setTaskAlerts({ count: 0, items: [] });
+        setMessageAlerts({ count: 0, items: [] });
+      }
+    };
+
+    refreshAlerts();
+    const timerId = window.setInterval(refreshAlerts, 30000);
+    return () => {
+      alive = false;
+      window.clearInterval(timerId);
+    };
+  }, [currentUser, notificationRefreshToken]);
 
   const handleLogout = async () => {
     try {
@@ -59,6 +97,8 @@ function App() {
         username={displayUsername}
         role={displayRole}
         onLogout={handleLogout}
+        taskAlerts={taskAlerts}
+        messageAlerts={messageAlerts}
       />
 
       <div className="app-content">
@@ -81,7 +121,7 @@ function App() {
             <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
             <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
             <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage />)} />
-            <Route path="/task" element={secureRoute(<TaskPage />)} />
+            <Route path="/task" element={secureRoute(<TaskPage onNotificationsChanged={triggerNotificationRefresh} />)} />
             <Route path="/timesheet" element={secureRoute(<TimesheetPage />)} />
 
             <Route

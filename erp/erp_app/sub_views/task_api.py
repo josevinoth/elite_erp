@@ -5,8 +5,7 @@ import re
 
 from django.contrib.auth import get_user_model
 from django.http import FileResponse, JsonResponse
-from django.db.models import Q
-from django.db.models import Count
+from django.db.models import Q, Count
 from django.db import ProgrammingError, OperationalError
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -91,123 +90,7 @@ def _split_pk_link(value):
     return int(m.group(1)), m.group(2).strip()
 
 
-def _resolve_activity_storage(value):
-    pk, label = _split_pk_link(value)
-    if pk:
-        activity_obj = Activity.objects.filter(pk=pk).first()
-        if activity_obj:
-            return activity_obj, activity_obj.name
-
-    raw = normalize_text(label or value)
-    if not raw:
-        return None, ""
-
-    if str(raw).isdigit():
-        activity_obj = Activity.objects.filter(pk=int(raw)).first()
-        if activity_obj:
-            return activity_obj, activity_obj.name
-
-    activity_obj = Activity.objects.filter(name__iexact=raw).first()
-    if activity_obj:
-        return activity_obj, activity_obj.name
-
-    pretty = to_title_case(raw)
-    activity_obj, _ = Activity.objects.get_or_create(name=pretty)
-    return activity_obj, activity_obj.name
-
-
-def _resolve_status_storage(value):
-    pk, label = _split_pk_link(value)
-    if pk:
-        status_obj = TaskStatusOption.objects.filter(pk=pk).first()
-        if status_obj:
-            return status_obj, status_obj.name
-
-    raw = normalize_text(label or value)
-    if not raw:
-        return None, ""
-
-    if str(raw).isdigit():
-        status_obj = TaskStatusOption.objects.filter(pk=int(raw)).first()
-        if status_obj:
-            return status_obj, status_obj.name
-
-    status_obj = TaskStatusOption.objects.filter(name__iexact=raw).first()
-    if status_obj:
-        return status_obj, status_obj.name
-
-    pretty = to_title_case(raw)
-    status_obj, _ = TaskStatusOption.objects.get_or_create(name=pretty)
-    return status_obj, status_obj.name
-
-
-def _resolve_user_storage(value):
-    user_model = get_user_model()
-
-    if isinstance(value, user_model):
-        return value, value.username
-
-    pk, label = _split_pk_link(value)
-    if pk:
-        user_obj = user_model.objects.filter(pk=pk).first()
-        if user_obj:
-            return user_obj, user_obj.username
-
-    raw = normalize_text(label or value)
-    if not raw:
-        return None, ""
-
-    if str(raw).isdigit():
-        user_obj = user_model.objects.filter(pk=int(raw)).first()
-        if user_obj:
-            return user_obj, user_obj.username
-
-    user_obj = user_model.objects.filter(username__iexact=raw).first()
-    if user_obj:
-        return user_obj, user_obj.username
-
-    return None, to_title_case(raw)
-
-
-def _user_label(value):
-    if not value:
-        return ""
-
-    user_model = get_user_model()
-    if isinstance(value, user_model):
-        return value.username
-
-    raw = normalize_text(value)
-    if not raw:
-        return ""
-
-    if str(raw).isdigit():
-        user_obj = user_model.objects.filter(pk=int(raw)).first()
-        if user_obj:
-            return user_obj.username
-    return raw
-
-
-def _user_id(value):
-    if not value:
-        return ""
-
-    user_model = get_user_model()
-    if isinstance(value, user_model):
-        return str(value.id)
-
-    raw = normalize_text(value)
-    if not raw:
-        return ""
-
-    if str(raw).isdigit() and user_model.objects.filter(pk=int(raw)).exists():
-        return str(raw)
-    user_obj = user_model.objects.filter(username__iexact=raw).first()
-    return str(user_obj.id) if user_obj else ""
-
-
 def _project_lookup():
-    """Build fast lookup maps for project matching during import."""
     lookup_by_compound = {}
     lookup_by_parts = {}
     for project in Project.objects.all():
@@ -228,6 +111,80 @@ def _resolve_project(project_id_name, project_no, project_name, lookup_by_compou
         return by_no
 
     return None
+
+
+def _resolve_user_storage(value):
+    user_model = get_user_model()
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ""
+
+    pk, label = _split_pk_link(raw)
+    if pk:
+        user_obj = user_model.objects.filter(pk=pk).first()
+        if user_obj:
+            return user_obj, user_obj.username
+        return None, label
+
+    if raw.isdigit():
+        user_obj = user_model.objects.filter(pk=int(raw)).first()
+        if user_obj:
+            return user_obj, user_obj.username
+
+    user_obj = user_model.objects.filter(username__iexact=raw).first()
+    if user_obj:
+        return user_obj, user_obj.username
+
+    return None, raw
+
+
+def _resolve_activity_storage(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ""
+
+    pk, label = _split_pk_link(raw)
+    if pk:
+        activity_obj = Activity.objects.filter(pk=pk).first()
+        if activity_obj:
+            return activity_obj, activity_obj.name
+        return None, label
+
+    if raw.isdigit():
+        activity_obj = Activity.objects.filter(pk=int(raw)).first()
+        if activity_obj:
+            return activity_obj, activity_obj.name
+
+    activity_obj = Activity.objects.filter(name__iexact=raw).first()
+    if activity_obj:
+        return activity_obj, activity_obj.name
+
+    return None, raw
+
+
+def _resolve_status_storage(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ""
+
+    pk, label = _split_pk_link(raw)
+    if pk:
+        status_obj = TaskStatusOption.objects.filter(pk=pk).first()
+        if status_obj:
+            return status_obj, status_obj.name
+        return None, label
+
+    if raw.isdigit():
+        status_obj = TaskStatusOption.objects.filter(pk=int(raw)).first()
+        if status_obj:
+            return status_obj, status_obj.name
+
+    status_obj = TaskStatusOption.objects.filter(name__iexact=raw).first()
+    if status_obj:
+        return status_obj, status_obj.name
+
+    return None, raw
+
 
 
 def _resolve_project_from_link_or_text(project_id_name, project_no, project_name, lookup_by_compound, lookup_by_parts):

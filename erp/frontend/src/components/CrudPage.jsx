@@ -32,6 +32,7 @@ function CrudPage({
   showExportButton = true,
   exportFileName = null,
   openAddOnMount = false,
+  openEditIdOnMount = null,
   rowActions = [],
   computeValues = null,   // (changedKey, changedValue, allValues) => extraValues
   editDisabledPredicate = null,  // (row) => boolean
@@ -46,6 +47,7 @@ function CrudPage({
   onRowsChange = null,     // (rows) => void – called whenever rows are updated
   renderFooter = null,     // () => ReactNode – rendered inside the section, below table
   renderFormExtension = null, // ({ editRow, formValues, setFormValues }) => ReactNode
+  onEditOpen = null, // (row) => void | Promise<void>
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +62,7 @@ function CrudPage({
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
   const autoOpenedRef = useRef(false);
+  const autoEditOpenedRef = useRef(false);
 
   const reloadRows = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -108,6 +111,18 @@ function CrudPage({
     }
   }, [openAddOnMount, fields]);
 
+  useEffect(() => {
+    if (!openEditIdOnMount || autoEditOpenedRef.current || loading || showModal) {
+      return;
+    }
+
+    const match = rows.find((row) => String(row[rowKey]) === String(openEditIdOnMount));
+    if (match) {
+      autoEditOpenedRef.current = true;
+      openEdit(match);
+    }
+  }, [openEditIdOnMount, rows, rowKey, loading, showModal]);
+
   const openEdit = (row) => {
     setEditRow(row);
     setFormValues(
@@ -115,13 +130,16 @@ function CrudPage({
         fields.map((f) => [
           f.key,
           // Disabled fields always use their default (e.g. updated_by = logged-in user)
-          f.disabled
-            ? (f.default ?? "")
-            : (row[(f.valueKey || f.key)] ?? row[f.key] ?? ""),
+          f.disabled ? (f.default ?? "") : (row[f.key] ?? ""),
         ])
       )
     );
     setShowModal(true);
+    if (typeof onEditOpen === "function") {
+      Promise.resolve(onEditOpen(row)).catch(() => {
+        // Notification update failures should not block opening the edit modal.
+      });
+    }
   };
 
   const closeModal = () => {
@@ -155,15 +173,8 @@ function CrudPage({
     handleFieldChange(name, value);
   };
 
-  const resolveSelectValue = (options, rawValue) => {
-    const value = String(rawValue ?? "").trim();
-    if (!value) return null;
-    return (
-      options.find((opt) => String(opt.value) === value) ||
-      options.find((opt) => String(opt.label) === value) ||
-      null
-    );
-  };
+  const isFieldReadOnly = (field) =>
+    typeof field.readOnly === "function" ? !!field.readOnly(formValues, editRow) : !!field.readOnly;
 
   const selectStyles = useMemo(
     () => ({
@@ -628,7 +639,19 @@ function CrudPage({
                         isDisabled={field.disabled}
                         options={field.options}
                         placeholder={`Select ${field.label}`}
-                        value={resolveSelectValue(field.options, formValues[field.key])}
+                        value={(() => {
+                          const current = String(formValues[field.key] ?? "").trim();
+                          if (!current) return null;
+
+                          // Support edit values coming as labels while options use IDs.
+                          return (
+                            field.options.find((opt) => String(opt.value) === current) ||
+                            field.options.find(
+                              (opt) => String(opt.label || "").trim().toLowerCase() === current.toLowerCase()
+                            ) ||
+                            null
+                          );
+                        })()}
                         onChange={(option) =>
                           field.disabled ? undefined : handleFieldChange(field.key, option ? option.value : "")
                         }
@@ -666,18 +689,17 @@ function CrudPage({
                       value={formValues[field.key] ?? ""}
                       onChange={handleChange}
                       required={field.required}
-                      readOnly={field.readOnly}
+                      readOnly={isFieldReadOnly(field)}
                     />
                   ) : (
                     <input
                       id={`mf-${field.key}`}
                       name={field.key}
                       type={field.type || "text"}
-                      className={`auth-input${(field.readOnly || field.disabled) ? " auth-input--readonly" : ""}`}
+                      className={`auth-input${(isFieldReadOnly(field) || field.disabled) ? " auth-input--readonly" : ""}`}
                       value={formValues[field.key] ?? ""}
-                      onChange={(!field.readOnly && !field.disabled) ? handleChange : undefined}
-                      min={typeof field.min === "function" ? field.min(formValues, editRow) : field.min}
-                      readOnly={field.readOnly}
+                      onChange={(!isFieldReadOnly(field) && !field.disabled) ? handleChange : undefined}
+                      readOnly={isFieldReadOnly(field)}
                       disabled={field.disabled}
                       required={field.required}
                     />

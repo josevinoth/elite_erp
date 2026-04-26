@@ -6,7 +6,7 @@ import mimetypes
 from django.http import JsonResponse
 from django.http import FileResponse
 from django.utils import timezone
-from django.db import ProgrammingError, OperationalError
+from django.db import ProgrammingError, OperationalError, transaction
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -23,10 +23,6 @@ ALLOWED_ATTACHMENT_EXTENSIONS = {
     "zip", "rar", "7z",
 }
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"}
-ALLOWED_TASK_COMMENT_STATUSES = {
-    "work in progress",
-    "awaiting for approval",
-}
 
 
 def _ensure_authenticated(request):
@@ -88,11 +84,6 @@ def _can_access_task(user, task_id):
     if not allowed:
         return None, JsonResponse({"message": "Access denied for this task."}, status=403)
     return task, None
-
-
-def _can_add_comment_to_task(task):
-    status = str(task.task_status.name if task.task_status_id else "").strip().lower()
-    return status in ALLOWED_TASK_COMMENT_STATUSES
 
 
 def _ensure_record_access(request, module_name, record_id):
@@ -226,55 +217,50 @@ def create_comment_api_view(request):
         task, task_denied = _can_access_task(request.user, record_id)
         if task_denied:
             return task_denied
-        if not _can_add_comment_to_task(task):
+
+    files = request.FILES.getlist("attachments") if is_form else []
+    normalized_files = []
+    for f in files:
+        raw_name = normalize_text(getattr(f, "name", ""))
+        _, ext = os.path.splitext(raw_name)
+        ext = ext.replace(".", "").lower()
+
+        if not ext or ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
             return JsonResponse(
                 {
                     "message": (
-                        "Comments can only be added when task status is "
-                        "'Work In Progress' or 'Awaiting For Approval'."
+                        f"Unsupported attachment type for '{raw_name}'. "
+                        f"Allowed: {', '.join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))}."
                     )
                 },
-                status=403,
+                status=400,
             )
 
+        size = int(getattr(f, "size", 0) or 0)
+        if size > MAX_ATTACHMENT_SIZE_BYTES:
+            return JsonResponse(
+                {
+                    "message": (
+                        f"Attachment '{raw_name}' exceeds max size 10 MB."
+                    )
+                },
+                status=400,
+            )
+
+        normalized_files.append((f, raw_name))
+
     try:
-        obj = Comment.objects.create(
-            module_name=module_name,
-            record_id=record_id,
-            comment_datetime=comment_datetime,
-            updated_by=normalize_text(request.user.username),
-            comments=comments,
-            reference_link=reference_link,
-        )
-        if is_form:
-            files = request.FILES.getlist("attachments")
-            for f in files:
-                raw_name = normalize_text(getattr(f, "name", ""))
-                _, ext = os.path.splitext(raw_name)
-                ext = ext.replace(".", "").lower()
+        with transaction.atomic():
+            obj = Comment.objects.create(
+                module_name=module_name,
+                record_id=record_id,
+                comment_datetime=comment_datetime,
+                updated_by=normalize_text(request.user.username),
+                comments=comments,
+                reference_link=reference_link,
+            )
 
-                if not ext or ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
-                    return JsonResponse(
-                        {
-                            "message": (
-                                f"Unsupported attachment type for '{raw_name}'. "
-                                f"Allowed: {', '.join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))}."
-                            )
-                        },
-                        status=400,
-                    )
-
-                size = int(getattr(f, "size", 0) or 0)
-                if size > MAX_ATTACHMENT_SIZE_BYTES:
-                    return JsonResponse(
-                        {
-                            "message": (
-                                f"Attachment '{raw_name}' exceeds max size 10 MB."
-                            )
-                        },
-                        status=400,
-                    )
-
+            for f, raw_name in normalized_files:
                 CommentAttachment.objects.create(
                     comment=obj,
                     file=f,
