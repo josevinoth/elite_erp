@@ -241,8 +241,11 @@ function CrudPage({
         } catch (retryErr) {
           const suggested = retryErr.payload?.suggested_revision;
           if (suggested) {
+            const confirmMessage =
+              retryErr.payload?.confirm_message ||
+              `${retryErr.message}\n\nUse revision "${suggested}" instead?`;
             const ok = window.confirm(
-              `${retryErr.message}\n\nUse revision "${suggested}" instead?`
+              confirmMessage
             );
             if (ok) {
               fv = { ...fv, revision: suggested };

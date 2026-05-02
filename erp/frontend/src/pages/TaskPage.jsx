@@ -282,7 +282,7 @@ function TaskPage({ onNotificationsChanged = null }) {
         {
           key: "revision",
           label: "Revision",
-          default: "01",
+          default: "Auto",
           readOnly: true,
         },
         { key: "start_date", label: "Start Date", type: "date", required: true },

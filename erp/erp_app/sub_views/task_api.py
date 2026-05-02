@@ -406,6 +406,31 @@ def _check_duplicate(project_instance, activity_obj, revision, exclude_pk=None, 
     return None
 
 
+def _check_existing_task(project_instance, activity_obj, exclude_pk=None):
+    """Return message when a task with same project+activity already exists."""
+    qs = Task.objects.filter(
+        project=project_instance,
+        activity=activity_obj,
+    )
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    if qs.exists():
+        return "Task already exists for the selected Project and Activity."
+    return None
+
+
+def _next_revision_for_project_activity(project_instance, activity_obj):
+    """Return next revision based on the latest existing task for same project+activity."""
+    latest = (
+        Task.objects.filter(project=project_instance, activity=activity_obj)
+        .order_by("-id")
+        .first()
+    )
+    if not latest:
+        return "01"
+    return _next_revision(latest.revision or "01")
+
+
 @require_POST
 @csrf_protect
 def create_task_api_view(request):
@@ -426,20 +451,49 @@ def create_task_api_view(request):
     if not activity_obj:
         return JsonResponse({"message": "Invalid activity selected."}, status=400)
 
-    revision = normalize_text(p.get("revision", "01"))
-
-    dup_msg = _check_duplicate(project_instance, activity_obj, revision, activity_label=activity_label)
-    if dup_msg:
-        return JsonResponse(
-            {"message": dup_msg, "suggested_revision": _next_revision(revision)}, status=409
-        )
-
     start_date = _to_date(p.get("start_date"))
     end_date = _to_date(p.get("end_date"))
     approved_date = _to_date(p.get("approved_date"))
     date_error = _validate_task_dates(start_date, end_date, approved_date)
     if date_error:
         return JsonResponse(date_error, status=400)
+
+    requested_revision = normalize_text(p.get("revision", ""))
+    user_confirmed_existing = bool(requested_revision and requested_revision.lower() != "auto")
+
+    existing_msg = _check_existing_task(project_instance, activity_obj)
+    if existing_msg and not user_confirmed_existing:
+        suggested_revision = _next_revision_for_project_activity(project_instance, activity_obj)
+        return JsonResponse(
+            {
+                "message": existing_msg,
+                "suggested_revision": suggested_revision,
+                "confirm_message": (
+                    "Task already exists for this Project and Activity. "
+                    f"Click OK to create a new revision '{suggested_revision}', or Cancel to stay on this form."
+                ),
+            },
+            status=409,
+        )
+
+    # Always assign the next revision from the latest task in this project+activity scope.
+    revision = requested_revision if user_confirmed_existing else _next_revision_for_project_activity(project_instance, activity_obj)
+
+    dup_msg = _check_duplicate(project_instance, activity_obj, revision, activity_label=activity_label)
+    if dup_msg:
+        suggested_revision = _next_revision_for_project_activity(project_instance, activity_obj)
+        return JsonResponse(
+            {
+                "message": dup_msg,
+                "suggested_revision": suggested_revision,
+                "confirm_message": (
+                    f"Revision already exists. Click OK to continue with revision '{suggested_revision}', "
+                    "or Cancel to keep editing."
+                ),
+            },
+            status=409,
+        )
+
 
     drawn_by, _drawn_by_label = _resolve_user_storage(p.get("drawn_by", ""))
     approved_by, _approved_by_label = _resolve_user_storage(p.get("approved_by", ""))
