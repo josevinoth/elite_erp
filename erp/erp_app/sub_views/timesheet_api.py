@@ -360,6 +360,14 @@ def create_timesheet_api_view(request):
     if not employee_user:
         return JsonResponse({"message": "Employee name is required."}, status=400)
 
+    from decimal import Decimal, InvalidOperation
+    try:
+        efforts_val = Decimal(str(payload.get("efforts") or "0").strip())
+    except InvalidOperation:
+        efforts_val = Decimal("0")
+    if efforts_val <= 0:
+        return JsonResponse({"message": "Efforts must be greater than 0."}, status=400)
+
     try:
         task = Task.objects.get(id=int(task_id))
     except (Task.DoesNotExist, TypeError, ValueError):
@@ -384,7 +392,7 @@ def create_timesheet_api_view(request):
             task=task,
             employee_name=employee_user,
             billing_date=billing_date,
-            efforts=_to_decimal(payload.get("efforts"), default="0"),
+            efforts=efforts_val,
             remarks=normalize_text(payload.get("remarks", "")),
         )
     except IntegrityError:
@@ -450,7 +458,15 @@ def timesheet_detail_api_view(request, pk):
 
     row.employee_name = employee_user
     row.billing_date = billing_date
-    row.efforts = _to_decimal(payload.get("efforts", row.efforts), default=str(row.efforts or 0))
+    if "efforts" in payload:
+        from decimal import Decimal, InvalidOperation
+        try:
+            new_efforts = Decimal(str(payload.get("efforts") or "0").strip())
+        except InvalidOperation:
+            new_efforts = Decimal("0")
+        if new_efforts <= 0:
+            return JsonResponse({"message": "Efforts must be greater than 0."}, status=400)
+        row.efforts = new_efforts
     row.remarks = normalize_text(payload.get("remarks", row.remarks))
 
     try:

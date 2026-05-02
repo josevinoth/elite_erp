@@ -76,13 +76,7 @@ def _can_access_task(user, task_id):
     task = Task.objects.filter(id=task_id).first()
     if not task:
         return None, JsonResponse({"message": "Task not found."}, status=404)
-
-    if _is_admin_user(user):
-        return task, None
-
-    allowed = user.id in {task.drawn_by_id, task.approved_by_id, task.project_owner_id}
-    if not allowed:
-        return None, JsonResponse({"message": "Access denied for this task."}, status=403)
+    # Any authenticated user can view and add comments on any task.
     return task, None
 
 

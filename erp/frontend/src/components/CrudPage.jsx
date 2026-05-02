@@ -702,6 +702,9 @@ function CrudPage({
                       readOnly={isFieldReadOnly(field)}
                       disabled={field.disabled}
                       required={field.required}
+                      {...(field.min !== undefined ? { min: field.min } : {})}
+                      {...(field.max !== undefined ? { max: field.max } : {})}
+                      {...(field.step !== undefined ? { step: field.step } : {})}
                     />
                   )}
                 </div>

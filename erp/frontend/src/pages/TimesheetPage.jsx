@@ -127,7 +127,7 @@ function TimesheetPage() {
         default: initialDefaults.billingDate,
         required: true,
       },
-      { key: "efforts", label: "Efforts", type: "number", default: "0" },
+      { key: "efforts", label: "Efforts", type: "number", default: "", required: true, min: "0.01", step: "0.01" },
       { key: "remarks", label: "Remarks", type: "textarea" },
     ],
     [taskOptions, employeeOptions, loggedInUsername, initialDefaults]
