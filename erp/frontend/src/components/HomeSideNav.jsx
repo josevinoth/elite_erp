@@ -30,6 +30,7 @@ const iconMap = {
   quotation: BsFileEarmarkTextFill,
   customerPo: BsReceiptCutoff,
   costing: BsCashCoin,
+  cutOptimiser: BsKanbanFill,
   pendingApprovals: BsPersonCheck,
   userRegistration: BsPersonPlusFill,
 };

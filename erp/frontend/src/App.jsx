@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import ProjectHeader from "./components/ProjectHeader";
 import ErrorBoundary from "./components/ErrorBoundary";
 import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
+import CutOptimiserPage from "./pages/CutOptimiserPage";
 import HomeLayout from "./pages/HomeLayout";
 import LoginPage from "./pages/LoginPage";
 import ModulePage from "./pages/ModulePage";
@@ -117,6 +118,7 @@ function App() {
             <Route path="/users-management" element={adminRoute(<UsersManagementPage />)} />
             <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage />)} />
             <Route path="/projects" element={secureRoute(<ProjectsPage />)} />
+            <Route path="/projects/cut-optimiser" element={secureRoute(<CutOptimiserPage />)} />
             <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
             <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
             <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />

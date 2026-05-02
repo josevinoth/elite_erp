@@ -45,6 +45,11 @@ export const homeNavItems = [
         to: "/projects/costing",
         icon: "costing",
       },
+      {
+        label: "Cut Optimiser",
+        to: "/projects/cut-optimiser",
+        icon: "cutOptimiser",
+      },
     ],
   },
   { label: "Vendors", to: "/vendors", icon: "vendors" },

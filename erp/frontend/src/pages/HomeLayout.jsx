@@ -6,6 +6,7 @@ import {
   BsCashCoin,
   BsFolder2Open,
   BsHourglassSplit,
+  BsKanbanFill,
   BsListTask,
   BsPeopleFill,
   BsPersonPlusFill,
@@ -63,6 +64,12 @@ function HomeLayout({ currentUser }) {
         ]
       : []),
     { title: "Tasks", stat: "Execution board", to: "/task", icon: BsListTask },
+    {
+      title: "Cut Optimiser",
+      stat: "Estimate required panel sheets",
+      to: "/projects/cut-optimiser",
+      icon: BsKanbanFill,
+    },
     {
       title: "Timesheet",
       stat: isAdmin ? "Track billed efforts" : "Only admins can access",
