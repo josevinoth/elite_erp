@@ -3,7 +3,10 @@ import Select from "react-select";
 import { listProjects } from "../services/crudApi";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import { downloadCutOptimiserPdf } from "../utils/cutOptimiserReport";
+import { buildPackedSheetsForScenario as buildPackedSheetsForScenarioV2, summarizeCutOrientations } from "../utils/cutPackingEngine";
 import eliteLogo from "../assets/logos/elite_logo.png";
+
+const CUT_OPTIMISER_DRAFT_KEY = "elite_erp_cut_optimiser_draft_v1";
 
 const UNIT_TO_MM = {
   mm: 1,
@@ -48,9 +51,9 @@ function areaMm2ToFt2(areaMm2) {
   return areaMm2 / 92_903.04;
 }
 
-function countFit(sheetA, sheetB, panelA, panelB, kerf) {
-  const a = Math.floor((sheetA + kerf) / (panelA + kerf));
-  const b = Math.floor((sheetB + kerf) / (panelB + kerf));
+function countFitWithKerf(sheetLength, sheetWidth, cutLength, cutWidth, kerf) {
+  const a = Math.floor((sheetLength + kerf) / (cutLength + kerf));
+  const b = Math.floor((sheetWidth + kerf) / (cutWidth + kerf));
   return Math.max(0, a) * Math.max(0, b);
 }
 
@@ -175,7 +178,7 @@ function buildPackedSheetsForScenario(scenario, kerfMm) {
 function SheetVisual({ scenario, kerfMm }) {
   const sheetL = scenario.sheetLengthMm;
   const sheetW = scenario.sheetWidthMm;
-  const sheets = buildPackedSheetsForScenario(scenario, kerfMm);
+  const { sheets } = buildPackedSheetsForScenarioV2(scenario, kerfMm);
 
   // ── Legend ──────────────────────────────────────────────────────
   const legend = scenario.perCut
@@ -305,6 +308,7 @@ function CutOptimiserPage() {
   const [exportError, setExportError] = useState("");
   const [isPdfExporting, setIsPdfExporting] = useState(false);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("");
 
   const unitOptions = useMemo(
     () => Object.keys(UNIT_TO_MM).map((u) => ({ value: u, label: UNIT_LABELS[u] })),
@@ -370,6 +374,68 @@ function CutOptimiserPage() {
     }
     setPendingFocusCutId(null);
   }, [pendingFocusCutId]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CUT_OPTIMISER_DRAFT_KEY);
+      if (!raw) return;
+
+      const draft = JSON.parse(raw);
+      if (draft?.form && typeof draft.form === "object") {
+        setForm((prev) => ({ ...prev, ...draft.form }));
+      }
+
+      if (Array.isArray(draft?.rawSheets) && draft.rawSheets.length) {
+        setRawSheets(draft.rawSheets);
+        const maxRawId = draft.rawSheets.reduce((max, row) => {
+          const id = Number(row?.id);
+          return Number.isFinite(id) && id > max ? id : max;
+        }, 0);
+        setNextRawId(maxRawId + 1);
+      }
+
+      if (Array.isArray(draft?.cutItems) && draft.cutItems.length) {
+        setCutItems(draft.cutItems);
+        const maxCutId = draft.cutItems.reduce((max, row) => {
+          const id = Number(row?.id);
+          return Number.isFinite(id) && id > max ? id : max;
+        }, 0);
+        setNextCutId(maxCutId + 1);
+      }
+
+      if (typeof draft?.selectedProjectKey === "string") {
+        setSelectedProjectKey(draft.selectedProjectKey);
+      }
+
+      setDraftStatus("Loaded saved draft.");
+    } catch {
+      setDraftStatus("Could not load saved draft.");
+    }
+  }, []);
+
+  const onSaveDraft = () => {
+    try {
+      const payload = {
+        form,
+        rawSheets,
+        cutItems,
+        selectedProjectKey,
+        savedAt: new Date().toISOString(),
+      };
+      window.localStorage.setItem(CUT_OPTIMISER_DRAFT_KEY, JSON.stringify(payload));
+      setDraftStatus("Values saved temporarily on this browser.");
+    } catch {
+      setDraftStatus("Failed to save values.");
+    }
+  };
+
+  const clearDraft = () => {
+    try {
+      window.localStorage.removeItem(CUT_OPTIMISER_DRAFT_KEY);
+    } catch {
+      // Ignore storage cleanup failure and continue with UI reset.
+    }
+  };
 
   const onFieldChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -484,13 +550,15 @@ function CutOptimiserPage() {
       let allCutsFit = true;
 
       const perCut = parsedCuts.map((cut, index) => {
-        const normalFit = countFit(sheet.lengthMm, sheet.widthMm, cut.lengthMm, cut.widthMm, kerfMm);
-        const rotatedFit = countFit(sheet.lengthMm, sheet.widthMm, cut.widthMm, cut.lengthMm, kerfMm);
+        const normalFit = countFitWithKerf(sheet.lengthMm, sheet.widthMm, cut.lengthMm, cut.widthMm, kerfMm);
+        const rotatedFit = countFitWithKerf(sheet.lengthMm, sheet.widthMm, cut.widthMm, cut.lengthMm, kerfMm);
         const partsPerSheet = Math.max(normalFit, rotatedFit);
+        const cutKey = String(cut.id ?? index + 1);
 
         if (partsPerSheet <= 0) {
           allCutsFit = false;
           return {
+            cutKey,
             lineNo: index + 1,
             name: cut.name,
             sizeLabel: `${cut.length} x ${cut.width} ${form.dimUnit}`,
@@ -509,6 +577,7 @@ function CutOptimiserPage() {
         const rotated = rotatedFit > normalFit;
 
         return {
+          cutKey,
           lineNo: index + 1,
           name: cut.name,
           sizeLabel: `${cut.length} x ${cut.width} ${form.dimUnit}`,
@@ -527,8 +596,24 @@ function CutOptimiserPage() {
         sheetWidthMm: sheet.widthMm,
         perCut,
       };
-      const packedSheets = allCutsFit ? buildPackedSheetsForScenario(packedScenario, kerfMm) : [];
+      const packed = allCutsFit ? buildPackedSheetsForScenarioV2(packedScenario, kerfMm) : { sheets: [], feasible: false };
+      const packedSheets = packed.sheets;
       const totalSheets = packedSheets.length;
+      allCutsFit = allCutsFit && packed.feasible;
+
+      const orientationUsage = summarizeCutOrientations(packedSheets);
+      const perCutWithPackedOrientation = perCut.map((line) => {
+        if (line.partsPerSheet <= 0) return line;
+        const usage = orientationUsage[line.cutKey];
+        if (!usage) return line;
+        const orientation = usage.normal > 0 && usage.rotated > 0
+          ? "Mixed"
+          : usage.rotated > 0
+            ? "Rotated"
+            : "Normal";
+        return { ...line, orientation };
+      });
+
       const totalSheetAreaMm2 = sheetAreaMm2 * totalSheets;
 
       const wasteAreaMm2 = Math.max(totalSheetAreaMm2 - totalPanelAreaMm2, 0);
@@ -539,7 +624,8 @@ function CutOptimiserPage() {
         sheetSize: `${sheet.lengthDisplay} x ${sheet.widthDisplay} ${form.dimUnit}`,
         sheetLengthMm: sheet.lengthMm,
         sheetWidthMm: sheet.widthMm,
-        perCut,
+        packedSheets,
+        perCut: perCutWithPackedOrientation,
         allCutsFit,
         totalSheets,
         totalPanelAreaM2: areaMm2ToM2(totalPanelAreaMm2),
@@ -567,21 +653,31 @@ function CutOptimiserPage() {
   };
 
   const buildExportRows = () => {
-    if (!result?.scenarios?.length) return [];
+    if (!result?.bestOption) return [];
 
-    return result.scenarios.flatMap((scenario) =>
-      scenario.perCut.map((line) => ({
+    const best = result.bestOption;
+    const packedSheets = Array.isArray(best.packedSheets) ? best.packedSheets : [];
+
+    return packedSheets.map((sheet) => {
+      const countByCut = {};
+
+      sheet.items.forEach((item) => {
+        const key = `${item.name} (${item.sizeLabel})`;
+        countByCut[key] = (countByCut[key] || 0) + 1;
+      });
+
+      const cutBreakdown = Object.entries(countByCut)
+        .map(([key, count]) => `${key} x${count}`)
+        .join(" | ");
+
+      return {
         project: selectedProject?.label || "N/A",
-        rawSheet: `${scenario.sheetName} (${scenario.sheetSize})`,
-        cutNo: line.lineNo,
-        cutName: line.name,
-        size: line.sizeLabel,
-        qty: line.quantity,
-        perSheet: line.partsPerSheet,
-        sheets: line.sheetsNeeded,
-        bestFit: line.orientation,
-      }))
-    );
+        rawSheet: `${best.sheetName} (${best.sheetSize})`,
+        sheetNo: sheet.sheetNo,
+        totalPiecesOnSheet: sheet.items.length,
+        cutsOnSheet: cutBreakdown,
+      };
+    });
   };
 
   const onDownloadTableExcel = async () => {
@@ -596,13 +692,9 @@ function CutOptimiserPage() {
         columns: [
           { key: "project", label: "Project" },
           { key: "rawSheet", label: "Raw Sheet" },
-          { key: "cutNo", label: "Cut #" },
-          { key: "cutName", label: "Cut Name" },
-          { key: "size", label: "Size" },
-          { key: "qty", label: "Qty" },
-          { key: "perSheet", label: "Per Sheet" },
-          { key: "sheets", label: "Sheets" },
-          { key: "bestFit", label: "Best Fit" },
+          { key: "sheetNo", label: "Sheet #" },
+          { key: "totalPiecesOnSheet", label: "Pieces On Sheet" },
+          { key: "cutsOnSheet", label: "Cuts On Sheet" },
         ],
         rows: buildExportRows(),
       });
@@ -635,9 +727,11 @@ function CutOptimiserPage() {
   };
 
   const onReset = () => {
+    clearDraft();
     setError("");
     setResult(null);
     setExportError("");
+    setDraftStatus("");
     setForm({ dimUnit: "ft", kerf: "3", kerfUnit: "mm" });
     setRawSheets([buildRawSheet(1, "Sheet A", "6", "3")]);
     setCutItems([buildCutItem(1, "Cut 1", "2", "2", "1")]);
@@ -847,8 +941,10 @@ function CutOptimiserPage() {
           </div>
 
           {error ? <p className="users-status users-status--error">{error}</p> : null}
+          {draftStatus ? <p className="users-status">{draftStatus}</p> : null}
 
           <div className="cut-optimiser-actions">
+            <button type="button" className="modal-btn" onClick={onSaveDraft}>Save</button>
             <button type="button" className="modal-btn modal-btn--save" onClick={onCalculate}>Calculate</button>
             <button type="button" className="modal-btn modal-btn--cancel" onClick={onReset}>Reset</button>
           </div>

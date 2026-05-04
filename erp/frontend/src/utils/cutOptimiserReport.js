@@ -1,13 +1,6 @@
 import jsPDF from "jspdf";
 import * as autoTableLib from "jspdf-autotable";
-
-const CUT_PALETTE = [
-  "#16b2a5", "#f97316", "#8b5cf6", "#ec4899",
-  "#0ea5e9", "#22c55e", "#f59e0b", "#ef4444",
-  "#14b8a6", "#fb923c", "#a78bfa", "#f472b6",
-];
-
-const EPS = 0.001;
+import { buildPackedSheetsForScenario } from "./cutPackingEngine";
 
 function hexToRgb(hex) {
   const h = String(hex || "#16b2a5").replace("#", "");
@@ -69,100 +62,6 @@ function runAutoTable(doc, options) {
   }
 }
 
-function buildPackedSheets(scenario, kerfMm) {
-  const sheetL = scenario.sheetLengthMm;
-  const sheetW = scenario.sheetWidthMm;
-  const pieces = [];
-
-  scenario.perCut.forEach((cut, ci) => {
-    if (cut.partsPerSheet <= 0) return;
-    const color = CUT_PALETTE[ci % CUT_PALETTE.length];
-    const cL = cut.rotated ? cut.cutWidthMm : cut.cutLengthMm;
-    const cW = cut.rotated ? cut.cutLengthMm : cut.cutWidthMm;
-    for (let i = 0; i < cut.quantity; i += 1) {
-      pieces.push({
-        id: `${cut.id || cut.lineNo}-${i}`,
-        w: cL,
-        h: cW,
-        area: cL * cW,
-        color,
-        name: cut.name,
-        sizeLabel: cut.sizeLabel,
-      });
-    }
-  });
-
-  const unplaced = pieces.filter((p) => p.w <= sheetL + EPS && p.h <= sheetW + EPS);
-  const sheets = [];
-  const makeSheet = () => ({ items: [], rowX: 0, rowY: 0, rowH: 0 });
-  let cur = makeSheet();
-
-  const takeBestFitting = (fitPredicate, leftoverScore) => {
-    let bestIndex = -1;
-    let bestLeftover = Number.POSITIVE_INFINITY;
-    let bestArea = -1;
-
-    for (let i = 0; i < unplaced.length; i += 1) {
-      const p = unplaced[i];
-      if (!fitPredicate(p)) continue;
-      const leftover = leftoverScore(p);
-      if (
-        leftover < bestLeftover - EPS ||
-        (Math.abs(leftover - bestLeftover) <= EPS && p.area > bestArea + EPS) ||
-        (Math.abs(leftover - bestLeftover) <= EPS && Math.abs(p.area - bestArea) <= EPS && bestIndex >= 0 && p.id < unplaced[bestIndex].id)
-      ) {
-        bestIndex = i;
-        bestLeftover = leftover;
-        bestArea = p.area;
-      }
-    }
-
-    if (bestIndex < 0) return null;
-    return unplaced.splice(bestIndex, 1)[0];
-  };
-
-  const placeOnCurrentRow = (p) => {
-    cur.items.push({ x: cur.rowX, y: cur.rowY, w: p.w, h: p.h, color: p.color, name: p.name, sizeLabel: p.sizeLabel });
-    cur.rowX += p.w + kerfMm;
-    cur.rowH = Math.max(cur.rowH, p.h);
-  };
-
-  while (unplaced.length > 0) {
-    const remainingRowW = sheetL - cur.rowX;
-    const currentRowPiece = takeBestFitting(
-      (p) => cur.rowY + p.h <= sheetW + EPS && p.w <= remainingRowW + EPS,
-      (p) => Math.max(0, remainingRowW - p.w)
-    );
-    if (currentRowPiece) {
-      placeOnCurrentRow(currentRowPiece);
-      continue;
-    }
-
-    const nextRowY = cur.rowY + (cur.rowH > 0 ? cur.rowH + kerfMm : 0);
-    const nextRowPiece = takeBestFitting(
-      (p) => nextRowY + p.h <= sheetW + EPS && p.w <= sheetL + EPS,
-      (p) => Math.max(0, sheetL - p.w)
-    );
-    if (nextRowPiece) {
-      cur.rowY = nextRowY;
-      cur.rowX = 0;
-      cur.rowH = 0;
-      placeOnCurrentRow(nextRowPiece);
-      continue;
-    }
-
-    if (cur.items.length > 0) {
-      sheets.push({ items: cur.items, sheetNo: sheets.length + 1 });
-      cur = makeSheet();
-      continue;
-    }
-    break;
-  }
-
-  if (cur.items.length > 0) sheets.push({ items: cur.items, sheetNo: sheets.length + 1 });
-  return sheets;
-}
-
 async function imageUrlToDataUrl(url) {
   const response = await fetch(url);
   const blob = await response.blob();
@@ -177,7 +76,7 @@ async function imageUrlToDataUrl(url) {
 function drawVisualSheets(doc, scenario, kerfMm, startY, margin) {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const sheets = buildPackedSheets(scenario, kerfMm);
+  const { sheets } = buildPackedSheetsForScenario(scenario, kerfMm);
   const sheetW = scenario.sheetLengthMm;
   const sheetH = scenario.sheetWidthMm;
   const drawW = pageW - margin * 2;
@@ -253,6 +152,31 @@ function drawVisualSheets(doc, scenario, kerfMm, startY, margin) {
   doc.setTextColor(0, 0, 0);
 }
 
+function buildPerSheetTableRows(best, kerfMm) {
+  const packedSheets = Array.isArray(best?.packedSheets) && best.packedSheets.length
+    ? best.packedSheets
+    : buildPackedSheetsForScenario(best, kerfMm).sheets;
+
+  return packedSheets.map((sheet) => {
+    const countByCut = {};
+
+    sheet.items.forEach((item) => {
+      const key = `${item.name} (${item.sizeLabel})`;
+      countByCut[key] = (countByCut[key] || 0) + 1;
+    });
+
+    const cutsOnSheet = Object.entries(countByCut)
+      .map(([key, count]) => `${key} x${count}`)
+      .join(" | ");
+
+    return [
+      sheet.sheetNo,
+      sheet.items.length,
+      cutsOnSheet,
+    ];
+  });
+}
+
 export async function downloadCutOptimiserPdf({
   logoUrl,
   projectLabel,
@@ -294,18 +218,12 @@ export async function downloadCutOptimiserPdf({
   doc.text(`Sheet Area: ${best.totalSheetAreaM2.toFixed(3)} m2 (${best.totalSheetAreaFt2.toFixed(2)} ft2)`, margin, 51.5);
   doc.text(`Waste: ${best.wasteAreaM2.toFixed(3)} m2 (${best.wasteAreaFt2.toFixed(2)} ft2) | Yield: ${best.yieldPercent.toFixed(1)}%`, margin, 56);
 
+  const perSheetRows = buildPerSheetTableRows(best, result.kerfMm);
+
   runAutoTable(doc, {
     startY: 62,
-    head: [["Cut #", "Cut Name", "Size", "Qty", "Per Sheet", "Sheets", "Best Fit"]],
-    body: best.perCut.map((line) => [
-      line.lineNo,
-      line.name,
-      line.sizeLabel,
-      line.quantity,
-      line.partsPerSheet,
-      line.sheetsNeeded,
-      line.orientation,
-    ]),
+    head: [["Sheet #", "Pieces On Sheet", "Cuts On Sheet"]],
+    body: perSheetRows,
     styles: { fontSize: 8.5, cellPadding: 1.8 },
     headStyles: { fillColor: [13, 74, 81] },
     margin: { left: margin, right: margin },
