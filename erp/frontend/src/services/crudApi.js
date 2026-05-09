@@ -119,6 +119,126 @@ export async function addProjectLifecycleStatusOption(name) {
   return parseJson(res);
 }
 
+// -- LCE Costing -------------------------------------------
+export async function listLceCostDetailsByProject(projectId) {
+  const res = await fetch(`/api/lce-costing/by-project/${projectId}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function bulkSaveLceCostDetails(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce-costing/bulk-save/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function calculateLceCostIndex(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce-costing/cost-index/calculate/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function listLceCostingMeta() {
+  const res = await fetch("/api/lce-costing/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listLceCostDetails() {
+  const res = await fetch("/api/lce-costing/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createLceCostDetail(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce-costing/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateLceCostDetail(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/lce-costing/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteLceCostDetail(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/lce-costing/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function importLceCostingExcel(file) {
+  await ensureCsrfCookie();
+  const token = getCookie("csrftoken");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/lce-costing/import/", {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-CSRFToken": token },
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function downloadLceCostingImportTemplate() {
+  const res = await fetch("/api/lce-costing/template/", { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || `Request failed (${res.status}).`);
+  }
+  const blob = await res.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = "lce_costing_import_template.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
+export async function downloadLceCostingExport() {
+  const res = await fetch("/api/lce-costing/export/", { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || `Request failed (${res.status}).`);
+  }
+  const blob = await res.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = "lce_costing_export.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
 // ── Stock Purchase ────────────────────────────────────────
 export async function listStockPurchases() {
   const res = await fetch("/api/stock-purchases/", { credentials: "include" });
