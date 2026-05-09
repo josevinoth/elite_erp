@@ -198,9 +198,15 @@ function CdcTeamExpencePage() {
   );
 
   const isExpenseSaveDisabled = useCallback((_, formValues) => {
+    const requiredFieldKeys = ["expense_date", "qty", "price", "paid_by"];
+    const missingRequiredField = requiredFieldKeys.some(
+      (fieldKey) => String(formValues?.[fieldKey] ?? "").trim() === ""
+    );
+
     const hasSettledBy = String(formValues?.settled_by || "").trim() !== "";
     const hasSettledOn = String(formValues?.settled_on || "").trim() !== "";
-    return hasSettledBy && !hasSettledOn;
+
+    return missingRequiredField || (hasSettledBy && !hasSettledOn);
   }, []);
 
   const handleBulkUpdate = useCallback(async (payload) => {
@@ -241,7 +247,7 @@ function CdcTeamExpencePage() {
         editDisabledTitle="Paid expense records can only be edited by admin users"
         deleteDisabledTitle="Paid expense records can only be deleted by admin users"
         saveDisabledPredicate={isExpenseSaveDisabled}
-        saveDisabledTitle="Settled On is required when Settled By is selected"
+        saveDisabledTitle="Expense Date, Qty, Price, and Paid By are required. Settled On is required when Settled By is selected"
         tableWrapClassName="expense-table-wrap"
         stickyHeader
         tableMaxHeight="60vh"
