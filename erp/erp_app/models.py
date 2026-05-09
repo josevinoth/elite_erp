@@ -3,6 +3,7 @@ from django.db import models
 from .sub_models import (
 	Comment,
 	CommentAttachment,
+	LCECostDetail,
 	Project,
 	ProjectLifecycleStatusOption,
 	ProjectStatusOption,
@@ -20,6 +21,7 @@ from .sub_models import (
 __all__ = [
 	"Comment",
 	"CommentAttachment",
+	"LCECostDetail",
 	"Vendor",
 	"Project",
 	"ProjectLifecycleStatusOption",

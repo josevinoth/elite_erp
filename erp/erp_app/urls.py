@@ -61,6 +61,16 @@ from .views import (
     list_unread_message_notifications_api_view,
     mark_task_notifications_read_api_view,
     mark_message_notifications_read_api_view,
+    list_lce_costing_meta_api_view,
+    list_lce_cost_details_api_view,
+    create_lce_cost_detail_api_view,
+    lce_cost_detail_api_view,
+    download_lce_costing_template_api_view,
+    import_lce_costing_excel_api_view,
+    export_lce_costing_excel_api_view,
+    list_lce_cost_details_by_project_api_view,
+    bulk_save_lce_cost_details_api_view,
+    calculate_lce_cost_index_api_view,
 )
 
 urlpatterns = [
@@ -136,4 +146,15 @@ urlpatterns = [
     path('api/notifications/messages/unread/', list_unread_message_notifications_api_view, name='api-notifications-messages-unread'),
     path('api/notifications/tasks/mark-read/', mark_task_notifications_read_api_view, name='api-notifications-tasks-mark-read'),
     path('api/notifications/messages/mark-read/', mark_message_notifications_read_api_view, name='api-notifications-messages-mark-read'),
+    # LCE costing
+    path('api/lce-costing/meta/', list_lce_costing_meta_api_view, name='api-lce-costing-meta'),
+    path('api/lce-costing/', list_lce_cost_details_api_view, name='api-lce-costing-list'),
+    path('api/lce-costing/create/', create_lce_cost_detail_api_view, name='api-lce-costing-create'),
+    path('api/lce-costing/template/', download_lce_costing_template_api_view, name='api-lce-costing-template'),
+    path('api/lce-costing/import/', import_lce_costing_excel_api_view, name='api-lce-costing-import'),
+    path('api/lce-costing/export/', export_lce_costing_excel_api_view, name='api-lce-costing-export'),
+    path('api/lce-costing/bulk-save/', bulk_save_lce_cost_details_api_view, name='api-lce-costing-bulk-save'),
+    path('api/lce-costing/by-project/<int:project_id>/', list_lce_cost_details_by_project_api_view, name='api-lce-costing-by-project'),
+    path('api/lce-costing/cost-index/calculate/', calculate_lce_cost_index_api_view, name='api-lce-costing-cost-index-calculate'),
+    path('api/lce-costing/<int:pk>/', lce_cost_detail_api_view, name='api-lce-costing-detail'),
 ]

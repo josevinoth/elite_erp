@@ -4,6 +4,7 @@ from .comment import Comment, CommentAttachment
 from .expense_item import ExpenseItem
 from .expense_session import ExpenseSession
 from .expense_status_option import ExpenseStatusOption
+from .lce_cost_detail import LCECostDetail
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .project import Project
@@ -27,6 +28,7 @@ __all__ = [
 	"ExpenseItem",
 	"ExpenseSession",
 	"ExpenseStatusOption",
+	"LCECostDetail",
 	"Vendor",
 	"Project",
 	"ProjectLifecycleStatusOption",

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import ProjectHeader from "./components/ProjectHeader";
 import ErrorBoundary from "./components/ErrorBoundary";
 import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
+import CostingPage from "./pages/CostingPage";
 import CutOptimiserPage from "./pages/CutOptimiserPage";
 import HomeLayout from "./pages/HomeLayout";
 import LoginPage from "./pages/LoginPage";
@@ -162,12 +163,7 @@ function App() {
             <Route
               path="/projects/costing"
               element={
-                secureRoute(
-                  <ModulePage
-                    title="Costing"
-                    description="Track estimated and actual project costing details."
-                  />
-                )
+                secureRoute(<CostingPage />)
               }
             />
 
