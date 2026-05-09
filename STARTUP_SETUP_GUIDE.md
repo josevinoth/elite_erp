@@ -14,12 +14,10 @@ WHAT WAS FIXED:
    - Changed working directory to project root
    - Added logging with timestamps
 
-2. start_prod.bat
-   - Added 5-second network readiness delay
-   - Changed PowerShell command from /c to /k (window stays open)
-   - Increased timeout from 3s to 5s for better detection
-   - Added working directory specification
-   - Improved error checking
+2. erp_control.bat
+   - Unified start/stop/status/restart in one command
+   - Uses dynamic paths so it works for different Windows usernames
+   - Supports optional port argument (default 8010)
 
 3. register_startup_task.ps1
    - Increased delay from 20s to 30s (allows network to be ready)
@@ -27,8 +25,8 @@ WHAT WAS FIXED:
    - Added helpful output messages
    - Better documentation of what was registered
 
-4. test_startup.bat
-   - NEW file to help diagnose issues before using Task Scheduler
+4. Startup flow simplification
+   - Scheduled task now calls erp_control.bat start 8010
 
 
 HOW TO SETUP:
@@ -37,9 +35,9 @@ HOW TO SETUP:
 Step 1: Test the startup process
    - Open PowerShell as Administrator
    - Navigate to: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp
-   - Run: test_startup.bat
-   - The server should start - you'll see it listening
-   - Press Ctrl+C to stop it
+   - Run: erp_control.bat start 8010
+   - The server should start and listen on port 8010
+   - Use a new terminal and run: erp_control.bat stop 8010
    - Check the logs/server.log file
 
 Step 2: Register the startup task
@@ -54,7 +52,7 @@ Step 3: Verify the task was created
    - Look for "EliteERP-Prod" in the task list
    - Double-click it to verify:
      * Trigger: "At log on"
-     * Action: "cmd.exe /c "...\start_prod.bat""
+     * Action: "cmd.exe /c "...\erp_control.bat" start 8010"
      * Working directory: C:\Users\Admin\PycharmProjects\elite_erp_v1.0
 
 Step 4: Test by logging off and back on
@@ -72,11 +70,11 @@ ACCESSING YOUR APPLICATION:
 Once the server is running via Task Scheduler:
 
 From the same computer:
-   - http://localhost:8000/
+   - http://localhost:8010/
 
 From other computers on the same LAN:
    - First, set a RESERVED IP for your computer (see NETWORKING section below)
-   - http://192.168.X.X:8000/
+   - http://192.168.X.X:8010/
 
 Note: If you get "Invalid HTTP_HOST header" error:
    - Edit: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\erp\settings.py
@@ -122,7 +120,7 @@ TROUBLESHOOTING:
    - Verify IP is stable (see NETWORKING section)
    - Run: ipconfig (check your current IP)
    - Try pinging from other machine: ping 192.168.X.X
-   - Check Windows Firewall allows port 8000
+   - Check Windows Firewall allows port 8010
 
 3. "Invalid HTTP_HOST header" error:
    - Add your IP to ALLOWED_HOSTS in settings.py
@@ -132,8 +130,8 @@ TROUBLESHOOTING:
    - Check logs/server.log for error messages
    - Run test_startup.bat to see full error output
 
-5. Port 8000 already in use:
-   - Run: netstat -aon | findstr :8000
+5. Port 8010 already in use:
+   - Run: netstat -aon | findstr :8010
    - Check which process is using it: tasklist /FI "PID eq XXXXX"
    - Either close that process or use different port in serve.py
 
@@ -142,7 +140,7 @@ USEFUL COMMANDS:
 ================
 
 # Check if server is running
-netstat -aon | findstr :8000
+netstat -aon | findstr :8010
 
 # View startup logs
 type C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\startup.log
@@ -152,10 +150,10 @@ type C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\server.log
 
 # Manually start server
 cd C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp
-C:\Users\Admin\PycharmProjects\elite_erp_v1.0\.venv\Scripts\python.exe serve.py
+erp_control.bat start 8010
 
 # Stop server
-taskkill /IM python.exe /F
+erp_control.bat stop 8010
 
 # Delete task scheduler entry (if needed)
 schtasks /delete EliteERP-Prod /f
@@ -164,10 +162,8 @@ schtasks /delete EliteERP-Prod /f
 FILES CHANGED:
 ==============
 
-1. run_server.bat - Improved with better error handling and environment setup
-2. start_prod.bat - Better process management and timing
-3. register_startup_task.ps1 - Better configuration and documentation
-4. test_startup.bat - NEW diagnostic tool
+1. erp_control.bat - Unified start/stop/status/restart controller
+2. register_startup_task.ps1 - Updated to call erp_control.bat on logon
 
 All files are in: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\
 
@@ -175,7 +171,7 @@ All files are in: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\
 NEXT STEPS:
 ===========
 
-1. Run test_startup.bat to verify everything works
+1. Run erp_control.bat start 8010 to verify everything works
 2. When ready, run register_startup_task.ps1 as Administrator
 3. Log off and back on to test
 4. Check logs if there are any issues

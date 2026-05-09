@@ -53,7 +53,7 @@ def list_users_api_view(request):
     if not_allowed:
         return not_allowed
 
-    users = User.objects.order_by("username")
+    users = User.objects.order_by("-id")
     status_options = list(UserStatusOption.objects.order_by("name").values_list("name", flat=True))
     role_options = list(Group.objects.order_by("name").values_list("name", flat=True))
     team_options = list(Team.objects.order_by("name").values_list("name", flat=True))
@@ -80,7 +80,7 @@ def list_pending_registrations_api_view(request):
     pending = (
         User.objects.filter(profile__status__name__iexact="New Registration")
         .select_related("profile__status")
-        .order_by("date_joined")
+        .order_by("-id")
     )
     return JsonResponse(
         {

@@ -1,12 +1,19 @@
 from django.db import models
+from django.conf import settings
 
-from ..utils import normalize_text, to_title_case
+from ..utils import normalize_text
 from .task import Task
 
 
 class TimeSheet(models.Model):
     task = models.ForeignKey(Task, on_delete=models.PROTECT, related_name="timesheets")
-    employee_name = models.CharField(max_length=255)
+    employee_name = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="timesheets",
+    )
     billing_date = models.DateField()
     efforts = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     remarks = models.TextField(blank=True)
@@ -23,10 +30,10 @@ class TimeSheet(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.employee_name} - {self.billing_date}"
+        username = self.employee_name.username if self.employee_name_id else "Unassigned"
+        return f"{username} - {self.billing_date}"
 
     def save(self, *args, **kwargs):
-        self.employee_name = to_title_case(self.employee_name)
         self.remarks = normalize_text(self.remarks)
         super().save(*args, **kwargs)
 

@@ -27,7 +27,7 @@ def list_vendors_api_view(request):
     not_allowed = _ensure_authenticated(request)
     if not_allowed:
         return not_allowed
-    vendors = Vendor.objects.all()
+    vendors = Vendor.objects.order_by('-id')
     return JsonResponse({'vendors': [_serialize(v) for v in vendors]})
 @require_POST
 @csrf_protect

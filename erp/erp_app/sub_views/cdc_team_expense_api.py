@@ -228,7 +228,7 @@ def list_cdc_team_expenses_api_view(request):
         queryset = queryset.filter(
             Q(paid_by__iexact=username) | Q(settled_by__username__iexact=username)
         )
-    return JsonResponse({"expenses": [_serialize(obj) for obj in queryset]})
+    return JsonResponse({"expenses": [_serialize(obj) for obj in queryset.order_by("-id")]})
 
 
 @require_POST
@@ -281,6 +281,77 @@ def create_cdc_team_expense_api_view(request):
         updated_by=normalize_text(request.user.username),
     )
     return JsonResponse({"success": True, "expense": _serialize(obj)}, status=201)
+
+
+@require_POST
+@csrf_protect
+def cdc_team_expense_bulk_update_api_view(request):
+    not_allowed = _ensure_cdc_team_access(request)
+    if not_allowed:
+        return not_allowed
+
+    payload = _read_json(request)
+    ids = payload.get("ids", [])
+    
+    if not ids or not isinstance(ids, list):
+        return JsonResponse({"message": "IDs array is required."}, status=400)
+
+    # Resolve FK values
+    try:
+        status = _resolve_fk(ExpenseStatusOption, payload.get("status"), "status") if payload.get("status") else None
+        settled_by = _resolve_fk(User, payload.get("settled_by"), "settled by") if payload.get("settled_by") else None
+    except ValueError as exc:
+        return JsonResponse({"message": str(exc)}, status=400)
+
+    # Validate settled_by and settled_on relationship
+    has_settled_by = settled_by is not None
+    has_settled_on = payload.get("settled_on") is not None and payload.get("settled_on") != ""
+    if has_settled_by and not has_settled_on:
+        return JsonResponse(
+            {"message": "Settled On is required when Settled By is selected"},
+            status=400
+        )
+
+    if settled_by and not UserProfile.objects.filter(user=settled_by, team__name__iexact=CDC_TEAM_NAME).exists():
+        return JsonResponse({"message": "Settled By must belong to CDC Team."}, status=400)
+
+    settled_on = _to_date(payload.get("settled_on")) if has_settled_on else None
+
+    # Fetch all records to be updated
+    records = CDCTeamExpense.objects.select_related("status").filter(id__in=ids)
+    
+    # Check permissions: non-admin users cannot update paid records
+    updated_records = []
+    failed_ids = []
+    
+    for record in records:
+        if not _is_admin_user(request.user) and _is_paid_status(record):
+            failed_ids.append(record.id)
+            continue
+        
+        # Update only specified fields
+        if status is not None:
+            record.status = status
+        if settled_by is not None or has_settled_by:  # Allow clearing settled_by
+            record.settled_by = settled_by
+        if has_settled_on or (settled_on is None and has_settled_by):
+            record.settled_on = settled_on
+        
+        record.updated_by = normalize_text(request.user.username)
+        record.save()
+        updated_records.append(_serialize(record))
+
+    response = {
+        "success": True,
+        "message": f"Updated {len(updated_records)} record(s).",
+        "updated": updated_records,
+    }
+    
+    if failed_ids:
+        response["warning"] = f"Could not update {len(failed_ids)} paid record(s) (non-admin users cannot edit paid expenses)."
+        response["failed_ids"] = failed_ids
+    
+    return JsonResponse(response)
 
 
 @require_http_methods(["PATCH", "DELETE"])

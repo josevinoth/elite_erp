@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BsClockHistory, BsDownload } from "react-icons/bs";
 import CrudPage from "../components/CrudPage";
+import TaskBarChart from "../components/TaskBarChart";
+import TaskCommentsPanel from "../components/TaskCommentsPanel";
 import { useLocation, useNavigate } from "react-router-dom";
 import { listUsers } from "../services/authApi";
 import {
   addActivityOption,
+  listUnreadMessageNotifications,
+  listUnreadTaskNotifications,
+  markMessageNotificationsReadByTask,
+  markTaskNotificationsRead,
   addTaskStatusOption,
   createTask,
   deleteTask,
@@ -23,6 +29,7 @@ function calcDaysExcludingSunday(startStr, endStr) {
   const s = new Date(startStr);
   const e = new Date(endStr);
   if (isNaN(s) || isNaN(e)) return "";
+  if (s > e) return "";
   // Work with calendar dates only (avoid TZ offsets)
   let start = new Date(s.getFullYear(), s.getMonth(), s.getDate());
   let end = new Date(e.getFullYear(), e.getMonth(), e.getDate());
@@ -35,6 +42,20 @@ function calcDaysExcludingSunday(startStr, endStr) {
     cur.setDate(cur.getDate() + 1);
   }
   return String(Math.max(days, 1));
+}
+
+function getTaskDateValidationError(values) {
+  const start = String(values?.start_date || "").trim();
+  const end = String(values?.end_date || "").trim();
+  const approved = String(values?.approved_date || "").trim();
+
+  if (start && end && end < start) {
+    return "End Date must be greater than or equal to Start Date.";
+  }
+  if (end && approved && approved < end) {
+    return "Approved Date must be greater than or equal to End Date.";
+  }
+  return "";
 }
 
 const COLUMNS = [
@@ -53,7 +74,7 @@ const IMPORT_REPORT_COLUMNS = [
   { key: "message", label: "Details" },
 ];
 
-function TaskPage() {
+function TaskPage({ onNotificationsChanged = null }) {
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = useMemo(() => getSessionUser(), []);
@@ -75,7 +96,62 @@ function TaskPage() {
   const [importStatus, setImportStatus] = useState("");
   const [importRowReports, setImportRowReports] = useState([]);
   const [reloadKey, setReloadKey] = useState(0);
+  const [chartRows, setChartRows] = useState([]);
   const fileInputRef = useRef(null);
+
+  const openEditTaskId = useMemo(() => {
+    const query = new URLSearchParams(location.search);
+    return query.get("editTask") || "";
+  }, [location.search]);
+
+  const alertMode = useMemo(() => {
+    const query = new URLSearchParams(location.search);
+    const raw = String(query.get("alert") || "").trim().toLowerCase();
+    return raw === "tasks" || raw === "messages" ? raw : "";
+  }, [location.search]);
+
+  const [unreadTaskIds, setUnreadTaskIds] = useState(null);
+  const [loadingUnreadFilter, setLoadingUnreadFilter] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    if (!alertMode) {
+      setUnreadTaskIds(null);
+      setLoadingUnreadFilter(false);
+      return;
+    }
+
+    const loadUnreadFilter = async () => {
+      setLoadingUnreadFilter(true);
+      try {
+        if (alertMode === "tasks") {
+          const data = await listUnreadTaskNotifications();
+          const ids = Array.isArray(data.tasks) ? data.tasks.map((item) => Number(item.task_id)).filter(Boolean) : [];
+          if (!alive) return;
+          setUnreadTaskIds(Array.from(new Set(ids)));
+          return;
+        }
+
+        const data = await listUnreadMessageNotifications();
+        const ids = Array.isArray(data.messages) ? data.messages.map((item) => Number(item.task_id)).filter(Boolean) : [];
+        if (!alive) return;
+        setUnreadTaskIds(Array.from(new Set(ids)));
+      } catch (_error) {
+        if (!alive) return;
+        setUnreadTaskIds([]);
+      } finally {
+        if (alive) setLoadingUnreadFilter(false);
+      }
+    };
+
+    loadUnreadFilter();
+    return () => {
+      alive = false;
+    };
+  }, [alertMode]);
+
+  const handleRowsChange = useCallback((rows) => setChartRows(rows), []);
 
   const toTitleCase = (value) =>
       String(value || "")
@@ -84,13 +160,33 @@ function TaskPage() {
           .replace(/\b\w/g, (ch) => ch.toUpperCase());
 
   const mapOptions = (values = []) => {
-    const unique = Array.from(new Set(values.filter(Boolean).map((v) => toTitleCase(v))));
-    return unique.map((v) => ({ value: v, label: v }));
+    const normalized = (values || [])
+      .map((item) => {
+        if (item && typeof item === "object") {
+          const value = String(item.value ?? item.id ?? "").trim();
+          const label = toTitleCase(item.label ?? item.name ?? "");
+          if (!value || !label) return null;
+          return { value, label };
+        }
+
+        const label = toTitleCase(item);
+        if (!label) return null;
+        return { value: label, label };
+      })
+      .filter(Boolean);
+
+    const seen = new Set();
+    return normalized.filter((opt) => {
+      const key = `${String(opt.value).toLowerCase()}|${String(opt.label).toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   };
 
   const loadMeta = useCallback(async () => {
     const [metaData, usersData] = await Promise.all([listTaskMeta(), listUsers()]);
-    setTaskStatuses(mapOptions(metaData.task_statuses));
+    setTaskStatuses(mapOptions(metaData.task_statuses_linked || metaData.task_statuses || []));
     setActivityOptions(mapOptions(metaData.activity_options || []));
     setUserOptions(mapOptions((usersData.users || []).map((u) => u.username)));
     setOmanTeamUserOptions(mapOptions(metaData.oman_team_users || []));
@@ -125,11 +221,41 @@ function TaskPage() {
     if (changedKey === "start_date" || changedKey === "end_date") {
       const start = changedKey === "start_date" ? changedValue : allValues.start_date;
       const end = changedKey === "end_date" ? changedValue : allValues.end_date;
+      const approved = String(allValues.approved_date || "");
+      const extra = {};
+
+      if (start && end && String(end) < String(start)) {
+        extra.end_date = "";
+        extra.approved_date = "";
+        extra.no_of_days = "";
+        return extra;
+      }
+
+      if (approved && end && approved < String(end)) {
+        extra.approved_date = "";
+      }
+
       const days = calcDaysExcludingSunday(start, end);
-      if (days !== "") return { no_of_days: days };
+      extra.no_of_days = days || "";
+      return extra;
+    }
+
+    if (changedKey === "approved_date") {
+      const approved = String(changedValue || "");
+      const end = String(allValues.end_date || "");
+      if (approved && end && approved < end) {
+        return { approved_date: "" };
+      }
     }
     return {};
   }, []);
+
+  const defaultTaskStatusValue = useMemo(() => {
+    const match = (taskStatuses || []).find(
+      (opt) => String(opt?.label || "").trim().toLowerCase() === "yet to start"
+    );
+    return match ? String(match.value) : "Yet To Start";
+  }, [taskStatuses]);
 
   const fields = useMemo(
       () => [
@@ -153,9 +279,20 @@ function TaskPage() {
           onAppend: appendActivity,
           required: true,
         },
-        { key: "revision", label: "Revision", default: "01", readOnly: !isAdmin },
+        {
+          key: "revision",
+          label: "Revision",
+          default: "Auto",
+          readOnly: true,
+        },
         { key: "start_date", label: "Start Date", type: "date", required: true },
-        { key: "end_date", label: "End Date", type: "date", required: true },
+        {
+          key: "end_date",
+          label: "End Date",
+          type: "date",
+          required: true,
+          min: (formValues) => formValues.start_date || undefined,
+        },
         {
           key: "no_of_days",
           label: "No of Days (auto)",
@@ -165,7 +302,12 @@ function TaskPage() {
         },
         { key: "drawn_by", label: "Drawn By", options: userOptions, required: true },
         { key: "approved_by", label: "Approved By", options: omanTeamUserOptions },
-        { key: "approved_date", label: "Approved Date", type: "date" },
+        {
+          key: "approved_date",
+          label: "Approved Date",
+          type: "date",
+          min: (formValues) => formValues.end_date || undefined,
+        },
 
         { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions, required: true },
         {
@@ -173,16 +315,62 @@ function TaskPage() {
           label: "Status",
           options: taskStatuses,
           onAppend: appendTaskStatus,
+          required: true,
+          default: defaultTaskStatusValue,
         },
-        { key: "remarks", label: "Remarks", type: "textarea" },
       ],
-      [taskStatuses, activityOptions, userOptions, omanTeamUserOptions, projectOptions, loggedInUsername, isAdmin]
+      [
+        taskStatuses,
+        activityOptions,
+        userOptions,
+        omanTeamUserOptions,
+        projectOptions,
+        loggedInUsername,
+        isAdmin,
+        defaultTaskStatusValue,
+      ]
   );
 
   const fetchFn = useCallback(async () => {
     const data = await listTasks();
-    return data.tasks || [];
-  }, []);
+    const rows = data.tasks || [];
+
+    if (!alertMode) {
+      return rows;
+    }
+    if (unreadTaskIds === null) {
+      return [];
+    }
+
+    const unreadSet = new Set((unreadTaskIds || []).map((id) => String(id)));
+    return rows.filter((row) => unreadSet.has(String(row.id)));
+  }, [alertMode, unreadTaskIds]);
+
+  const handleTaskEditOpen = useCallback(
+    async (row) => {
+      const taskId = Number(row?.id || 0);
+      if (!taskId) return;
+
+      let didMark = false;
+
+      if (alertMode === "tasks") {
+        await markTaskNotificationsRead([taskId]);
+        setUnreadTaskIds((prev) => (Array.isArray(prev) ? prev.filter((id) => Number(id) !== taskId) : prev));
+        didMark = true;
+      }
+
+      if (alertMode === "messages") {
+        await markMessageNotificationsReadByTask(taskId);
+        setUnreadTaskIds((prev) => (Array.isArray(prev) ? prev.filter((id) => Number(id) !== taskId) : prev));
+        didMark = true;
+      }
+
+      if (didMark && typeof onNotificationsChanged === "function") {
+        onNotificationsChanged();
+      }
+    },
+    [alertMode, onNotificationsChanged]
+  );
 
   const createFn = useCallback(async (payload) => {
     const data = await createTask(payload);
@@ -220,10 +408,16 @@ function TaskPage() {
         className: "users-action--timesheet",
         icon: BsClockHistory,
         onClick: openTimesheetForTask,
-        disabled: (row) =>
-          !isAdmin &&
-          (row.task_status || "").trim().toLowerCase() !== "work in progress",
-        disabledTitle: "Only available when status is Work In Progress",
+        disabled: (row) => {
+          const allowedStatuses = ["yet to start", "awaiting for approval", "work in progress"];
+          const status = (row.task_status || "").trim().toLowerCase();
+          const endDate = row.end_date ? new Date(row.end_date) : null;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const endDateValid = endDate && endDate >= today;
+          return !(endDateValid && allowedStatuses.includes(status));
+        },
+        disabledTitle: "Only available when end date is today or in the future and status is Yet To Start, Awaiting For Approval, or Work In Progress",
       },
     ],
     [openTimesheetForTask, isAdmin]
@@ -235,6 +429,10 @@ function TaskPage() {
   const isTaskDeleteDisabled = (row) => !isAdmin && isCompletedStatus(row?.task_status);
 
   const isTaskSaveDisabled = (editRow, formValues) => {
+    if (getTaskDateValidationError(formValues)) {
+      return true;
+    }
+
     const nextStatusCompleted = isCompletedStatus(formValues?.task_status);
     const missingApprovalInfo =
       nextStatusCompleted &&
@@ -398,6 +596,18 @@ function TaskPage() {
         )}
       </section>
 
+      {alertMode ? (
+        <section className="module-page" style={{ paddingTop: 0, paddingBottom: "0.5rem" }}>
+          <p className="users-status">
+            {loadingUnreadFilter
+              ? "Loading unread alerts..."
+              : alertMode === "messages"
+                ? "Showing tasks that have unread messages. Open a task to mark its messages as viewed."
+                : "Showing unread new tasks. Open a task to mark it as viewed."}
+          </p>
+        </section>
+      ) : null}
+
       <CrudPage
         key={reloadKey}
         title="Tasks"
@@ -407,6 +617,8 @@ function TaskPage() {
         createFn={createFn}
         updateFn={updateFn}
         deleteFn={deleteTask}
+        openEditIdOnMount={openEditTaskId || null}
+        onEditOpen={handleTaskEditOpen}
         rowActions={taskRowActions}
         computeValues={computeValues}
         tableWrapClassName="task-table-wrap"
@@ -415,7 +627,22 @@ function TaskPage() {
         deleteDisabledPredicate={isTaskDeleteDisabled}
         deleteDisabledTitle="Completed tasks can only be deleted by admin users"
         saveDisabledPredicate={isTaskSaveDisabled}
-        saveDisabledTitle="Completed status requires Approved By and Approved Date; completed tasks can only be edited by admin users"
+        saveDisabledTitle={
+          "End Date must be >= Start Date, Approved Date must be >= End Date, and Completed status requires Approved By + Approved Date; completed tasks can only be edited by admin users"
+        }
+        onRowsChange={handleRowsChange}
+        renderFooter={() => <TaskBarChart rows={chartRows} />}
+        renderFormExtension={({ editRow, formValues }) => (
+          <>
+            {getTaskDateValidationError(formValues) ? (
+              <p className="users-status users-status--error">{getTaskDateValidationError(formValues)}</p>
+            ) : null}
+            <TaskCommentsPanel
+              taskId={editRow?.id || null}
+              onCommentCreated={onNotificationsChanged}
+            />
+          </>
+        )}
       />
     </>
   );

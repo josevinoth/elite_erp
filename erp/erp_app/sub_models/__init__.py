@@ -1,8 +1,10 @@
 from .activity import Activity
 from .cdc_team_expense import CDCTeamExpense
+from .comment import Comment, CommentAttachment
 from .expense_item import ExpenseItem
 from .expense_session import ExpenseSession
 from .expense_status_option import ExpenseStatusOption
+from .lce_cost_detail import LCECostDetail
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .project import Project
@@ -16,13 +18,17 @@ from .timesheet import TimeSheet
 from .user_profile import UserProfile
 from .user_status_option import UserStatusOption
 from .vendor import Vendor
+from .notification_read import TaskNotificationRead, CommentNotificationRead
 
 __all__ = [
 	"Activity",
+	"Comment",
+	"CommentAttachment",
 	"CDCTeamExpense",
 	"ExpenseItem",
 	"ExpenseSession",
 	"ExpenseStatusOption",
+	"LCECostDetail",
 	"Vendor",
 	"Project",
 	"ProjectLifecycleStatusOption",
@@ -36,5 +42,6 @@ __all__ = [
 	"Team",
 	"UserStatusOption",
 	"UserProfile",
+	"TaskNotificationRead",
+	"CommentNotificationRead",
 ]
-
