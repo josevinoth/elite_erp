@@ -58,6 +58,27 @@ function getTaskDateValidationError(values) {
   return "";
 }
 
+function getTaskCompletionValidationError(values, isCompletedStatus) {
+  const completed = isCompletedStatus(values?.task_status);
+  if (!completed) {
+    return "";
+  }
+
+  const missingApprovedBy = !String(values?.approved_by || "").trim();
+  const missingApprovedDate = !String(values?.approved_date || "").trim();
+
+  if (missingApprovedBy && missingApprovedDate) {
+    return "Approved By and Approved Date are required when Status is Completed.";
+  }
+  if (missingApprovedBy) {
+    return "Approved By is required when Status is Completed.";
+  }
+  if (missingApprovedDate) {
+    return "Approved Date is required when Status is Completed.";
+  }
+  return "";
+}
+
 const COLUMNS = [
   { key: "project_id_name", label: "Project ID + Name" },
   { key: "activity", label: "Activity" },
@@ -257,6 +278,26 @@ function TaskPage({ onNotificationsChanged = null }) {
     return match ? String(match.value) : "Yet To Start";
   }, [taskStatuses]);
 
+  const resolveTaskStatusLabel = useCallback(
+    (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+
+      const byValue = (taskStatuses || []).find((opt) => String(opt?.value || "").trim() === raw);
+      if (byValue?.label) {
+        return String(byValue.label).trim();
+      }
+
+      return raw;
+    },
+    [taskStatuses]
+  );
+
+  const isCompletedStatus = useCallback(
+    (value) => String(resolveTaskStatusLabel(value) || "").trim().toLowerCase() === "completed",
+    [resolveTaskStatusLabel]
+  );
+
   const fields = useMemo(
       () => [
         {
@@ -301,12 +342,18 @@ function TaskPage({ onNotificationsChanged = null }) {
           default: "1",
         },
         { key: "drawn_by", label: "Drawn By", options: userOptions, required: true },
-        { key: "approved_by", label: "Approved By", options: omanTeamUserOptions },
+        {
+          key: "approved_by",
+          label: "Approved By",
+          options: omanTeamUserOptions,
+          required: (formValues) => isCompletedStatus(formValues?.task_status),
+        },
         {
           key: "approved_date",
           label: "Approved Date",
           type: "date",
           min: (formValues) => formValues.end_date || undefined,
+          required: (formValues) => isCompletedStatus(formValues?.task_status),
         },
 
         { key: "project_owner", label: "Project Owner", options: omanTeamUserOptions, required: true },
@@ -326,7 +373,7 @@ function TaskPage({ onNotificationsChanged = null }) {
         omanTeamUserOptions,
         projectOptions,
         loggedInUsername,
-        isAdmin,
+        isCompletedStatus,
         defaultTaskStatusValue,
       ]
   );
@@ -423,8 +470,6 @@ function TaskPage({ onNotificationsChanged = null }) {
     [openTimesheetForTask, isAdmin]
   );
 
-  const isCompletedStatus = (value) =>
-    String(value || "").trim().toLowerCase() === "completed";
 
   const isTaskDeleteDisabled = (row) => !isAdmin && isCompletedStatus(row?.task_status);
 
@@ -433,12 +478,7 @@ function TaskPage({ onNotificationsChanged = null }) {
       return true;
     }
 
-    const nextStatusCompleted = isCompletedStatus(formValues?.task_status);
-    const missingApprovalInfo =
-      nextStatusCompleted &&
-      (!String(formValues?.approved_by || "").trim() || !String(formValues?.approved_date || "").trim());
-
-    if (missingApprovalInfo) {
+    if (getTaskCompletionValidationError(formValues, isCompletedStatus)) {
       return true;
     }
 
@@ -636,6 +676,11 @@ function TaskPage({ onNotificationsChanged = null }) {
           <>
             {getTaskDateValidationError(formValues) ? (
               <p className="users-status users-status--error">{getTaskDateValidationError(formValues)}</p>
+            ) : null}
+            {getTaskCompletionValidationError(formValues, isCompletedStatus) ? (
+              <p className="users-status users-status--error">
+                {getTaskCompletionValidationError(formValues, isCompletedStatus)}
+              </p>
             ) : null}
             <TaskCommentsPanel
               taskId={editRow?.id || null}

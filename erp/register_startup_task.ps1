@@ -1,12 +1,12 @@
 $taskName = "EliteERP-Prod"
 $projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $projectDir
-$scriptPath = Join-Path $projectDir "erp_control.bat"
+$scriptPath = Join-Path $projectDir "startup_prod.bat"
 $taskLogPath = Join-Path $projectDir "logs\task_scheduler.log"
 $userId = "$env:USERDOMAIN\$env:USERNAME"
 
 if (-not (Test-Path $scriptPath)) {
-    Write-Error "erp_control.bat not found at $scriptPath"
+    Write-Error "startup_prod.bat not found at $scriptPath"
     exit 1
 }
 
@@ -15,7 +15,7 @@ if (-not (Test-Path (Split-Path -Parent $taskLogPath))) {
 }
 
 # Keep cmd.exe explicit and append scheduler-level logs for easier troubleshooting.
-$actionArgs = "/c `"`"$scriptPath`" start 8010 >> `"$taskLogPath`" 2>&1`""
+$actionArgs = "/c `"`"$scriptPath`" 8010 >> `"$taskLogPath`" 2>&1`""
 $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $actionArgs -WorkingDirectory $rootDir
 
 # Run both at machine startup and at user logon.

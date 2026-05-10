@@ -176,6 +176,9 @@ function CrudPage({
   const isFieldReadOnly = (field) =>
     typeof field.readOnly === "function" ? !!field.readOnly(formValues, editRow) : !!field.readOnly;
 
+  const isFieldRequired = (field) =>
+    typeof field.required === "function" ? !!field.required(formValues, editRow) : !!field.required;
+
   const selectStyles = useMemo(
     () => ({
       control: (base, state) => ({
@@ -628,7 +631,7 @@ function CrudPage({
                 <div className="modal-form__row" key={field.key}>
                   <label className="modal-form__label" htmlFor={`mf-${field.key}`}>
                     {field.label}
-                    {field.required ? " *" : ""}
+                    {isFieldRequired(field) ? " *" : ""}
                   </label>
 
                   {field.options ? (
@@ -670,7 +673,7 @@ function CrudPage({
                         autoComplete="off"
                         value={formValues[field.key] ?? ""}
                         onChange={() => {}}
-                        required={field.required}
+                        required={isFieldRequired(field)}
                         style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
                       />
 
@@ -691,7 +694,7 @@ function CrudPage({
                       className="auth-input modal-form__textarea"
                       value={formValues[field.key] ?? ""}
                       onChange={handleChange}
-                      required={field.required}
+                      required={isFieldRequired(field)}
                       readOnly={isFieldReadOnly(field)}
                     />
                   ) : (
@@ -704,7 +707,7 @@ function CrudPage({
                       onChange={(!isFieldReadOnly(field) && !field.disabled) ? handleChange : undefined}
                       readOnly={isFieldReadOnly(field)}
                       disabled={field.disabled}
-                      required={field.required}
+                      required={isFieldRequired(field)}
                       {...(field.min !== undefined ? { min: field.min } : {})}
                       {...(field.max !== undefined ? { max: field.max } : {})}
                       {...(field.step !== undefined ? { step: field.step } : {})}
