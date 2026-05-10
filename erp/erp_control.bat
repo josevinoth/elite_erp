@@ -22,6 +22,7 @@ set "VENV_PY=%ROOT_DIR%\venv\Scripts\python.exe"
 set "LOG_DIR=%SCRIPT_DIR%logs"
 set "SERVER_LOG=%LOG_DIR%\server_%PORT%.log"
 set "STARTUP_LOG=%LOG_DIR%\startup_%PORT%.log"
+set "SHUTDOWN_WAIT_SECONDS=20"
 
 if /i "%ACTION%"=="start" goto :start
 if /i "%ACTION%"=="stop" goto :stop
@@ -46,10 +47,20 @@ for /f "tokens=5" %%p in ('netstat -aon ^| findstr ":%PORT%" ^| findstr "LISTENI
     set "FOUND_RUNNING=1"
     echo [WARN] Port %PORT% already in use by PID %%p. Stopping it...
     echo [WARN] Port %PORT% already in use by PID %%p. Stopping it...>> "%STARTUP_LOG%"
-    taskkill /PID %%p /F >nul 2>&1
+    taskkill /PID %%p /T /F >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Failed to stop PID %%p. Try running this script in an elevated shell.
+        echo [ERROR] Failed to stop PID %%p. Try running this script in an elevated shell.>> "%STARTUP_LOG%"
+        exit /b 1
+    )
 )
 if "!FOUND_RUNNING!"=="1" (
-    timeout /t 1 /nobreak >nul
+    call :wait_for_port_free %PORT% %SHUTDOWN_WAIT_SECONDS%
+    if errorlevel 1 (
+        echo [ERROR] Port %PORT% is still busy after shutdown wait. Aborting start.
+        echo [ERROR] Port %PORT% is still busy after shutdown wait. Aborting start.>> "%STARTUP_LOG%"
+        exit /b 1
+    )
 )
 
 if exist "%VENV_DOT_PY%" (
@@ -133,6 +144,13 @@ set "PYTHONUNBUFFERED=1"
 set "ERP_HOST=%HOST%"
 set "ERP_PORT=%PORT%"
 
+call :wait_for_log_writable "%SERVER_LOG%" %SHUTDOWN_WAIT_SECONDS%
+if errorlevel 1 (
+    echo [ERROR] Log file is still locked: %SERVER_LOG%
+    echo [ERROR] Log file is still locked: %SERVER_LOG%>> "%STARTUP_LOG%"
+    exit /b 1
+)
+
 echo [INFO] Starting server process...>> "%STARTUP_LOG%"
 "%PY_CMD%" "%SCRIPT_DIR%serve.py" >> "%SERVER_LOG%" 2>&1
 exit /b %errorlevel%
@@ -143,11 +161,19 @@ set "FOUND=0"
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr ":%PORT%" ^| findstr "LISTENING"') do (
     set "FOUND=1"
     echo [INFO] Stopping PID %%p
-    taskkill /PID %%p /F >nul 2>&1
+    taskkill /PID %%p /T /F >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Failed to stop PID %%p. Try running this script in an elevated shell.
+        exit /b 1
+    )
 )
 if "%FOUND%"=="0" (
     echo [INFO] No process is listening on port %PORT%.
 ) else (
+    call :wait_for_port_free %PORT% %SHUTDOWN_WAIT_SECONDS%
+    if errorlevel 1 (
+        echo [WARN] Port %PORT% still appears busy after stop wait.
+    )
     echo [OK] Stop command completed for port %PORT%.
 )
 exit /b 0
@@ -185,4 +211,32 @@ if exist "%SERVER_LOG%" (
     echo [INFO] Server log not found: %SERVER_LOG%
 )
 exit /b 0
+
+:wait_for_port_free
+setlocal
+set "WP_PORT=%~1"
+set /a "WP_MAX=%~2"
+if "%WP_MAX%"=="" set /a "WP_MAX=20"
+for /l %%s in (1,1,%WP_MAX%) do (
+    netstat -aon | findstr ":%WP_PORT%" | findstr "LISTENING" >nul
+    if errorlevel 1 (
+        endlocal & exit /b 0
+    )
+    timeout /t 1 /nobreak >nul
+)
+endlocal & exit /b 1
+
+:wait_for_log_writable
+setlocal
+set "WL_FILE=%~1"
+set /a "WL_MAX=%~2"
+if "%WL_MAX%"=="" set /a "WL_MAX=20"
+for /l %%s in (1,1,%WL_MAX%) do (
+    >>"%WL_FILE%" echo.
+    if not errorlevel 1 (
+        endlocal & exit /b 0
+    )
+    timeout /t 1 /nobreak >nul
+)
+endlocal & exit /b 1
 

@@ -1,28 +1,34 @@
-$taskName = "EliteERP-Prod"
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+
+if (-not $isAdmin) {
+    Write-Host "[INFO] Elevation required. Relaunching this script as Administrator..."
+    $argList = @(
+        "-NoProfile"
+        "-ExecutionPolicy", "Bypass"
+        "-File", "`"$PSCommandPath`""
+    )
+    Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Verb RunAs | Out-Null
+    exit 0
+}
+
+$taskName = "EliteERP-Startup"
+
 $projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$rootDir = Split-Path -Parent $projectDir
-$scriptPath = Join-Path $projectDir "startup_prod.bat"
-$taskLogPath = Join-Path $projectDir "logs\task_scheduler.log"
+$startupScriptPath = Join-Path $projectDir "startup_prod.bat"
 $userId = "$env:USERDOMAIN\$env:USERNAME"
 
-if (-not (Test-Path $scriptPath)) {
-    Write-Error "startup_prod.bat not found at $scriptPath"
+if (-not (Test-Path $startupScriptPath)) {
+    Write-Error "startup_prod.bat not found at $startupScriptPath"
     exit 1
 }
 
-if (-not (Test-Path (Split-Path -Parent $taskLogPath))) {
-    New-Item -ItemType Directory -Path (Split-Path -Parent $taskLogPath) -Force | Out-Null
-}
+# Single action: one .bat file that launches backend and tunnel.
+$startupAction = New-ScheduledTaskAction -Execute $startupScriptPath -Argument "8010" -WorkingDirectory $projectDir
 
-# Keep cmd.exe explicit and append scheduler-level logs for easier troubleshooting.
-$actionArgs = "/c `"`"$scriptPath`" 8010 >> `"$taskLogPath`" 2>&1`""
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $actionArgs -WorkingDirectory $rootDir
-
-# Run both at machine startup and at user logon.
 $startupTrigger = New-ScheduledTaskTrigger -AtStartup
-$startupTrigger.Delay = "PT45S"
-$logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
-$logonTrigger.Delay = "PT30S"
+$startupTrigger.Delay = "PT60S"
 
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -33,17 +39,25 @@ $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 
-# S4U runs without requiring an interactive desktop session.
 $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType S4U -RunLevel Highest
 
 try {
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($startupTrigger, $logonTrigger) -Settings $settings -Principal $principal -Description "Starts EliteERP production server at startup/logon." -Force -ErrorAction Stop | Out-Null
-    Write-Host "[OK] Scheduled task '$taskName' registered successfully."
+    foreach ($legacyTask in @("EliteERP-Backend", "EliteERP-Tunnel")) {
+        if (Get-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue) {
+            Unregister-ScheduledTask -TaskName $legacyTask -Confirm:$false -ErrorAction SilentlyContinue
+        }
+    }
+
+    Register-ScheduledTask -TaskName $taskName -Action $startupAction -Trigger $startupTrigger -Settings $settings -Principal $principal -Description "Starts EliteERP backend and Cloudflare tunnel at system startup." -Force -ErrorAction Stop | Out-Null
+
+    Write-Host "[OK] Scheduled tasks registered successfully."
+    Write-Host ""
     Write-Host "Task Details:"
-    Write-Host "  - Name: $taskName"
-    Write-Host "  - Script: $scriptPath"
-    Write-Host "  - Working Directory: $rootDir"
-    Write-Host "  - Triggers: AtStartup (45s delay), AtLogOn (30s delay)"
+    Write-Host "  - Startup Task: $taskName"
+    Write-Host "    Program/script: $startupScriptPath"
+    Write-Host "    Arguments: 8010"
+    Write-Host "    Trigger: AtStartup (60s delay)"
+    Write-Host "  - Working Directory: $projectDir"
     Write-Host "  - Run mode: Whether user is logged on or not (S4U)"
     Write-Host "  - User: $userId"
     Write-Host ""
@@ -52,7 +66,7 @@ try {
     Write-Host "  - $projectDir\logs\startup_8010.log"
     Write-Host "  - $projectDir\logs\server_8010.log"
 } catch {
-    Write-Error "Failed to register scheduled task. Run this script in an elevated PowerShell (Run as Administrator)."
+    Write-Error "Failed to register scheduled tasks. Run this script in an elevated PowerShell (Run as Administrator)."
     Write-Error $_
     exit 1
 }
