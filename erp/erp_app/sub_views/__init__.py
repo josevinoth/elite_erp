@@ -46,6 +46,18 @@ from .lce_costing_api import (
     list_lce_cost_details_by_project_api_view,
     bulk_save_lce_cost_details_api_view,
 )
+from .lce_estimate_api import (
+    create_lce_estimate_api_view,
+    lce_estimate_record_api_view,
+    list_lce_estimates_api_view,
+)
+from .lab_furniture_item_api import (
+    create_lab_furniture_item_category_api_view,
+    create_lab_furniture_item_api_view,
+    list_lab_furniture_item_categories_api_view,
+    lab_furniture_item_detail_api_view,
+    list_lab_furniture_items_api_view,
+)
 from .projects_api import (
     create_project_api_view,
     create_project_lifecycle_status_option_api_view,
@@ -144,5 +156,13 @@ __all__ = [
     "list_lce_cost_details_by_project_api_view",
     "bulk_save_lce_cost_details_api_view",
     "calculate_lce_cost_index_api_view",
+    "create_lce_estimate_api_view",
+    "list_lce_estimates_api_view",
+    "lce_estimate_record_api_view",
+    "list_lab_furniture_item_categories_api_view",
+    "create_lab_furniture_item_category_api_view",
+    "list_lab_furniture_items_api_view",
+    "create_lab_furniture_item_api_view",
+    "lab_furniture_item_detail_api_view",
 ]
 

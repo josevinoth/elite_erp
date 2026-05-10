@@ -73,6 +73,14 @@ from .sub_views import (
     list_lce_cost_details_by_project_api_view,
     bulk_save_lce_cost_details_api_view,
     calculate_lce_cost_index_api_view,
+    create_lce_estimate_api_view,
+    lce_estimate_record_api_view,
+    list_lce_estimates_api_view,
+    list_lab_furniture_items_api_view,
+    list_lab_furniture_item_categories_api_view,
+    create_lab_furniture_item_category_api_view,
+    create_lab_furniture_item_api_view,
+    lab_furniture_item_detail_api_view,
 )
 
 __all__ = [
@@ -149,4 +157,12 @@ __all__ = [
     "list_lce_cost_details_by_project_api_view",
     "bulk_save_lce_cost_details_api_view",
     "calculate_lce_cost_index_api_view",
+    "create_lce_estimate_api_view",
+    "list_lce_estimates_api_view",
+    "lce_estimate_record_api_view",
+    "list_lab_furniture_item_categories_api_view",
+    "create_lab_furniture_item_category_api_view",
+    "list_lab_furniture_items_api_view",
+    "create_lab_furniture_item_api_view",
+    "lab_furniture_item_detail_api_view",
 ]

@@ -71,6 +71,14 @@ from .views import (
     list_lce_cost_details_by_project_api_view,
     bulk_save_lce_cost_details_api_view,
     calculate_lce_cost_index_api_view,
+    create_lce_estimate_api_view,
+    lce_estimate_record_api_view,
+    list_lce_estimates_api_view,
+    list_lab_furniture_items_api_view,
+    list_lab_furniture_item_categories_api_view,
+    create_lab_furniture_item_category_api_view,
+    create_lab_furniture_item_api_view,
+    lab_furniture_item_detail_api_view,
 )
 
 urlpatterns = [
@@ -157,4 +165,13 @@ urlpatterns = [
     path('api/lce-costing/by-project/<int:project_id>/', list_lce_cost_details_by_project_api_view, name='api-lce-costing-by-project'),
     path('api/lce-costing/cost-index/calculate/', calculate_lce_cost_index_api_view, name='api-lce-costing-cost-index-calculate'),
     path('api/lce-costing/<int:pk>/', lce_cost_detail_api_view, name='api-lce-costing-detail'),
+    path('api/lce-estimates/', list_lce_estimates_api_view, name='api-lce-estimates-list'),
+    path('api/lce-estimates/create/', create_lce_estimate_api_view, name='api-lce-estimates-create'),
+    path('api/lce-estimates/record/<int:lce_id>/', lce_estimate_record_api_view, name='api-lce-estimates-record'),
+    # lab furniture items
+    path('api/lab-furniture-items/', list_lab_furniture_items_api_view, name='api-lab-furniture-items-list'),
+    path('api/lab-furniture-item-categories/', list_lab_furniture_item_categories_api_view, name='api-lab-furniture-item-categories-list'),
+    path('api/lab-furniture-item-categories/create/', create_lab_furniture_item_category_api_view, name='api-lab-furniture-item-categories-create'),
+    path('api/lab-furniture-items/create/', create_lab_furniture_item_api_view, name='api-lab-furniture-items-create'),
+    path('api/lab-furniture-items/<int:pk>/', lab_furniture_item_detail_api_view, name='api-lab-furniture-items-detail'),
 ]

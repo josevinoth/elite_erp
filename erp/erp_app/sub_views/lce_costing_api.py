@@ -7,45 +7,37 @@ from django.http import FileResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from ..sub_models.country_currency import CountryCurrency
 from ..sub_models.lce_cost_detail import LCECostDetail
 from ..sub_models.project import Project
 from ..utils import normalize_text
 
 
 LCE_FORMAT_COST_HEADS = [
-    {"name": "EX WORKS MATERIAL COST (FOREIGN CURRENCY)", "currency": "Foreign Currency", "reference_note": ""},
-    {"name": "PACKING CHARGES (FOREIGN CURRENCY)", "currency": "Foreign Currency", "reference_note": ""},
-    {"name": "DOCUMENTATION CHARGES (FOREIGN CURRENCY)", "currency": "Foreign Currency", "reference_note": ""},
-    {"name": "ANY OTHER CHARGES (FOREIGN CURRENCY)", "currency": "Foreign Currency", "reference_note": "EMPTY CONTAINER WEIGHING CHARGE"},
-    {"name": "TOTAL SUPPLIER PRICE (FOREIGN CURRENCY)", "currency": "Foreign Currency", "reference_note": "FORMULA"},
-    {"name": "ADVANCE PAYMENT VALUE (FOREIGN CURRENCY)", "currency": "Foreign Currency", "reference_note": "100% advance"},
-    {"name": "BANK EXCHANGE RATE - ADVANCE PAYMENT", "currency": "Rate", "reference_note": ""},
+    {"name": "EX WORKS MATERIAL COST", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "PACKING CHARGES", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "DOCUMENTATION", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "OTHER CHARGES 1", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "OTHER CHARGES 2", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "OTHER CHARGES 3", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "OTHER CHARGES 4", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "TOTAL SUPPLIER PRICE", "currency": "FOREIGN", "reference_note": "FORMULA"},
+    {"name": "ADVANCE PAYMENT VALUE", "currency": "FOREIGN", "reference_note": ""},
+    {"name": "BANK EXCHANGE RATE", "currency": "RATE", "reference_note": ""},
     {"name": "ADVANCE PAYMENT VALUE (OMR)", "currency": "OMR", "reference_note": "FORMULA"},
-    {"name": "BALANCE PAYMENT VALUE (FOREIGN CURRENCY)", "currency": "Foreign Currency", "reference_note": ""},
-    {"name": "BANK EXCHANGE RATE - BALANCE PAYMENT", "currency": "Rate", "reference_note": ""},
+    {"name": "BALANCE PAYMENT VALUE", "currency": "FOREIGN", "reference_note": "FORMULA"},
     {"name": "BALANCE PAYMENT VALUE (OMR)", "currency": "OMR", "reference_note": "FORMULA"},
     {"name": "TOTAL SUPPLIER PRICE (OMR)", "currency": "OMR", "reference_note": "FORMULA"},
     {"name": "BANK MUSCAT CHARGE - ADVANCE PAYMENT", "currency": "OMR", "reference_note": ""},
     {"name": "BANK MUSCAT CHARGE - BALANCE PAYMENT", "currency": "OMR", "reference_note": ""},
-    {"name": "FREIGHT CHARGE", "currency": "OMR", "reference_note": "FRONTLINE QUOTE DT 27-MAR-25"},
-    {
-        "name": "CUSTOMS DUTY (OMR)",
-        "currency": "OMR",
-        "reference_note": "(INVOICE VALUE + FREIGHT VALUE) * INSURANCE(1%) * CUSTOMS (5%)",
-    },
-    {"name": "OMAN CUSTOMS BOE CHARGE (OMR)", "currency": "OMR", "reference_note": "FIXED AMOUNT"},
+    {"name": "FREIGHT CHARGE", "currency": "OMR", "reference_note": ""},
+    {"name": "CUSTOMS DUTY (OMR)", "currency": "OMR", "reference_note": ""},
+    {"name": "OMAN CUSTOMS BOE CHARGE (OMR)", "currency": "OMR", "reference_note": ""},
     {"name": "ROP CUSTOMS INSPECTION CHARGE", "currency": "OMR", "reference_note": ""},
-    {"name": "UNLOADING CHARGE @ MUSCAT STORES", "currency": "OMR", "reference_note": "FORK LIFT TO UNLOAD FROM CONTAINER"},
-    {
-        "name": "UNLOADING CHARGE @ MUSCAT STORES",
-        "currency": "OMR",
-        "reference_note": "6 LABOURS @ 10 RIALS TO SHIFT THE UNLOADED PALLET MANUALLY",
-    },
-    {
-        "name": "LOADING CHARGE @ MUSCAT STORES AT THE TIME OF CUSTOMER DELIVERY",
-        "currency": "OMR",
-        "reference_note": "MANUAL LOADING COST CONSIDERED IN CUSTOMER QUOTE COSTING",
-    },
+    {"name": "UNLOADING CHARGE @ MUSCAT STORES 1", "currency": "OMR", "reference_note": ""},
+    {"name": "UNLOADING CHARGE @ MUSCAT STORES 2", "currency": "OMR", "reference_note": ""},
+    {"name": "LOADING CHARGE @ MUSCAT STORES AT THE TIME OF CUSTOMER DELIVERY", "currency": "OMR", "reference_note": ""},
+    {"name": "TOTAL", "currency": "OMR", "reference_note": "FORMULA"},
 ]
 
 
@@ -222,7 +214,7 @@ def _build_lce_export_bytes(rows):
         ws.cell(row=row_idx, column=3, value=obj.project.project_name if obj.project else "")
         ws.cell(row=row_idx, column=4, value=obj.cost_head)
         ws.cell(row=row_idx, column=5, value=float(obj.amount or 0))
-        ws.cell(row=row_idx, column=6, value=obj.currency)
+        ws.cell(row=row_idx, column=6, value=obj.currency.currency_code if obj.currency_id else "")
         ws.cell(row=row_idx, column=7, value=float(obj.quantity or 0))
         ws.cell(row=row_idx, column=8, value=obj.unit)
         ws.cell(row=row_idx, column=9, value=float(line_total or 0))
@@ -276,13 +268,48 @@ def _to_project(project_id):
         return None
 
 
+def _serialize_currency(obj):
+    if not obj:
+        return None
+    return {
+        "id": obj.id,
+        "country_name": obj.country_name,
+        "currency_code": obj.currency_code,
+        "currency_name": obj.currency_name,
+        "label": f"{obj.country_name} - {obj.currency_code}",
+    }
+
+
+def _resolve_currency(value):
+    if value in (None, ""):
+        return None
+
+    if isinstance(value, CountryCurrency):
+        return value
+
+    if isinstance(value, dict):
+        value = value.get("id") or value.get("currency_code") or value.get("value") or ""
+
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return CountryCurrency.objects.filter(pk=int(value)).first()
+
+    raw = normalize_text(value).upper()
+    if not raw:
+        return None
+
+    return (
+        CountryCurrency.objects.filter(currency_code__iexact=raw).first()
+        or CountryCurrency.objects.filter(currency_name__iexact=raw).first()
+    )
+
+
 def _currency_to_omr_factor(currency, fx_rates, default_foreign_rate):
     code = normalize_text(currency).upper()
     if not code or code == "OMR":
         return 1.0
     if code == "RATE":
         return 1.0
-    if code == "FOREIGN CURRENCY":
+    if code in {"FOREIGN", "FOREIGN CURRENCY"}:
         return max(default_foreign_rate, 0.0)
     return max(_to_float(fx_rates.get(code), default_foreign_rate), 0.0)
 
@@ -310,6 +337,7 @@ def _driver_value(product, basis):
 
 def _serialize(obj):
     line_total = (obj.amount or Decimal("0")) * (obj.quantity or Decimal("0"))
+    currency_data = _serialize_currency(obj.currency)
     return {
         "id": obj.id,
         "project": obj.project.id if obj.project else None,
@@ -317,7 +345,9 @@ def _serialize(obj):
         "project_name": obj.project.project_name if obj.project else "",
         "cost_head": obj.cost_head,
         "amount": str(obj.amount),
-        "currency": obj.currency,
+        "currency": currency_data["currency_code"] if currency_data else "",
+        "currency_id": currency_data["id"] if currency_data else None,
+        "currency_meta": currency_data,
         "quantity": str(obj.quantity),
         "unit": obj.unit,
         "line_total": str(line_total),
@@ -350,7 +380,7 @@ def export_lce_costing_excel_api_view(request):
     if not_allowed:
         return not_allowed
 
-    rows = LCECostDetail.objects.select_related("project").order_by("-id")
+    rows = LCECostDetail.objects.select_related("project", "currency").order_by("-id")
     content = _build_lce_export_bytes(rows)
     if content is None:
         return JsonResponse({"message": "Excel export dependency not installed."}, status=500)
@@ -368,16 +398,11 @@ def list_lce_costing_meta_api_view(request):
     if not_allowed:
         return not_allowed
 
-    projects = [
-        {
-            "value": project.pk,
-            "label": f"{project.project_id} - {project.project_name}".strip(" -"),
-            "project_id": project.project_id,
-            "project_name": project.project_name,
-        }
-        for project in Project.objects.order_by("project_id", "project_name")
+    currencies = [
+        _serialize_currency(row)
+        for row in CountryCurrency.objects.filter(is_active=True).order_by("sort_order", "country_name")
     ]
-    return JsonResponse({"projects": projects, "cost_heads": LCE_FORMAT_COST_HEADS})
+    return JsonResponse({"cost_heads": LCE_FORMAT_COST_HEADS, "currencies": currencies})
 
 
 @require_GET
@@ -386,7 +411,7 @@ def list_lce_cost_details_api_view(request):
     if not_allowed:
         return not_allowed
 
-    query = LCECostDetail.objects.select_related("project").order_by("-id")
+    query = LCECostDetail.objects.select_related("project", "currency").order_by("id")
     return JsonResponse({"lce_cost_details": [_serialize(row) for row in query]})
 
 
@@ -401,7 +426,7 @@ def list_lce_cost_details_by_project_api_view(request, project_id):
     except Project.DoesNotExist:
         return JsonResponse({"lce_cost_details": []})
 
-    rows = LCECostDetail.objects.filter(project=project).select_related("project").order_by("id")
+    rows = LCECostDetail.objects.filter(project=project).select_related("project", "currency").order_by("id")
     return JsonResponse({"lce_cost_details": [_serialize(row) for row in rows]})
 
 
@@ -424,7 +449,6 @@ def bulk_save_lce_cost_details_api_view(request):
         if not cost_head:
             continue
 
-        reference_note = normalize_text(row_data.get("reference_note", ""))
         record_id = row_data.get("id")
 
         obj = None
@@ -439,7 +463,6 @@ def bulk_save_lce_cost_details_api_view(request):
                 LCECostDetail.objects.filter(
                     project=project,
                     cost_head__iexact=cost_head,
-                    reference_note__iexact=reference_note,
                 ).first()
                 or LCECostDetail(project=project)
             )
@@ -447,13 +470,17 @@ def bulk_save_lce_cost_details_api_view(request):
         obj.project = project
         obj.cost_head = cost_head
         obj.amount = _to_decimal(row_data.get("amount", getattr(obj, "amount", Decimal("0"))))
-        obj.currency = normalize_text(row_data.get("currency", getattr(obj, "currency", "")))
+        currency_input = row_data.get("currency_id") if row_data.get("currency_id") not in (None, "") else row_data.get("currency")
+        resolved_currency = _resolve_currency(currency_input)
+        if currency_input not in (None, "") and resolved_currency is None:
+            return JsonResponse({"message": f"Invalid currency for cost head: {cost_head}."}, status=400)
+        obj.currency = resolved_currency
         obj.quantity = _to_decimal(
             row_data.get("quantity", getattr(obj, "quantity", Decimal("1"))),
             default=Decimal("1"),
         )
         obj.unit = normalize_text(row_data.get("unit", getattr(obj, "unit", "")))
-        obj.reference_note = reference_note
+        obj.reference_note = normalize_text(row_data.get("reference_note", getattr(obj, "reference_note", "")))
         obj.remarks = normalize_text(row_data.get("remarks", getattr(obj, "remarks", "")))
         obj.created_by = normalize_text(
             row_data.get("created_by") or request.user.username
@@ -526,7 +553,7 @@ def calculate_lce_cost_index_api_view(request):
                 "cost_head": row.cost_head,
                 "amount": str(row.amount),
                 "quantity": str(row.quantity),
-                "currency": row.currency,
+                "currency": row.currency.currency_code if row.currency_id else "",
                 "reference_note": row.reference_note,
                 "allocation_basis": "value",
                 "applies_to": ["ALL"],
@@ -651,11 +678,14 @@ def create_lce_cost_detail_api_view(request):
         return JsonResponse({"message": "Cost head is required."}, status=400)
 
     project = _to_project(payload.get("project"))
+    currency_input = payload.get("currency_id") if payload.get("currency_id") not in (None, "") else payload.get("currency")
+    currency_obj = _resolve_currency(currency_input)
+
     obj = LCECostDetail.objects.create(
         project=project,
         cost_head=cost_head,
         amount=_to_decimal(payload.get("amount")),
-        currency=normalize_text(payload.get("currency", "")),
+        currency=currency_obj,
         quantity=_to_decimal(payload.get("quantity"), default=Decimal("1")),
         unit=normalize_text(payload.get("unit", "")),
         reference_note=normalize_text(payload.get("reference_note", "")),
@@ -733,7 +763,8 @@ def import_lce_costing_excel_api_view(request):
         amount = _to_decimal(amount_raw)
         quantity = _to_decimal(quantity_raw, default=Decimal("1"))
         project = _resolve_project_from_import(project_raw)
-        currency = normalize_text(currency_raw) or defaults.get("currency", "")
+        currency_code = normalize_text(currency_raw) or defaults.get("currency", "")
+        currency_obj = _resolve_currency(currency_code)
         reference_note = normalize_text(reference_note_raw) or defaults.get("reference_note", "")
 
         if amount < 0:
@@ -765,7 +796,7 @@ def import_lce_costing_excel_api_view(request):
                 project=project,
                 cost_head=cost_head,
                 amount=amount,
-                currency=currency,
+                currency=currency_obj,
                 quantity=quantity,
                 unit=normalize_text(unit_raw),
                 reference_note=reference_note,
@@ -807,7 +838,7 @@ def lce_cost_detail_api_view(request, pk):
         return not_allowed
 
     try:
-        obj = LCECostDetail.objects.select_related("project").get(id=pk)
+        obj = LCECostDetail.objects.select_related("project", "currency").get(id=pk)
     except LCECostDetail.DoesNotExist:
         return JsonResponse({"message": "Record not found."}, status=404)
 
@@ -825,7 +856,9 @@ def lce_cost_detail_api_view(request, pk):
 
     obj.cost_head = cost_head
     obj.amount = _to_decimal(payload.get("amount", obj.amount), default=obj.amount)
-    obj.currency = normalize_text(payload.get("currency", obj.currency))
+    if "currency_id" in payload or "currency" in payload:
+        currency_input = payload.get("currency_id") if payload.get("currency_id") not in (None, "") else payload.get("currency")
+        obj.currency = _resolve_currency(currency_input)
     obj.quantity = _to_decimal(payload.get("quantity", obj.quantity), default=obj.quantity)
     obj.unit = normalize_text(payload.get("unit", obj.unit))
     obj.reference_note = normalize_text(payload.get("reference_note", obj.reference_note))

@@ -6,12 +6,14 @@ import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
 import CostingPage from "./pages/CostingPage";
 import CutOptimiserPage from "./pages/CutOptimiserPage";
 import HomeLayout from "./pages/HomeLayout";
+import LceListPage from "./pages/LceListPage";
 import LoginPage from "./pages/LoginPage";
 import ModulePage from "./pages/ModulePage";
 import PendingApprovalsPage from "./pages/PendingApprovalsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import StockItemsPage from "./pages/StockItemsPage";
 import StockMaintenancePage from "./pages/StockMaintenancePage";
 import StockPurchasePage from "./pages/StockPurchasePage";
 import TaskPage from "./pages/TaskPage";
@@ -123,6 +125,7 @@ function App() {
             <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
             <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
             <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
+            <Route path="/stock-items" element={secureRoute(<StockItemsPage />)} />
             <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage />)} />
             <Route path="/task" element={secureRoute(<TaskPage onNotificationsChanged={triggerNotificationRefresh} />)} />
             <Route path="/timesheet" element={secureRoute(<TimesheetPage />)} />
@@ -162,6 +165,18 @@ function App() {
             />
             <Route
               path="/projects/costing"
+              element={
+                secureRoute(<LceListPage />)
+              }
+            />
+            <Route
+              path="/projects/costing/add"
+              element={
+                secureRoute(<CostingPage />)
+              }
+            />
+            <Route
+              path="/projects/costing/record/:lceId"
               element={
                 secureRoute(<CostingPage />)
               }

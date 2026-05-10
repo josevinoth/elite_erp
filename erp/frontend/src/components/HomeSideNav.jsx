@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import {
+  BsBoxSeam,
   BsBoxes,
   BsBuildingFill,
   BsCashCoin,
@@ -21,8 +22,10 @@ const iconMap = {
   users: BsPeopleFill,
   projects: BsFolder2Open,
   vendors: BsBuildingFill,
+  stocks: BsBoxes,
   stockPurchase: BsCartCheckFill,
   stockMaintenance: BsBoxes,
+  itemMaster: BsBoxSeam,
   cdcExpense: BsCashCoin,
   task: BsListTask,
   timesheet: BsHourglassSplit,

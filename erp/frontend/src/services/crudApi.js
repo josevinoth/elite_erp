@@ -239,6 +239,106 @@ export async function downloadLceCostingExport() {
   window.URL.revokeObjectURL(downloadUrl);
 }
 
+// -- LCE Estimate (purchase-linked) ------------------------
+export async function listLceEstimates() {
+  const res = await fetch("/api/lce-estimates/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createLceEstimate(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce-estimates/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function getLceEstimateById(lceId) {
+  const res = await fetch(`/api/lce-estimates/record/${lceId}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function updateLceEstimateById(lceId, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/lce-estimates/record/${lceId}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteLceEstimateById(lceId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/lce-estimates/record/${lceId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+
+// ── Lab Furniture Items ───────────────────────────────────
+export async function listLabFurnitureItems() {
+  const res = await fetch("/api/lab-furniture-items/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createLabFurnitureItem(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lab-furniture-items/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateLabFurnitureItem(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/lab-furniture-items/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteLabFurnitureItem(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/lab-furniture-items/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function listLabFurnitureItemCategories() {
+  const res = await fetch("/api/lab-furniture-item-categories/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createLabFurnitureItemCategory(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lab-furniture-item-categories/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
 // ── Stock Purchase ────────────────────────────────────────
 export async function listStockPurchases() {
   const res = await fetch("/api/stock-purchases/", { credentials: "include" });

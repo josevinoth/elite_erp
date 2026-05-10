@@ -1,10 +1,14 @@
 from .activity import Activity
 from .cdc_team_expense import CDCTeamExpense
 from .comment import Comment, CommentAttachment
+from .country_currency import CountryCurrency
 from .expense_item import ExpenseItem
 from .expense_session import ExpenseSession
 from .expense_status_option import ExpenseStatusOption
+from .item_category import ItemCategory
+from .lab_furniture_item import LabFurnitureItem
 from .lce_cost_detail import LCECostDetail
+from .lce_estimate import LCEEstimate
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .project import Project
@@ -25,10 +29,14 @@ __all__ = [
 	"Comment",
 	"CommentAttachment",
 	"CDCTeamExpense",
+	"CountryCurrency",
 	"ExpenseItem",
 	"ExpenseSession",
 	"ExpenseStatusOption",
+	"ItemCategory",
+	"LabFurnitureItem",
 	"LCECostDetail",
+	"LCEEstimate",
 	"Vendor",
 	"Project",
 	"ProjectLifecycleStatusOption",
