@@ -21,7 +21,9 @@ from .views import (
     vendor_detail_api_view,
     list_stock_purchases_api_view,
     create_stock_purchase_api_view,
+    create_stock_purchase_vendor_detail_api_view,
     stock_purchase_detail_api_view,
+    stock_purchase_vendor_detail_api_view,
     list_stock_maintenance_api_view,
     list_stock_maintenance_meta_api_view,
     create_stock_maintenance_api_view,
@@ -109,6 +111,8 @@ urlpatterns = [
     path('api/stock-purchases/', list_stock_purchases_api_view, name='api-stock-purchases-list'),
     path('api/stock-purchases/create/', create_stock_purchase_api_view, name='api-stock-purchases-create'),
     path('api/stock-purchases/<int:pk>/', stock_purchase_detail_api_view, name='api-stock-purchases-detail'),
+    path('api/stock-purchase-vendors/create/', create_stock_purchase_vendor_detail_api_view, name='api-stock-purchase-vendors-create'),
+    path('api/stock-purchase-vendors/<int:pk>/', stock_purchase_vendor_detail_api_view, name='api-stock-purchase-vendors-detail'),
     # stock maintenance
     path('api/stock-maintenance/', list_stock_maintenance_api_view, name='api-stock-maintenance-list'),
     path('api/stock-maintenance/meta/', list_stock_maintenance_meta_api_view, name='api-stock-maintenance-meta'),

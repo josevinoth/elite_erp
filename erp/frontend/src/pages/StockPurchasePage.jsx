@@ -8,31 +8,19 @@ import {
 } from "../services/crudApi";
 
 const COLUMNS = [
-  { key: "item_name", label: "Item Name" },
-  { key: "category", label: "Category" },
+  { key: "id", label: "Purchase ID" },
   { key: "vendor", label: "Vendor" },
-  { key: "quantity", label: "Qty" },
-  { key: "unit", label: "Unit" },
-  { key: "unit_price", label: "Unit Price" },
-  { key: "total_price", label: "Total" },
-  { key: "purchase_date", label: "Date" },
   { key: "invoice_number", label: "Invoice #" },
-];
-
-const FIELDS = [
-  { key: "item_name", label: "Item Name", required: true },
-  { key: "category", label: "Category" },
-  { key: "vendor", label: "Vendor" },
-  { key: "quantity", label: "Quantity", type: "number" },
-  { key: "unit", label: "Unit" },
-  { key: "unit_price", label: "Unit Price", type: "number" },
-  { key: "total_price", label: "Total Price", type: "number" },
-  { key: "purchase_date", label: "Purchase Date", type: "date" },
-  { key: "invoice_number", label: "Invoice Number" },
-  { key: "notes", label: "Notes", type: "textarea" },
+  { key: "purchase_date", label: "Invoice Date" },
+  { key: "items_count", label: "Items" },
+  { key: "purchase_total", label: "Purchase Total" },
 ];
 
 function StockPurchasePage() {
+  const fields = [
+    { key: "notes", label: "Notes", type: "textarea" },
+  ];
+
   const fetchFn = useCallback(async () => {
     const data = await listStockPurchases();
     return data.stock_purchases || [];
@@ -52,11 +40,13 @@ function StockPurchasePage() {
     <CrudPage
       title="Stock Purchase"
       columns={COLUMNS}
-      fields={FIELDS}
+      fields={fields}
       fetchFn={fetchFn}
       createFn={createFn}
       updateFn={updateFn}
       deleteFn={deleteStockPurchase}
+      addButtonTo="/stock-purchase/add"
+      editButtonTo={(row) => `/stock-purchase/record/${row.id}`}
     />
   );
 }

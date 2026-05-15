@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
@@ -30,6 +31,7 @@ function CrudPage({
   tableWrapClassName = "",
   showAddButton = true,
   showExportButton = true,
+  addButtonTo = null,
   exportFileName = null,
   openAddOnMount = false,
   openEditIdOnMount = null,
@@ -48,7 +50,9 @@ function CrudPage({
   renderFooter = null,     // () => ReactNode – rendered inside the section, below table
   renderFormExtension = null, // ({ editRow, formValues, setFormValues }) => ReactNode
   onEditOpen = null, // (row) => void | Promise<void>
+  editButtonTo = null, // string | (row) => string
 }) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -100,6 +104,25 @@ function CrudPage({
     setEditRow(null);
     setFormValues(emptyForm());
     setShowModal(true);
+  };
+
+  const handleAddClick = () => {
+    if (addButtonTo) {
+      navigate(addButtonTo);
+      return;
+    }
+    openAdd();
+  };
+
+  const handleEditClick = (row) => {
+    if (editButtonTo) {
+      const target = typeof editButtonTo === "function" ? editButtonTo(row) : editButtonTo;
+      if (target) {
+        navigate(target);
+        return;
+      }
+    }
+    openEdit(row);
   };
 
   useEffect(() => {
@@ -448,7 +471,7 @@ function CrudPage({
             </button>
           ) : null}
           {showAddButton ? (
-            <button type="button" className="crud-add-btn" onClick={openAdd}>
+            <button type="button" className="crud-add-btn" onClick={handleAddClick}>
               <BsPlusCircleFill aria-hidden="true" />
               <span>Add New</span>
             </button>
@@ -577,7 +600,7 @@ function CrudPage({
                           aria-label="Edit"
                           title={editDisabled ? editDisabledTitle : "Edit"}
                           disabled={editDisabled}
-                          onClick={() => !editDisabled && openEdit(row)}
+                          onClick={() => !editDisabled && handleEditClick(row)}
                         >
                           <BsPencilSquare aria-hidden="true" />
                         </button>

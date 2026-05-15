@@ -28,10 +28,16 @@ export const homeNavItems = [
   { label: "LCE", to: "/projects/costing", icon: "costing" },
   { label: "Vendors", to: "/vendors", icon: "vendors" },
   {
-    label: "Stocks",
-    to: "/stock-purchase",
+    label: "Stocks:",
+    to: "/stocks",
     icon: "stocks",
+    disableParentNavigation: true,
     children: [
+      {
+        label: "Stocks List",
+        to: "/stocks",
+        icon: "stocks",
+      },
       {
         label: "Stock Purchase",
         to: "/stock-purchase",

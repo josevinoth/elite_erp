@@ -174,46 +174,31 @@ function CostingPage() {
 
 
       {!loading ? (
-        <div className="users-table-wrap" style={{ maxHeight: "68vh", overflowY: "auto" }}>
-          <table className="users-table" style={{ minWidth: 860 }}>
-            <thead>
-              <tr>
-                <th style={{ minWidth: 520 }}>Field</th>
-                <th style={{ minWidth: 220, textAlign: "right" }}>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {EDITABLE_FIELDS.map(([key, label]) => (
-                <tr key={key}>
-                  <td>{label}</td>
-                  <td>
-                    <input
-                      type="number"
-                      className="auth-input"
-                      style={{ textAlign: "right" }}
-                      step="any"
-                      value={form[key]}
-                      onChange={(e) => handleChange(key, e.target.value)}
-                    />
-                  </td>
-                </tr>
-              ))}
-              {FORMULA_FIELDS.map(([key, label]) => (
-                <tr key={key} style={{ background: "rgba(22,178,165,0.09)" }}>
-                  <td><strong>{label}</strong></td>
-                  <td>
-                    <input
-                      type="number"
-                      className="auth-input"
-                      style={{ textAlign: "right", fontWeight: 700 }}
-                      value={form[key]}
-                      readOnly
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="lce-form-grid lce-form-grid--four">
+          {EDITABLE_FIELDS.map(([key, label]) => (
+            <label key={key} className="lce-form-card">
+              <span className="lce-form-card__label">{label}</span>
+              <input
+                type="number"
+                className="auth-input lce-form-card__input"
+                step="any"
+                value={form[key]}
+                onChange={(e) => handleChange(key, e.target.value)}
+              />
+            </label>
+          ))}
+
+          {FORMULA_FIELDS.map(([key, label]) => (
+            <label key={key} className="lce-form-card lce-form-card--formula">
+              <span className="lce-form-card__label"><strong>{label}</strong></span>
+              <input
+                type="number"
+                className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                value={form[key]}
+                readOnly
+              />
+            </label>
+          ))}
         </div>
       ) : null}
     </section>

@@ -345,6 +345,11 @@ export async function listStockPurchases() {
   return parseJson(res);
 }
 
+export async function getStockPurchaseById(id) {
+  const res = await fetch(`/api/stock-purchases/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function createStockPurchase(payload) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/stock-purchases/create/", {
@@ -374,6 +379,28 @@ export async function deleteStockPurchase(id) {
     method: "DELETE",
     credentials: "include",
     headers,
+  });
+  return parseJson(res);
+}
+
+export async function createStockPurchaseVendorDetail(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/stock-purchase-vendors/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateStockPurchaseVendorDetail(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/stock-purchase-vendors/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
   });
   return parseJson(res);
 }

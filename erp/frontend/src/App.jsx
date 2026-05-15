@@ -16,7 +16,9 @@ import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import StockItemsPage from "./pages/StockItemsPage";
 import StockMaintenancePage from "./pages/StockMaintenancePage";
+import StockPurchaseAddPage from "./pages/StockPurchaseAddPage.jsx";
 import StockPurchasePage from "./pages/StockPurchasePage";
+import StocksListPage from "./pages/StocksListPage";
 import TaskPage from "./pages/TaskPage";
 import TimesheetPage from "./pages/TimesheetPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
@@ -127,6 +129,9 @@ function App() {
             <Route path="/projects/cut-optimiser/record/:recordId" element={secureRoute(<CutOptimiserPage />)} />
             <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
             <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
+            <Route path="/stock-purchase/add" element={secureRoute(<StockPurchaseAddPage />)} />
+            <Route path="/stock-purchase/record/:purchaseId" element={secureRoute(<StockPurchaseAddPage />)} />
+            <Route path="/stocks" element={secureRoute(<StocksListPage />)} />
             <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
             <Route path="/stock-items" element={secureRoute(<StockItemsPage />)} />
             <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage />)} />
