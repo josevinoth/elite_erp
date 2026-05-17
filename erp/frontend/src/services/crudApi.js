@@ -245,6 +245,22 @@ export async function listLceEstimates() {
   return parseJson(res);
 }
 
+export async function listLceEstimateMeta() {
+  const res = await fetch("/api/lce-estimates/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createLceChargeTypeOption(name) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce-estimates/charge-types/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+
 export async function createLceEstimate(payload) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/lce-estimates/create/", {
@@ -258,6 +274,11 @@ export async function createLceEstimate(payload) {
 
 export async function getLceEstimateById(lceId) {
   const res = await fetch(`/api/lce-estimates/record/${lceId}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getLcePurchaseItems(purchaseId) {
+  const res = await fetch(`/api/lce-estimates/purchase-items/${purchaseId}/`, { credentials: "include" });
   return parseJson(res);
 }
 
@@ -380,6 +401,11 @@ export async function deleteStockPurchase(id) {
     credentials: "include",
     headers,
   });
+  return parseJson(res);
+}
+
+export async function getStockPurchaseItemTrace(itemId) {
+  const res = await fetch(`/api/stock-purchase-items/${itemId}/trace/`, { credentials: "include" });
   return parseJson(res);
 }
 

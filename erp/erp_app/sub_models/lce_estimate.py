@@ -1,7 +1,23 @@
 from django.db import models
 
 from ..utils import normalize_text
+from .country_currency import CountryCurrency
 from .stock_purchase import StockPurchase
+
+
+class LCEChargeTypeOption(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = normalize_text(self.name)
+        super().save(*args, **kwargs)
 
 
 class LCEEstimate(models.Model):
@@ -17,9 +33,20 @@ class LCEEstimate(models.Model):
     packing_charges = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     documentation = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     other_charges_1 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_1_type = models.CharField(max_length=120, blank=True)
     other_charges_2 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_2_type = models.CharField(max_length=120, blank=True)
     other_charges_3 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_3_type = models.CharField(max_length=120, blank=True)
     other_charges_4 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_4_type = models.CharField(max_length=120, blank=True)
+    foreign_currency = models.ForeignKey(
+        CountryCurrency,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lce_estimates",
+    )
     total_supplier_price = models.DecimalField(max_digits=14, decimal_places=3, default=0)
 
     advance_payment_value = models.DecimalField(max_digits=14, decimal_places=3, default=0)
@@ -55,6 +82,9 @@ class LCEEstimate(models.Model):
 
     def save(self, *args, **kwargs):
         self.created_by = normalize_text(self.created_by)
+        self.other_charges_1_type = normalize_text(self.other_charges_1_type)
+        self.other_charges_2_type = normalize_text(self.other_charges_2_type)
+        self.other_charges_3_type = normalize_text(self.other_charges_3_type)
         super().save(*args, **kwargs)
 
 

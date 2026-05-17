@@ -17,6 +17,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import StockItemsPage from "./pages/StockItemsPage";
 import StockMaintenancePage from "./pages/StockMaintenancePage";
 import StockPurchaseAddPage from "./pages/StockPurchaseAddPage.jsx";
+import StockPurchaseItemTracePage from "./pages/StockPurchaseItemTracePage.jsx";
 import StockPurchasePage from "./pages/StockPurchasePage";
 import StocksListPage from "./pages/StocksListPage";
 import TaskPage from "./pages/TaskPage";
@@ -131,6 +132,7 @@ function App() {
             <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
             <Route path="/stock-purchase/add" element={secureRoute(<StockPurchaseAddPage />)} />
             <Route path="/stock-purchase/record/:purchaseId" element={secureRoute(<StockPurchaseAddPage />)} />
+            <Route path="/stock-purchase/item-trace/:itemId" element={secureRoute(<StockPurchaseItemTracePage />)} />
             <Route path="/stocks" element={secureRoute(<StocksListPage />)} />
             <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
             <Route path="/stock-items" element={secureRoute(<StockItemsPage />)} />

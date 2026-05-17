@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import StockPurchase, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import LCECostDetail, StockPurchase, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -59,6 +59,8 @@ def _serialize_item(item):
         "quantity": str(item.quantity),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
+        "lce_cost": str(item.lce_cost),
+        "lce_estimate_id": item.lce_estimate_id,
     }
 
 
@@ -75,6 +77,7 @@ def _serialize(obj):
         "vendor_detail": vendor_detail,
         "items": [_serialize_item(item) for item in items],
         "items_count": len(items),
+        "lce_linked_count": sum(1 for item in items if item.lce_estimate_id),
         "purchase_total": str(sum((item.total_price for item in items), Decimal("0"))),
         # legacy keys kept for UI compatibility where needed
         "item_name": first_item.item_name if first_item else "",
@@ -116,6 +119,12 @@ def _resolve_vendor_detail(payload):
 
 
 def _sync_items(stock_purchase, items_payload):
+    # Preserve existing LCE linkage before deleting
+    existing_lce = {
+        item.grn_number: (item.lce_estimate_id, item.lce_cost)
+        for item in stock_purchase.items.all()
+        if item.lce_estimate_id
+    }
     stock_purchase.items.all().delete()
 
     for row in items_payload:
@@ -125,6 +134,8 @@ def _sync_items(stock_purchase, items_payload):
 
         quantity = _to_decimal(row.get("quantity"), "0")
         unit_price = _to_decimal(row.get("unit_price"), "0")
+        grn = normalize_text(row.get("grn_number", ""))
+        lce_id, lce_cost = existing_lce.get(grn, (None, Decimal("0")))
         StockPurchaseItem.objects.create(
             stock_purchase=stock_purchase,
             item_category=normalize_text(row.get("item_category", "")),
@@ -133,6 +144,8 @@ def _sync_items(stock_purchase, items_payload):
             quantity=quantity,
             unit_price=unit_price,
             total_price=quantity * unit_price,
+            lce_estimate_id=lce_id,
+            lce_cost=lce_cost,
         )
 
 
@@ -205,29 +218,32 @@ def create_stock_purchase_api_view(request):
     p = _read_json(request)
 
     purchase_number = normalize_text(p.get("purchase_number", "")) or None
-    items_payload = p.get("items") or []
-    if not isinstance(items_payload, list) or len(items_payload) == 0:
-        return JsonResponse({"message": "At least one item is required."}, status=400)
-
-    duplicate_code = _first_duplicate_code_in_payload(items_payload)
-    if duplicate_code:
-        return JsonResponse({"message": f"Duplicate item code ({duplicate_code}) is not allowed in the same invoice."}, status=400)
-
-    duplicate_name = _first_duplicate_name_in_payload(items_payload)
-    if duplicate_name:
-        return JsonResponse({"message": f"Duplicate item name ({duplicate_name}) is not allowed in the same invoice."}, status=400)
 
     if purchase_number and StockPurchase.objects.filter(purchase_number=purchase_number).exists():
         return JsonResponse({"message": "Purchase number already exists."}, status=400)
+
+    items_payload = p.get("items") or []
+    if not isinstance(items_payload, list):
+        items_payload = []
+
+    if items_payload:
+        duplicate_code = _first_duplicate_code_in_payload(items_payload)
+        if duplicate_code:
+            return JsonResponse({"message": f"Duplicate item code ({duplicate_code}) is not allowed in the same invoice."}, status=400)
+
+        duplicate_name = _first_duplicate_name_in_payload(items_payload)
+        if duplicate_name:
+            return JsonResponse({"message": f"Duplicate item name ({duplicate_name}) is not allowed in the same invoice."}, status=400)
 
     try:
         vendor_detail = _resolve_vendor_detail(p)
     except ValueError as exc:
         return JsonResponse({"message": str(exc)}, status=400)
 
-    invoice_duplicate_code = _first_duplicate_code_for_invoice(vendor_detail.invoice_number if vendor_detail else "", items_payload)
-    if invoice_duplicate_code:
-        return JsonResponse({"message": f"Duplicate item code ({invoice_duplicate_code}) is not allowed for this invoice number."}, status=400)
+    if items_payload:
+        invoice_duplicate_code = _first_duplicate_code_for_invoice(vendor_detail.invoice_number if vendor_detail else "", items_payload)
+        if invoice_duplicate_code:
+            return JsonResponse({"message": f"Duplicate item code ({invoice_duplicate_code}) is not allowed for this invoice number."}, status=400)
 
     obj = StockPurchase.objects.create(
         purchase_number=purchase_number,
@@ -264,6 +280,23 @@ def stock_purchase_detail_api_view(request, pk):
         return JsonResponse({'stock_purchase': _serialize(obj)})
 
     if request.method == 'DELETE':
+        linked_items = obj.items.filter(lce_estimate_id__isnull=False).order_by('id')
+        if linked_items.exists():
+            grn_list = [
+                item.grn_number if item.grn_number else f"Item #{item.id}"
+                for item in linked_items
+            ]
+            grn_display = ', '.join(grn_list)
+            return JsonResponse(
+                {
+                    'message': (
+                        f'Cannot delete this stock purchase. '
+                        f'The following item(s) are linked to an LCE estimate: {grn_display}. '
+                        f'Please unlink them from LCE before deleting.'
+                    )
+                },
+                status=400,
+            )
         obj.delete()
         return JsonResponse({'success': True, 'message': 'Deleted.'})
 
@@ -317,3 +350,72 @@ def stock_purchase_detail_api_view(request, pk):
 
     obj.save()
     return JsonResponse({'success': True, 'stock_purchase': _serialize(obj)})
+
+
+@require_GET
+def stock_purchase_item_trace_api_view(request, item_id):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    item = StockPurchaseItem.objects.select_related("stock_purchase", "lce_estimate").filter(id=item_id).first()
+    if not item:
+        return JsonResponse({"message": "Purchase item not found."}, status=404)
+
+    modules = []
+    lce = item.lce_estimate
+    if lce:
+        lce_code = f"LCE_{lce.id:03d}"
+        modules.append(
+            {
+                "module": "LCE",
+                "label": lce_code,
+                "id": lce.id,
+                "link": f"/projects/costing/record/{lce.id}",
+                "meta": {
+                    "updated_at": lce.updated_at.isoformat() if lce.updated_at else "",
+                },
+            }
+        )
+
+        # Project linkage is inferred from LCE costing reference notes when they mention this LCE code.
+        project_rows = (
+            LCECostDetail.objects.select_related("project")
+            .filter(project_id__isnull=False, reference_note__icontains=lce_code)
+            .order_by("project__project_id")
+        )
+        seen_project_ids = set()
+        for row in project_rows:
+            project = row.project
+            if not project or project.id in seen_project_ids:
+                continue
+            seen_project_ids.add(project.id)
+            modules.append(
+                {
+                    "module": "Project",
+                    "label": project.project_id or f"Project #{project.id}",
+                    "id": project.id,
+                    "link": f"/projects",
+                    "meta": {
+                        "project_name": project.project_name or "",
+                        "linked_via": row.reference_note or "",
+                    },
+                }
+            )
+
+    return JsonResponse(
+        {
+            "item_trace": {
+                "item": {
+                    "id": item.id,
+                    "grn_number": item.grn_number,
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "purchase_id": item.stock_purchase_id,
+                    "purchase_number": item.stock_purchase.purchase_number if item.stock_purchase_id else "",
+                },
+                "modules": modules,
+            }
+        }
+    )
+

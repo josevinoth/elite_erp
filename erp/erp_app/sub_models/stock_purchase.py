@@ -59,11 +59,25 @@ class StockPurchase(models.Model):
         for field in ["purchase_number", "item_name", "category", "vendor", "unit", "invoice_number", "notes"]:
             setattr(self, field, normalize_text(getattr(self, field)))
 
-        super().save(*args, **kwargs)
+        is_new = self.pk is None
+        # If purchase_number not supplied, generate after first insert
+        if not self.purchase_number:
+            super().save(*args, **kwargs)
+            self.purchase_number = f"SP{self.pk:04d}"
+            super().save(update_fields=["purchase_number"])
+        else:
+            super().save(*args, **kwargs)
 
 
 class StockPurchaseItem(models.Model):
     stock_purchase = models.ForeignKey(StockPurchase, on_delete=models.CASCADE, related_name="items")
+    lce_estimate = models.ForeignKey(
+        "erp_app.LCEEstimate",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="linked_items",
+    )
     grn_number = models.CharField(max_length=7, unique=True, blank=True)
     item_category = models.CharField(max_length=120, blank=True)
     item_name = models.CharField(max_length=200)
@@ -71,6 +85,7 @@ class StockPurchaseItem(models.Model):
     quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    lce_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

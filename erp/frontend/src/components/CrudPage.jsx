@@ -39,6 +39,7 @@ function CrudPage({
   computeValues = null,   // (changedKey, changedValue, allValues) => extraValues
   editDisabledPredicate = null,  // (row) => boolean
   deleteDisabledPredicate = null,  // (row) => boolean
+  deleteConfirmFn = null,  // (row) => string — custom confirmation message per row
   editDisabledTitle = "Edit",
   deleteDisabledTitle = "Delete",
   saveDisabledPredicate = null,  // (editRow, formValues) => boolean
@@ -324,7 +325,12 @@ function CrudPage({
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this record?")) return;
+    const row = rows.find((r) => r[rowKey] === id);
+    const confirmMessage =
+      typeof deleteConfirmFn === "function" && row
+        ? deleteConfirmFn(row)
+        : "Delete this record?";
+    if (!window.confirm(confirmMessage)) return;
     setError("");
     try {
       await deleteFn(id);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BsPlusCircleFill, BsTrashFill } from "react-icons/bs";
+import { BsBoxArrowUpRight, BsPlusCircleFill, BsTrashFill } from "react-icons/bs";
 import {
   createStockPurchase,
   createStockPurchaseVendorDetail,
@@ -53,6 +53,7 @@ function StockPurchaseAddPage() {
   const [status, setStatus] = useState("");
   const [purchaseStatus, setPurchaseStatus] = useState("");
   const [loadingRecord, setLoadingRecord] = useState(isEditMode);
+  const [spNumber, setSpNumber] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -100,6 +101,7 @@ function StockPurchaseAddPage() {
               quantity: item.quantity || "0",
               unit_price: item.unit_price || "0",
               total_price: item.total_price || "0",
+              lce_estimate_id: item.lce_estimate_id || null,
             }))
           : [];
 
@@ -110,6 +112,7 @@ function StockPurchaseAddPage() {
           tax: vendorDetail.tax || "0",
           total_value: vendorDetail.total_value || "0",
         });
+        setSpNumber(record.purchase_number || "");
         setSavedPurchaseDetailId(vendorDetail.id || null);
         setPurchaseStatus(vendorDetail.id ? "Purchase details loaded." : "");
         setNotes(record.notes || "");
@@ -267,9 +270,20 @@ function StockPurchaseAddPage() {
 
   const deleteItemRow = (rowId) => {
     if (!savedPurchaseDetailId) return;
+    const row = items.find((r) => r.rowId === rowId);
+    if (row?.lce_estimate_id) return; // blocked — button should also be disabled
     const confirmed = window.confirm("Delete this purchase item row?");
     if (!confirmed) return;
-    setItems((prev) => (prev.length > 1 ? prev.filter((row) => row.rowId !== rowId) : prev));
+    setItems((prev) => (prev.length > 1 ? prev.filter((r) => r.rowId !== rowId) : prev));
+  };
+
+  const getDeleteItemTitle = (row) => {
+    if (row.lce_estimate_id) {
+      return "Cannot delete: this item is linked to an LCE estimate. Please delink it from LCE first, then try again.";
+    }
+    if (items.length <= 1) return "At least one item is required";
+    if (!savedPurchaseDetailId) return "Save purchase details first";
+    return "Delete";
   };
 
   const handleSavePurchaseDetails = async () => {
@@ -361,24 +375,32 @@ function StockPurchaseAddPage() {
       return;
     }
 
-    if (cleanedItems.length === 0) {
-      setStatus("Add at least one item row with item name.");
-      setSaving(false);
-      return;
-    }
-
     try {
       const payload = {
         notes,
         vendor_detail_id: savedPurchaseDetailId,
         items: cleanedItems,
       };
+      const successData = isEditMode
+        ? await updateStockPurchase(purchaseId, payload)
+        : await createStockPurchase(payload);
+
+      const savedSP = successData?.stock_purchase || {};
+      const savedPurchaseId = savedSP?.id;
+      const savedSpNumber = savedSP?.purchase_number || "";
+
+      if (savedSpNumber) setSpNumber(savedSpNumber);
+
       if (isEditMode) {
-        await updateStockPurchase(purchaseId, payload);
+        setStatus("Stock purchase updated successfully.");
+        navigate("/stock-purchase");
       } else {
-        await createStockPurchase(payload);
+        // Stay on page — redirect to edit URL so subsequent saves use PATCH
+        setStatus(`Stock purchase ${savedSpNumber || "saved"} successfully. You can continue adding or editing items.`);
+        if (savedPurchaseId) {
+          navigate(`/stock-purchase/record/${savedPurchaseId}`, { replace: true });
+        }
       }
-      navigate("/stock-purchase");
     } catch (error) {
       setStatus(error?.message || "Save failed.");
     } finally {
@@ -389,7 +411,10 @@ function StockPurchaseAddPage() {
   return (
     <section className="module-page">
       <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
-        <h1 className="module-page__title" style={{ margin: 0 }}>{isEditMode ? "Stock Purchase Edit" : "Stock Purchase Add"}</h1>
+        <h1 className="module-page__title" style={{ margin: 0 }}>
+          {isEditMode ? "Stock Purchase Edit" : "Stock Purchase Add"}
+          {spNumber ? <span style={{ marginLeft: "0.75rem", color: "#0ea5e9", fontWeight: 700, fontSize: "1rem" }}>[{spNumber}]</span> : null}
+        </h1>
         <button
           type="button"
           className="crud-add-btn"
@@ -536,6 +561,7 @@ function StockPurchaseAddPage() {
                   <th>Qty</th>
                   <th>Unit Price</th>
                   <th>Total Price</th>
+                  <th style={{ textAlign: "center" }}>Trace</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -608,12 +634,40 @@ function StockPurchaseAddPage() {
                       <input className="auth-input auth-input--readonly" value={row.total_price} readOnly />
                     </td>
                     <td style={{ verticalAlign: "middle", textAlign: "center" }}>
+                      {row.rowId && row.grn_number ? (
+                        <a
+                          href={`/stock-purchase/item-trace/${row.rowId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open traceability view"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                            color: "#16b2a5",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                            textDecoration: "none",
+                            padding: "2px 6px",
+                            border: "1px solid #16b2a5",
+                            borderRadius: "4px",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <BsBoxArrowUpRight size={11} aria-hidden="true" />
+                          Trace
+                        </a>
+                      ) : (
+                        <span style={{ color: "#5a8a88", fontSize: "0.75rem" }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ verticalAlign: "middle", textAlign: "center" }}>
                       <button
                         type="button"
                         className="users-action users-action--delete"
                         onClick={() => deleteItemRow(row.rowId)}
-                        disabled={!savedPurchaseDetailId || items.length <= 1 || saving}
-                        title="Delete"
+                        disabled={!savedPurchaseDetailId || items.length <= 1 || saving || !!row.lce_estimate_id}
+                        title={getDeleteItemTitle(row)}
                         aria-label="Delete"
                         style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                       >
