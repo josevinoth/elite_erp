@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import LCECostDetail, StockPurchase, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import LCECostDetail, LCEEstimate, StockPurchase, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -118,35 +118,115 @@ def _resolve_vendor_detail(payload):
     )
 
 
+def _recalculate_lce_estimates(estimate_ids):
+    ids = [int(v) for v in (estimate_ids or []) if str(v).isdigit()]
+    if not ids:
+        return
+
+    for estimate in LCEEstimate.objects.filter(id__in=ids):
+        linked_items = list(StockPurchaseItem.objects.filter(lce_estimate=estimate).select_related("lce_estimate"))
+        ex_works = sum((item.total_price for item in linked_items), Decimal("0"))
+
+        estimate.ex_works_material_cost = ex_works
+        estimate.total_supplier_price = (
+            estimate.ex_works_material_cost
+            + estimate.packing_charges
+            + estimate.documentation
+            + estimate.other_charges_1
+            + estimate.other_charges_2
+            + estimate.other_charges_3
+            + estimate.other_charges_4
+        )
+        estimate.advance_payment_value_omr = estimate.advance_payment_value * estimate.bank_exchange_rate
+        estimate.balance_payment_value = estimate.total_supplier_price - estimate.advance_payment_value
+        estimate.balance_payment_value_omr = estimate.balance_payment_value * estimate.bank_exchange_rate
+        estimate.total_supplier_price_omr = estimate.advance_payment_value_omr + estimate.balance_payment_value_omr
+        estimate.total = (
+            estimate.bank_muscat_charge_advance_payment
+            + estimate.bank_muscat_charge_balance_payment
+            + estimate.freight_charge
+            + estimate.customs_duty_omr
+            + estimate.oman_customs_boe_charge_omr
+            + estimate.rop_customs_inspection_charge
+            + estimate.unloading_charge_muscat_stores_1
+            + estimate.unloading_charge_muscat_stores_2
+            + estimate.loading_charge_muscat_stores_delivery
+        )
+        estimate.save(update_fields=[
+            "ex_works_material_cost",
+            "total_supplier_price",
+            "advance_payment_value_omr",
+            "balance_payment_value",
+            "balance_payment_value_omr",
+            "total_supplier_price_omr",
+            "total",
+            "updated_at",
+        ])
+
+        if linked_items:
+            cost_factor = (Decimal(str(estimate.total)) / ex_works) if ex_works else Decimal("0")
+            for item in linked_items:
+                item.lce_cost = item.total_price * cost_factor
+            StockPurchaseItem.objects.bulk_update(linked_items, ["lce_cost"])
+
+
 def _sync_items(stock_purchase, items_payload):
-    # Preserve existing LCE linkage before deleting
-    existing_lce = {
-        item.grn_number: (item.lce_estimate_id, item.lce_cost)
-        for item in stock_purchase.items.all()
-        if item.lce_estimate_id
+    existing_items = list(stock_purchase.items.all())
+    existing_by_id = {item.id: item for item in existing_items}
+    existing_by_grn = {
+        normalize_text(item.grn_number).upper(): item
+        for item in existing_items
+        if normalize_text(item.grn_number)
     }
-    stock_purchase.items.all().delete()
+
+    retained_existing_ids = set()
+    affected_lce_ids = set()
 
     for row in items_payload:
         item_name = normalize_text(row.get("item_name", ""))
         if not item_name:
             continue
 
-        quantity = _to_decimal(row.get("quantity"), "0")
-        unit_price = _to_decimal(row.get("unit_price"), "0")
-        grn = normalize_text(row.get("grn_number", ""))
-        lce_id, lce_cost = existing_lce.get(grn, (None, Decimal("0")))
-        StockPurchaseItem.objects.create(
-            stock_purchase=stock_purchase,
-            item_category=normalize_text(row.get("item_category", "")),
-            item_name=item_name,
-            item_code=normalize_text(row.get("item_code", "")),
-            quantity=quantity,
-            unit_price=unit_price,
-            total_price=quantity * unit_price,
-            lce_estimate_id=lce_id,
-            lce_cost=lce_cost,
+        row_id_raw = row.get("id")
+        row_id = int(row_id_raw) if str(row_id_raw).isdigit() else None
+        row_grn = normalize_text(row.get("grn_number", "")).upper()
+
+        item = None
+        if row_id and row_id in existing_by_id:
+            item = existing_by_id[row_id]
+        elif row_grn and row_grn in existing_by_grn:
+            item = existing_by_grn[row_grn]
+
+        if item:
+            retained_existing_ids.add(item.id)
+        else:
+            item = StockPurchaseItem(stock_purchase=stock_purchase)
+
+        item.item_category = normalize_text(row.get("item_category", ""))
+        item.item_name = item_name
+        item.item_code = normalize_text(row.get("item_code", ""))
+        item.quantity = _to_decimal(row.get("quantity"), "0")
+        item.unit_price = _to_decimal(row.get("unit_price"), "0")
+        item.total_price = item.quantity * item.unit_price
+        item.save()
+
+        if item.lce_estimate_id:
+            affected_lce_ids.add(item.lce_estimate_id)
+
+    to_delete = [item for item in existing_items if item.id not in retained_existing_ids]
+    blocked = [item for item in to_delete if item.lce_estimate_id]
+    if blocked:
+        blocked_labels = [item.grn_number or f"Item #{item.id}" for item in blocked]
+        raise ValueError(
+            "Cannot remove linked purchase item(s): "
+            + ", ".join(blocked_labels)
+            + ". Delink them from LCE first."
         )
+
+    if to_delete:
+        StockPurchaseItem.objects.filter(id__in=[item.id for item in to_delete]).delete()
+
+    return affected_lce_ids
 
 
 def _first_duplicate_code_in_payload(items_payload):
@@ -333,7 +413,11 @@ def stock_purchase_detail_api_view(request, pk):
         )
         if invoice_duplicate_code:
             return JsonResponse({"message": f"Duplicate item code ({invoice_duplicate_code}) is not allowed for this invoice number."}, status=400)
-        _sync_items(obj, items_payload)
+        try:
+            affected_lce_ids = _sync_items(obj, items_payload)
+        except ValueError as exc:
+            return JsonResponse({"message": str(exc)}, status=400)
+        _recalculate_lce_estimates(affected_lce_ids)
 
     first_item = obj.items.order_by("id").first()
     if first_item:

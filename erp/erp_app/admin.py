@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .sub_models import CountryCurrency, ItemCategory, LabFurnitureItem, LCEEstimate
+from .sub_models import CountryCurrency, ItemCategory, LabFurnitureItem, LCEBalanceSettlement, LCEEstimate
 
 
 @admin.register(CountryCurrency)
@@ -27,4 +27,12 @@ class LabFurnitureItemAdmin(admin.ModelAdmin):
 class LCEEstimateAdmin(admin.ModelAdmin):
 	list_display = ("stock_purchase", "total_supplier_price", "total_supplier_price_omr", "total", "updated_at")
 	search_fields = ("stock_purchase__item_name", "stock_purchase__invoice_number", "created_by")
+
+
+@admin.register(LCEBalanceSettlement)
+class LCEBalanceSettlementAdmin(admin.ModelAdmin):
+	list_display = ("lce_estimate", "settlement_date", "foreign_currency", "amount", "factor", "value")
+	list_filter = ("settlement_date", "foreign_currency")
+	search_fields = ("lce_estimate__created_by",)
+
 

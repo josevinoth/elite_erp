@@ -8,7 +8,7 @@ from .expense_status_option import ExpenseStatusOption
 from .item_category import ItemCategory
 from .lab_furniture_item import LabFurnitureItem
 from .lce_cost_detail import LCECostDetail
-from .lce_estimate import LCEChargeTypeOption, LCEEstimate
+from .lce_estimate import LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .project import Project
@@ -38,6 +38,7 @@ __all__ = [
 	"LCECostDetail",
 	"LCEEstimate",
 	"LCEChargeTypeOption",
+	"LCEBalanceSettlement",
 	"Vendor",
 	"Project",
 	"ProjectLifecycleStatusOption",

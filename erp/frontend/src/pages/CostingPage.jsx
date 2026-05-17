@@ -43,14 +43,56 @@ const FORMULA_FIELDS = [
   ["balance_payment_value_omr", "BALANCE PAYMENT VALUE (OMR)"],
   ["total_supplier_price_omr", "TOTAL SUPPLIER PRICE (OMR)"],
   ["total", "TOTAL"],
+  ["cost_factor", "COST FACTOR"],
 ];
 
 const EXTRA_FIELDS = ["other_charges_1_type", "other_charges_2_type", "other_charges_3_type", "other_charges_4_type", "foreign_currency_id"];
 const DEFAULT_FORM = Object.fromEntries([...EDITABLE_FIELDS, ...FORMULA_FIELDS].map(([k]) => [k, "0"]));
 EXTRA_FIELDS.forEach((key) => { DEFAULT_FORM[key] = ""; });
 
+const FOREIGN_CURRENCY_KEYS = new Set([
+  "ex_works_material_cost",
+  "packing_charges",
+  "documentation",
+  "other_charges_1",
+  "other_charges_2",
+  "other_charges_3",
+  "other_charges_4",
+  "advance_payment_value",
+  "balance_payment_value",
+  "total_supplier_price",
+]);
+
 const toNumber = (value) => { const p = Number(value); return Number.isFinite(p) ? p : 0; };
 const toFixed = (value, digits = 3) => String(Math.round((value + Number.EPSILON) * 10 ** digits) / 10 ** digits);
+
+const calculateLinkedItemsTotalPrice = (items = []) => toFixed(
+  items.reduce((sum, item) => sum + toNumber(item?.total_price), 0)
+);
+
+const applyLinkedItemsToForm = (values, items = []) => applyFormulas({
+  ...values,
+  ex_works_material_cost: calculateLinkedItemsTotalPrice(items),
+});
+
+const emptySettlementRow = (rowId, foreignCurrencyId = "") => ({
+  rowId,
+  settlement_date: "",
+  foreign_currency_id: foreignCurrencyId,
+  amount: "0",
+  factor: "0",
+});
+
+const mapSettlementRows = (rows, fallbackCurrencyId = "") => {
+  const mapped = (Array.isArray(rows) ? rows : []).map((row, index) => ({
+    rowId: Number(row?.id) || index + 1,
+    settlement_date: String(row?.settlement_date || ""),
+    foreign_currency_id: String(row?.foreign_currency_id || fallbackCurrencyId || ""),
+    amount: String(row?.amount ?? "0"),
+    factor: String(row?.factor ?? "0"),
+  }));
+  return mapped.length ? mapped : [emptySettlementRow(1, fallbackCurrencyId)];
+};
 
 // Check if entire purchase is taken (all items linked to same LCE)
 const isPurchaseFullyTaken = (purchaseId, items, currentLceId) => {
@@ -193,6 +235,8 @@ function applyFormulas(values) {
     + toNumber(next.unloading_charge_muscat_stores_1) + toNumber(next.unloading_charge_muscat_stores_2)
     + toNumber(next.loading_charge_muscat_stores_delivery)
   );
+  const exWorks = toNumber(next.ex_works_material_cost);
+  next.cost_factor = toFixed(exWorks > 0 ? toNumber(next.total) / exWorks : 0, 6);
   return next;
 }
 
@@ -378,6 +422,8 @@ function CostingPage() {
   // linked items (persisted on the LCE)
   const [linkedItems, setLinkedItems] = useState([]);
   const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [balanceSettlements, setBalanceSettlements] = useState([emptySettlementRow(1)]);
+  const [nextSettlementRowId, setNextSettlementRowId] = useState(2);
 
   // modal state
   const [selectedPurchaseIds, setSelectedPurchaseIds] = useState([]);
@@ -405,7 +451,11 @@ function CostingPage() {
       setChargeTypeOptions(mergedChargeTypes.map((name) => ({ value: name, label: name })));
 
       const currencies = Array.isArray(metaData?.currencies) ? metaData.currencies : [];
-      setCurrencyOptions(currencies.map((row) => ({ value: String(row.id), label: row.label || `${row.country_name} - ${row.currency_code}` })));
+      setCurrencyOptions(currencies.map((row) => ({
+        value: String(row.id),
+        label: row.label || `${row.country_name} - ${row.currency_code}`,
+        currencyCode: String(row.currency_code || "").trim().toUpperCase(),
+      })));
 
       let purchases = Array.isArray(metaData?.stock_purchases) ? metaData.stock_purchases : [];
       if (purchases.length === 0) {
@@ -423,6 +473,8 @@ function CostingPage() {
 
       if (!recordData) {
         setForm(applyFormulas({ ...DEFAULT_FORM }));
+        setBalanceSettlements([emptySettlementRow(1)]);
+        setNextSettlementRowId(2);
         setLoading(false);
         return;
       }
@@ -431,11 +483,13 @@ function CostingPage() {
       const merged = { ...DEFAULT_FORM };
       [...EDITABLE_FIELDS, ...FORMULA_FIELDS].forEach(([key]) => { merged[key] = String(estimate[key] ?? merged[key]); });
       EXTRA_FIELDS.forEach((key) => { merged[key] = String(estimate[key] ?? merged[key] ?? ""); });
-      setForm(applyFormulas(merged));
-
       const items = Array.isArray(estimate.purchase_items) ? estimate.purchase_items : [];
+      setForm(applyLinkedItemsToForm(merged, items));
       setLinkedItems(items);
       setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
+      const settlementRows = mapSettlementRows(estimate.balance_settlements, merged.foreign_currency_id || "");
+      setBalanceSettlements(settlementRows);
+      setNextSettlementRowId((settlementRows.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
       setLoading(false);
     };
 
@@ -448,7 +502,7 @@ function CostingPage() {
     return () => { alive = false; };
   }, [lceId]);
 
-  const handleChange = (key, value) => setForm((prev) => applyFormulas({ ...prev, [key]: value }));
+  const handleChange = (key, value) => setForm((prev) => applyLinkedItemsToForm({ ...prev, [key]: value }, linkedItems));
 
   const handleChargeTypeAdd = async (typeKey) => {
     const raw = window.prompt("Enter new charge type");
@@ -483,6 +537,46 @@ function CostingPage() {
     return `${selectedPurchaseIds.length} purchase(s) selected`;
   }, [selectedPurchaseIds, stockPurchaseOptions]);
 
+  const selectedForeignCurrencyCode = useMemo(() => {
+    const selected = currencyOptions.find((o) => String(o.value) === String(form.foreign_currency_id || ""));
+    return selected?.currencyCode || "FOREIGN CURRENCY";
+  }, [currencyOptions, form.foreign_currency_id]);
+
+  const withForeignCurrencyLabel = (key, label) => {
+    return FOREIGN_CURRENCY_KEYS.has(key) ? `${label} (${selectedForeignCurrencyCode})` : label;
+  };
+
+  const settlementRowsWithValue = useMemo(
+    () => balanceSettlements.map((row) => ({
+      ...row,
+      value: toFixed(toNumber(row.amount) * toNumber(row.factor)),
+    })),
+    [balanceSettlements]
+  );
+
+  const settledValueTotal = useMemo(
+    () => toFixed(settlementRowsWithValue.reduce((sum, row) => sum + toNumber(row.value), 0)),
+    [settlementRowsWithValue]
+  );
+
+  const pendingSettlementValue = useMemo(
+    () => toFixed(toNumber(form.ex_works_material_cost) - toNumber(settledValueTotal)),
+    [form.ex_works_material_cost, settledValueTotal]
+  );
+
+  const handleSettlementChange = (rowId, key, value) => {
+    setBalanceSettlements((prev) => prev.map((row) => (row.rowId === rowId ? { ...row, [key]: value } : row)));
+  };
+
+  const addSettlementRow = () => {
+    setBalanceSettlements((prev) => [...prev, emptySettlementRow(nextSettlementRowId, form.foreign_currency_id || "")]);
+    setNextSettlementRowId((prev) => prev + 1);
+  };
+
+  const removeSettlementRow = (rowId) => {
+    setBalanceSettlements((prev) => (prev.length > 1 ? prev.filter((row) => row.rowId !== rowId) : prev));
+  };
+
   const handleShowItems = async () => {
     if (!selectedPurchaseIds.length) { setStatus("Please select at least one purchase."); return; }
     setModalLoading(true);
@@ -516,22 +610,47 @@ function CostingPage() {
 
     const keepRows = linkedItems.filter((row) => !modalIds.has(row.id));
     const pickedRows = modalItems.filter((row) => ids.includes(row.id));
-    setLinkedItems([...keepRows, ...pickedRows]);
+      const nextLinkedItems = [...keepRows, ...pickedRows];
+      setLinkedItems(nextLinkedItems);
+      setForm((prev) => applyLinkedItemsToForm(prev, nextLinkedItems));
     setModalOpen(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
     setStatus("");
+
+    const settlementPayload = settlementRowsWithValue
+      .filter((row) => (
+        String(row.settlement_date || "").trim()
+        || toNumber(row.amount) !== 0
+        || toNumber(row.factor) !== 0
+        || String(row.foreign_currency_id || "").trim()
+      ))
+      .map((row) => ({
+        settlement_date: String(row.settlement_date || "").trim(),
+        foreign_currency_id: String(row.foreign_currency_id || "").trim(),
+        amount: row.amount,
+        factor: row.factor,
+      }));
+
+    if (settlementPayload.some((row) => !row.settlement_date)) {
+      setStatus("Settlement date is required for each balance settlement row.");
+      setSaving(false);
+      return;
+    }
+
     try {
       const payload = {
-        ...Object.fromEntries(EDITABLE_FIELDS.map(([key]) => [key, form[key]])),
+        ...Object.fromEntries(EDITABLE_FIELDS.filter(([key]) => key !== "ex_works_material_cost").map(([key]) => [key, form[key]])),
+        ex_works_material_cost: calculateLinkedItemsTotalPrice(linkedItems),
         other_charges_1_type: form.other_charges_1_type || "",
         other_charges_2_type: form.other_charges_2_type || "",
         other_charges_3_type: form.other_charges_3_type || "",
         other_charges_4_type: form.other_charges_4_type || "",
         foreign_currency_id: form.foreign_currency_id || "",
         item_ids: selectedItemIds,
+        balance_settlements: settlementPayload,
         created_by: currentUser?.username || "",
       };
       const data = isAddMode ? await createLceEstimate(payload) : await updateLceEstimateById(lceId, payload);
@@ -539,10 +658,13 @@ function CostingPage() {
       const merged = { ...DEFAULT_FORM };
       [...EDITABLE_FIELDS, ...FORMULA_FIELDS].forEach(([key]) => { merged[key] = String(estimate[key] ?? merged[key]); });
       EXTRA_FIELDS.forEach((key) => { merged[key] = String(estimate[key] ?? merged[key] ?? ""); });
-      setForm(applyFormulas(merged));
       const items = Array.isArray(estimate.purchase_items) ? estimate.purchase_items : [];
+      setForm(applyLinkedItemsToForm(merged, items));
       setLinkedItems(items);
       setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
+      const settlementRows = mapSettlementRows(estimate.balance_settlements, merged.foreign_currency_id || "");
+      setBalanceSettlements(settlementRows);
+      setNextSettlementRowId((settlementRows.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
       setStatus("LCE saved successfully.");
       if (isAddMode && estimate.id) navigate(`/projects/costing/record/${estimate.id}`, { replace: true });
     } catch (err) {
@@ -591,29 +713,63 @@ function CostingPage() {
             </label>
 
             {EDITABLE_FIELDS.map(([key, label]) => {
+              const isCalculatedExWorks = key === "ex_works_material_cost";
               const otherField = OTHER_CHARGE_FIELDS.find(([vk]) => vk === key);
+              if (isCalculatedExWorks) {
+                return (
+                  <label key={key} className="lce-form-card">
+                    <span className="lce-form-card__label">
+                      <strong>{withForeignCurrencyLabel(key, label)}</strong> <small style={{ color: "#cce8e5", fontWeight: 400 }}>(calculated from linked items)</small>
+                    </span>
+                    <input
+                      type="number"
+                      className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                      step="any"
+                      value={form[key]}
+                      disabled
+                      readOnly
+                    />
+                  </label>
+                );
+              }
               if (otherField) {
                 const [, chargeLabel, typeKey] = otherField;
                 return (
                   <div key={key} className="lce-form-card">
-                    <span className="lce-form-card__label">{chargeLabel}</span>
+                    <span className="lce-form-card__label">{withForeignCurrencyLabel(key, chargeLabel)}</span>
                     <div className="lce-charge-split-row">
                       <div className="lce-charge-split-col">
                         <div className="lce-charge-type-row">
                           <select
                             className="auth-input lce-form-card__input"
-                            style={{ background: "#ffffff", color: "#111827" }}
+                            style={{ background: "#ffffff", color: "#111827", minWidth: 0 }}
                             value={form[typeKey] || ""}
                             onChange={(e) => handleChange(typeKey, e.target.value)}
                           >
                             <option value="">Select charge type</option>
                             {chargeTypeOptions.map((o) => <option key={`${typeKey}-${o.value}`} value={o.value}>{o.label}</option>)}
                           </select>
-                          <button type="button" className="crud-add-btn" onClick={() => handleChargeTypeAdd(typeKey)}>+ Add</button>
+                          <button
+                            type="button"
+                            className="crud-add-btn"
+                            onClick={() => handleChargeTypeAdd(typeKey)}
+                            aria-label="Add charge type"
+                            title="Add charge type"
+                          >
+                            +
+                          </button>
                         </div>
                       </div>
                       <div className="lce-charge-split-col">
-                        <input type="number" className="auth-input lce-form-card__input" style={{ textAlign: "right" }} step="any" value={form[key]} onChange={(e) => handleChange(key, e.target.value)} />
+                        <input
+                          type="number"
+                          className="auth-input lce-form-card__input"
+                          style={{ textAlign: "right" }}
+                          step="any"
+                          value={form[key]}
+                          disabled={!form[typeKey]}
+                          onChange={(e) => handleChange(key, e.target.value)}
+                        />
                       </div>
                     </div>
                   </div>
@@ -621,7 +777,7 @@ function CostingPage() {
               }
               return (
                 <label key={key} className="lce-form-card">
-                  <span className="lce-form-card__label">{label}</span>
+                  <span className="lce-form-card__label">{withForeignCurrencyLabel(key, label)}</span>
                   <input type="number" className="auth-input lce-form-card__input" step="any" value={form[key]} onChange={(e) => handleChange(key, e.target.value)} />
                 </label>
               );
@@ -629,10 +785,107 @@ function CostingPage() {
 
             {FORMULA_FIELDS.map(([key, label]) => (
               <label key={key} className="lce-form-card lce-form-card--formula">
-                <span className="lce-form-card__label"><strong>{label}</strong></span>
+                <span className="lce-form-card__label"><strong>{withForeignCurrencyLabel(key, label)}</strong></span>
                 <input type="number" className="auth-input lce-form-card__input lce-form-card__input--readonly" value={form[key]} readOnly />
               </label>
             ))}
+          </div>
+
+          <div
+            style={{
+              marginTop: "1.25rem",
+              padding: "1rem",
+              border: "1px solid #1a6f77",
+              borderRadius: 8,
+              background: "#0a3a40",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0 }}>Balance Settlement</h3>
+              <button type="button" className="crud-add-btn" onClick={addSettlementRow}>+ Add Settlement</button>
+            </div>
+            <p style={{ margin: "0.5rem 0 0.8rem", color: "#cce8e5", fontSize: "0.86rem" }}>
+              Final Value = Factor x Amount. Settled total is deducted from EX WORKS MATERIAL COST to show pending amount.
+            </p>
+
+            <div className="table-responsive">
+              <table className="users-table" style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Date of Settlement</th>
+                    <th>Foreign Currency</th>
+                    <th>Amount</th>
+                    <th>Factor</th>
+                    <th>Final Value</th>
+                    <th style={{ width: 90 }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {settlementRowsWithValue.map((row) => (
+                    <tr key={row.rowId}>
+                      <td>
+                        <input
+                          type="date"
+                          className="auth-input"
+                          value={row.settlement_date}
+                          onChange={(e) => handleSettlementChange(row.rowId, "settlement_date", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          className="auth-input"
+                          value={row.foreign_currency_id || ""}
+                          onChange={(e) => handleSettlementChange(row.rowId, "foreign_currency_id", e.target.value)}
+                        >
+                          <option value="">Select currency</option>
+                          {currencyOptions.map((o) => <option key={`settlement-${row.rowId}-${o.value}`} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="any"
+                          className="auth-input"
+                          value={row.amount}
+                          onChange={(e) => handleSettlementChange(row.rowId, "amount", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="any"
+                          className="auth-input"
+                          value={row.factor}
+                          onChange={(e) => handleSettlementChange(row.rowId, "factor", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input type="number" className="auth-input" value={row.value} readOnly disabled />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="crud-add-btn"
+                          style={{ background: "#6c757d", width: "100%" }}
+                          onClick={() => removeSettlementRow(row.rowId)}
+                          disabled={settlementRowsWithValue.length <= 1}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: "flex", gap: "1rem", marginTop: "0.85rem", flexWrap: "wrap" }}>
+              <span style={{ color: "#cce8e5" }}><strong>EX WORKS MATERIAL COST:</strong> {form.ex_works_material_cost}</span>
+              <span style={{ color: "#cce8e5" }}><strong>Settled Total:</strong> {settledValueTotal}</span>
+              <span style={{ color: toNumber(pendingSettlementValue) < 0 ? "#fca5a5" : "#7ee787", fontWeight: 700 }}>
+                Pending: {pendingSettlementValue}
+              </span>
+            </div>
           </div>
 
           {/* ── Purchase invoice selector (top) ── */}
@@ -750,7 +1003,7 @@ function CostingPage() {
                   </thead>
                   <tbody>
                     {linkedItems.map((item) => {
-                      const lceCost = toFixed(toNumber(item.total_price) * toNumber(form.total));
+                      const lceCost = toFixed(toNumber(item.total_price) * toNumber(form.cost_factor));
                       return (
                         <tr key={item.id}>
                           <td>{item.grn_number}</td>
@@ -780,6 +1033,7 @@ function CostingPage() {
           initialSelected={selectedItemIds}
           onConfirm={handleModalConfirm}
           onClose={() => setModalOpen(false)}
+          currentLceId={lceId}
         />
       ) : null}
     </section>

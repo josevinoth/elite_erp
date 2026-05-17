@@ -88,3 +88,29 @@ class LCEEstimate(models.Model):
         super().save(*args, **kwargs)
 
 
+class LCEBalanceSettlement(models.Model):
+    lce_estimate = models.ForeignKey(
+        LCEEstimate,
+        on_delete=models.CASCADE,
+        related_name="balance_settlements",
+    )
+    settlement_date = models.DateField()
+    foreign_currency = models.ForeignKey(
+        CountryCurrency,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lce_balance_settlements",
+    )
+    amount = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    factor = models.DecimalField(max_digits=14, decimal_places=6, default=0)
+    value = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["settlement_date", "id"]
+
+    def __str__(self):
+        return f"LCE Settlement #{self.pk}"
+
+

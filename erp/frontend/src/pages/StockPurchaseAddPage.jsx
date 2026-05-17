@@ -335,6 +335,8 @@ function StockPurchaseAddPage() {
     const cleanedItems = items
       .filter((row) => String(row.item_name || "").trim())
       .map((row) => ({
+        id: row.rowId,
+        grn_number: row.grn_number || "",
         item_category: row.item_category,
         item_name: row.item_name,
         item_code: row.item_code,
@@ -392,8 +394,7 @@ function StockPurchaseAddPage() {
       if (savedSpNumber) setSpNumber(savedSpNumber);
 
       if (isEditMode) {
-        setStatus("Stock purchase updated successfully.");
-        navigate("/stock-purchase");
+        setStatus("Stock purchase updated successfully. You can continue editing items on this page.");
       } else {
         // Stay on page — redirect to edit URL so subsequent saves use PATCH
         setStatus(`Stock purchase ${savedSpNumber || "saved"} successfully. You can continue adding or editing items.`);

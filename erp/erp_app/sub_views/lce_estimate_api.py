@@ -1,11 +1,12 @@
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import CountryCurrency, LCEChargeTypeOption, LCEEstimate
+from ..sub_models import CountryCurrency, LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate
 from ..sub_models.stock_purchase import StockPurchase, StockPurchaseItem
 from ..utils import normalize_text
 
@@ -46,6 +47,8 @@ def _link_items_to_estimate(estimate, item_ids):
     Items previously linked to this LCE that are NOT in item_ids are unlinked.
     """
     lce_total = Decimal(str(estimate.total))
+    ex_works_total = Decimal(str(estimate.ex_works_material_cost))
+    cost_factor = (lce_total / ex_works_total) if ex_works_total else Decimal("0")
 
     # Unlink items that were previously linked but are no longer selected.
     StockPurchaseItem.objects.filter(lce_estimate=estimate).exclude(id__in=item_ids).update(
@@ -56,7 +59,7 @@ def _link_items_to_estimate(estimate, item_ids):
     items = list(StockPurchaseItem.objects.filter(id__in=item_ids))
     for item in items:
         item.lce_estimate = estimate
-        item.lce_cost = item.total_price * lce_total
+        item.lce_cost = item.total_price * cost_factor
     if items:
         StockPurchaseItem.objects.bulk_update(items, ["lce_estimate", "lce_cost"])
 
@@ -83,6 +86,15 @@ def _serialize_purchase_item(item):
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
     }
+
+
+def _sum_item_total_price(item_ids):
+    if not item_ids:
+        return Decimal("0")
+    total = Decimal("0")
+    for item in StockPurchaseItem.objects.filter(id__in=item_ids).only("total_price"):
+        total += item.total_price
+    return total
 
 
 def _ensure_authenticated(request):
@@ -116,6 +128,15 @@ def _to_currency(value):
         return None
 
 
+def _to_date(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def _serialize_currency(obj):
     if not obj:
         return None
@@ -126,6 +147,50 @@ def _serialize_currency(obj):
         "country_name": obj.country_name,
         "label": f"{obj.country_name} - {obj.currency_code}",
     }
+
+
+def _serialize_balance_settlement(obj):
+    return {
+        "id": obj.id,
+        "settlement_date": obj.settlement_date.isoformat() if obj.settlement_date else "",
+        "foreign_currency_id": obj.foreign_currency_id,
+        "foreign_currency": _serialize_currency(obj.foreign_currency),
+        "amount": str(obj.amount),
+        "factor": str(obj.factor),
+        "value": str(obj.value),
+    }
+
+
+def _replace_balance_settlements(estimate, settlements_payload):
+    if not isinstance(settlements_payload, list):
+        return
+
+    settlement_rows = []
+    for row in settlements_payload:
+        if not isinstance(row, dict):
+            continue
+
+        settlement_date = _to_date(row.get("settlement_date"))
+        if not settlement_date:
+            continue
+
+        amount = _to_decimal(row.get("amount"), Decimal("0"))
+        factor = _to_decimal(row.get("factor"), Decimal("0"))
+        value = amount * factor
+        settlement_rows.append(
+            LCEBalanceSettlement(
+                lce_estimate=estimate,
+                settlement_date=settlement_date,
+                foreign_currency=_to_currency(row.get("foreign_currency_id")) or estimate.foreign_currency,
+                amount=amount,
+                factor=factor,
+                value=value,
+            )
+        )
+
+    LCEBalanceSettlement.objects.filter(lce_estimate=estimate).delete()
+    if settlement_rows:
+        LCEBalanceSettlement.objects.bulk_create(settlement_rows)
 
 
 def _calculate_totals(values):
@@ -162,6 +227,12 @@ def _serialize(obj):
     linked_items = list(
         StockPurchaseItem.objects.filter(lce_estimate=obj).select_related("stock_purchase", "stock_purchase__vendor_detail")
     )
+    ex_works_total = Decimal(str(obj.ex_works_material_cost or 0))
+    total_value = Decimal(str(obj.total or 0))
+    cost_factor = (total_value / ex_works_total) if ex_works_total else Decimal("0")
+    settlements = list(obj.balance_settlements.select_related("foreign_currency").all())
+    settled_total = sum((Decimal(str(row.value or 0)) for row in settlements), Decimal("0"))
+    pending_total = ex_works_total - settled_total
     return {
         "id": obj.id,
         "lce_id": f"LCE_{obj.id:03d}",
@@ -197,6 +268,10 @@ def _serialize(obj):
         "unloading_charge_muscat_stores_2": str(obj.unloading_charge_muscat_stores_2),
         "loading_charge_muscat_stores_delivery": str(obj.loading_charge_muscat_stores_delivery),
         "total": str(obj.total),
+        "cost_factor": str(cost_factor),
+        "balance_settlements": [_serialize_balance_settlement(row) for row in settlements],
+        "balance_settled_total": str(settled_total),
+        "balance_pending": str(pending_total),
         "created_by": obj.created_by,
         "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
     }
@@ -285,7 +360,6 @@ def create_lce_estimate_api_view(request):
 
     payload = _read_json(request)
     values = {field: _to_decimal(payload.get(field), Decimal("0")) for field in EDITABLE_FIELDS}
-    values = _calculate_totals(values)
     text_values = {field: normalize_text(payload.get(field, "")) for field in TEXT_FIELDS}
     foreign_currency = _to_currency(payload.get("foreign_currency_id"))
 
@@ -293,6 +367,9 @@ def create_lce_estimate_api_view(request):
         created_by=normalize_text(payload.get("created_by") or request.user.username),
         foreign_currency=foreign_currency,
     )
+    item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
+    values["ex_works_material_cost"] = _sum_item_total_price(item_ids)
+    values = _calculate_totals(values)
     for field in EDITABLE_FIELDS:
         setattr(estimate, field, values[field])
     for field in TEXT_FIELDS:
@@ -305,9 +382,9 @@ def create_lce_estimate_api_view(request):
     estimate.total = values["total"]
     estimate.save()
 
-    item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
     if item_ids:
         _link_items_to_estimate(estimate, item_ids)
+    _replace_balance_settlements(estimate, payload.get("balance_settlements") or [])
 
     return JsonResponse({"success": True, "lce_estimate": _serialize(estimate)}, status=201)
 
@@ -334,6 +411,11 @@ def lce_estimate_record_api_view(request, lce_id):
 
     payload = _read_json(request)
     values = {field: _to_decimal(payload.get(field, getattr(estimate, field)), Decimal("0")) for field in EDITABLE_FIELDS}
+    if "item_ids" in payload:
+        item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
+    else:
+        item_ids = list(StockPurchaseItem.objects.filter(lce_estimate=estimate).values_list("id", flat=True))
+    values["ex_works_material_cost"] = _sum_item_total_price(item_ids)
     values = _calculate_totals(values)
     text_values = {field: normalize_text(payload.get(field, getattr(estimate, field, ""))) for field in TEXT_FIELDS}
     if "foreign_currency_id" in payload:
@@ -353,8 +435,9 @@ def lce_estimate_record_api_view(request, lce_id):
     estimate.save()
 
     if "item_ids" in payload:
-        item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
         _link_items_to_estimate(estimate, item_ids)
+    if "balance_settlements" in payload:
+        _replace_balance_settlements(estimate, payload.get("balance_settlements") or [])
 
     return JsonResponse({"success": True, "lce_estimate": _serialize(estimate)})
 
