@@ -44,7 +44,7 @@ def _link_items_to_estimate(estimate, item_ids):
     """
     Set lce_estimate FK on the given StockPurchaseItem IDs (replacing any
     previous links for this estimate), then compute lce_cost per item.
-    Items previously linked to this LCE that are NOT in item_ids are unlinked.
+    Items previously linked to this LCE that are NO longer selected are unlinked.
     """
     lce_total = Decimal(str(estimate.total))
     ex_works_total = Decimal(str(estimate.ex_works_material_cost))
@@ -155,7 +155,7 @@ def _serialize_balance_settlement(obj):
         "settlement_date": obj.settlement_date.isoformat() if obj.settlement_date else "",
         "foreign_currency_id": obj.foreign_currency_id,
         "foreign_currency": _serialize_currency(obj.foreign_currency),
-        "amount": str(obj.amount),
+        "payment_amount": str(obj.amount),  # changed from 'amount' to 'payment_amount'
         "factor": str(obj.factor),
         "value": str(obj.value),
     }
@@ -174,7 +174,8 @@ def _replace_balance_settlements(estimate, settlements_payload):
         if not settlement_date:
             continue
 
-        amount = _to_decimal(row.get("amount"), Decimal("0"))
+        # Use payment_amount (EUR) from frontend, not amount or OMR
+        amount = _to_decimal(row.get("payment_amount"), Decimal("0"))
         factor = _to_decimal(row.get("factor"), Decimal("0"))
         value = amount * factor
         settlement_rows.append(
@@ -440,5 +441,4 @@ def lce_estimate_record_api_view(request, lce_id):
         _replace_balance_settlements(estimate, payload.get("balance_settlements") or [])
 
     return JsonResponse({"success": True, "lce_estimate": _serialize(estimate)})
-
 
