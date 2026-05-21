@@ -283,7 +283,7 @@ function formatPurchaseOption(row) {
 }
 
 /* ─────────────────── Purchase Item Selection Modal ─────────────────── */
-function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, currentLceId }) {
+function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, currentLceId, selectedForeignCurrencyCode }) {
   const [checked, setChecked] = useState(() => new Set(initialSelected));
   const [search, setSearch] = useState("");
 
@@ -1122,28 +1122,29 @@ function CostingPage() {
                       <th>Item Name</th>
                       <th>Item Code</th>
                       <th>Qty</th>
-                      <th>Unit Price</th>
                       <th>Total Price</th>
-                       <th>LCE COST (OMR)</th>
+                      <th>LCE COST (OMR)/Unit</th>
                     </tr>
                   </thead>
                   <tbody>
                     {linkedItems.map((item) => {
-                      const lceCost = toFixed(toNumber(item.total_price) * toNumber(form.cost_factor));
-                      return (
-                        <tr key={item.id}>
-                          <td>{item.grn_number}</td>
-                          <td>{item.purchase_number || "-"}</td>
-                          <td>{item.invoice_number || "-"}</td>
-                          <td>{item.item_category}</td>
-                          <td>{item.item_name}</td>
-                          <td>{item.item_code}</td>
-                          <td>{item.quantity}</td>
-                          <td>{item.unit_price} {selectedForeignCurrencyCode}</td>
-                          <td>{item.total_price} {selectedForeignCurrencyCode}</td>
-                          <td><strong>{lceCost}</strong></td>
-                        </tr>
-                      );
+                       const lceCost = toFixed(toNumber(item.total_price) * toNumber(form.cost_factor));
+                       const perUnitLceCost = (toNumber(item.quantity) > 0)
+                         ? toFixed(toNumber(lceCost) / toNumber(item.quantity))
+                         : "-";
+                       return (
+                         <tr key={item.id}>
+                           <td>{item.grn_number}</td>
+                           <td>{item.purchase_number || "-"}</td>
+                           <td>{item.invoice_number || "-"}</td>
+                           <td>{item.item_category}</td>
+                           <td>{item.item_name}</td>
+                           <td>{item.item_code}</td>
+                           <td>{item.quantity}</td>
+                           <td>{item.total_price} {selectedForeignCurrencyCode}</td>
+                           <td><strong>{perUnitLceCost}</strong></td>
+                         </tr>
+                       );
                     })}
                   </tbody>
                 </table>
@@ -1153,15 +1154,16 @@ function CostingPage() {
         </>
       ) : null}
 
-      {modalOpen ? (
-        <PurchaseItemModal
-          items={modalItems}
-          initialSelected={selectedItemIds}
-          onConfirm={handleModalConfirm}
-          onClose={() => setModalOpen(false)}
-          currentLceId={lceId}
-        />
-      ) : null}
+       {modalOpen ? (
+         <PurchaseItemModal
+           items={modalItems}
+           initialSelected={selectedItemIds}
+           onConfirm={handleModalConfirm}
+           onClose={() => setModalOpen(false)}
+           currentLceId={lceId}
+           selectedForeignCurrencyCode={selectedForeignCurrencyCode}
+         />
+       ) : null}
     </section>
   );
 }

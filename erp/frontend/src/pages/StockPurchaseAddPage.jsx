@@ -409,6 +409,20 @@ function StockPurchaseAddPage() {
     }
   };
 
+  // Helper to determine status type
+  const getStatusType = (status) => {
+    if (!status) return "";
+    const s = status.toLowerCase();
+    if (
+      s.includes("successfully") ||
+      s.includes("saved") ||
+      s.includes("updated")
+    ) {
+      return "success";
+    }
+    return "error";
+  };
+
   return (
     <section className="module-page">
       <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
@@ -426,7 +440,18 @@ function StockPurchaseAddPage() {
         </button>
       </div>
 
-      {status ? <p className="users-status users-status--error">{status}</p> : null}
+      {status ? (
+        <p
+          className={`users-status users-status--${getStatusType(status)}`}
+          style={
+            getStatusType(status) === "success"
+              ? { background: "#22bb33", color: "#fff", padding: "0.5rem 1rem", borderRadius: 6, margin: 0 }
+              : { background: "orange", color: "#fff", padding: "0.5rem 1rem", borderRadius: 6, margin: 0 }
+          }
+        >
+          {status}
+        </p>
+      ) : null}
       {loadingRecord ? <p className="users-status">Loading record...</p> : null}
 
       {!loadingRecord ? <form className="modal-form stock-purchase-add-form" onSubmit={handleSubmit}>
@@ -560,14 +585,16 @@ function StockPurchaseAddPage() {
                   <th>Item Code</th>
                   <th>GRN No.</th>
                   <th>Qty</th>
-                  <th>Unit Price</th>
-                  <th>Total Price</th>
+                        <th>Unit Price</th>
+                        <th>Total Price</th>
                   <th style={{ textAlign: "center" }}>Trace</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((row) => (
+                {items.map((row) => {
+                  // ...existing code...
+                  return (
                   <tr key={row.rowId}>
                     <td>
                       <select
@@ -631,9 +658,9 @@ function StockPurchaseAddPage() {
                         disabled={!savedPurchaseDetailId}
                       />
                     </td>
-                    <td>
-                      <input className="auth-input auth-input--readonly" value={row.total_price} readOnly />
-                    </td>
+                     <td>
+                        <input className="auth-input auth-input--readonly" value={row.total_price} readOnly />
+                      </td>
                     <td style={{ verticalAlign: "middle", textAlign: "center" }}>
                       {row.rowId && row.grn_number ? (
                         <a
@@ -676,7 +703,8 @@ function StockPurchaseAddPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
           </div>
