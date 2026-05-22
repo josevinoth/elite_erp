@@ -6,8 +6,8 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import CountryCurrency, LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate
-from ..sub_models.stock_purchase import StockPurchase, StockPurchaseItem
+from ..sub_models import CountryCurrency, LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate, StockPurchaseVendorDetail
+from ..sub_models.stock_purchase import StockPurchaseItem
 from ..utils import normalize_text
 
 
@@ -71,12 +71,7 @@ def _serialize_purchase_item(item):
     return {
         "id": item.id,
         "grn_number": raw_grn,
-        "purchase_number": item.stock_purchase.purchase_number if item.stock_purchase_id else "",
-        "invoice_number": (
-            item.stock_purchase.vendor_detail.invoice_number
-            if item.stock_purchase_id and item.stock_purchase.vendor_detail_id
-            else (item.stock_purchase.invoice_number if item.stock_purchase_id else "")
-        ),
+        "invoice_number": item.vendor_detail.invoice_number if item.vendor_detail else "",
         "item_category": item.item_category,
         "item_name": item.item_name,
         "item_code": item.item_code,
@@ -226,7 +221,7 @@ def _calculate_totals(values):
 
 def _serialize(obj):
     linked_items = list(
-        StockPurchaseItem.objects.filter(lce_estimate=obj).select_related("stock_purchase", "stock_purchase__vendor_detail")
+        StockPurchaseItem.objects.filter(lce_estimate=obj).select_related("vendor_detail")
     )
     ex_works_total = Decimal(str(obj.ex_works_material_cost or 0))
     total_value = Decimal(str(obj.total or 0))
@@ -304,10 +299,9 @@ def lce_estimate_meta_api_view(request):
         for row in CountryCurrency.objects.filter(is_active=True).order_by("sort_order", "country_name")
     ]
     stock_purchases = []
-    for sp in StockPurchase.objects.select_related("vendor_detail").prefetch_related("items").order_by("-id"):
-        vd = sp.vendor_detail
-        invoice = vd.invoice_number if vd else sp.invoice_number
-        sp_num = sp.purchase_number or f"SP{sp.pk:04d}"
+    for sp in StockPurchaseVendorDetail.objects.select_related("vendor").prefetch_related("items").order_by("-id"):
+        invoice = sp.invoice_number
+        sp_num = f"SPV{sp.pk:04d}"
         label = f"{sp_num} | Invoice: {invoice}" if invoice else sp_num
         stock_purchases.append({"id": sp.id, "label": label, "invoice_number": invoice, "purchase_number": sp_num})
     return JsonResponse({"charge_types": charge_types, "currencies": currencies, "stock_purchases": stock_purchases})
@@ -320,7 +314,7 @@ def lce_purchase_items_api_view(request, purchase_id):
     if not_allowed:
         return not_allowed
 
-    items = StockPurchaseItem.objects.filter(stock_purchase_id=purchase_id).order_by("id")
+    items = StockPurchaseItem.objects.filter(vendor_detail_id=purchase_id).order_by("id")
     return JsonResponse({"items": [_serialize_purchase_item(i) for i in items]})
 
 
@@ -441,4 +435,3 @@ def lce_estimate_record_api_view(request, lce_id):
         _replace_balance_settlements(estimate, payload.get("balance_settlements") or [])
 
     return JsonResponse({"success": True, "lce_estimate": _serialize(estimate)})
-

@@ -12,6 +12,7 @@ class StockPurchaseVendorDetail(models.Model):
     total_value = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    purchase_id = models.CharField(max_length=10, unique=True, blank=True, null=True, db_index=True)
 
     class Meta:
         ordering = ["-invoice_date", "-created_at"]
@@ -20,57 +21,23 @@ class StockPurchaseVendorDetail(models.Model):
         return self.vendor.name
 
     def save(self, *args, **kwargs):
+        # Auto-generate purchase_id if not set
+        if not self.purchase_id:
+            last = StockPurchaseVendorDetail.objects.order_by('-id').first()
+            next_num = 1
+            if last and last.purchase_id and last.purchase_id.startswith('SP'):
+                try:
+                    next_num = int(last.purchase_id[2:]) + 1
+                except Exception:
+                    pass
+            self.purchase_id = f'SP{next_num:05d}'
         for field in ["invoice_number"]:
             setattr(self, field, normalize_text(getattr(self, field)))
-
         super().save(*args, **kwargs)
 
 
-class StockPurchase(models.Model):
-    purchase_number = models.CharField(max_length=60, unique=True, null=True, blank=True)
-    vendor_detail = models.ForeignKey(
-        StockPurchaseVendorDetail,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="purchases",
-    )
-
-    item_name = models.CharField(max_length=200)
-    category = models.CharField(max_length=100, blank=True)
-    vendor = models.CharField(max_length=200, blank=True)
-    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    unit = models.CharField(max_length=30, blank=True)
-    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    purchase_date = models.DateField(null=True, blank=True)
-    invoice_number = models.CharField(max_length=100, blank=True)
-    notes = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-purchase_date', '-created_at']
-
-    def __str__(self):
-        return self.purchase_number or self.item_name
-
-    def save(self, *args, **kwargs):
-        for field in ["purchase_number", "item_name", "category", "vendor", "unit", "invoice_number", "notes"]:
-            setattr(self, field, normalize_text(getattr(self, field)))
-
-        is_new = self.pk is None
-        # If purchase_number not supplied, generate after first insert
-        if not self.purchase_number:
-            super().save(*args, **kwargs)
-            self.purchase_number = f"SP{self.pk:04d}"
-            super().save(update_fields=["purchase_number"])
-        else:
-            super().save(*args, **kwargs)
-
-
 class StockPurchaseItem(models.Model):
-    stock_purchase = models.ForeignKey(StockPurchase, on_delete=models.CASCADE, related_name="items")
+    vendor_detail = models.ForeignKey(StockPurchaseVendorDetail, on_delete=models.CASCADE, related_name="items")
     lce_estimate = models.ForeignKey(
         "erp_app.LCEEstimate",
         null=True,
@@ -112,4 +79,3 @@ class StockPurchaseItem(models.Model):
         if (is_new or not self.grn_number) and self.pk:
             self.grn_number = f"GRN{self.pk:04d}"
             super().save(update_fields=["grn_number"])
-

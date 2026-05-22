@@ -86,6 +86,7 @@ from .views import (
     create_lab_furniture_item_api_view,
     lab_furniture_item_detail_api_view,
 )
+from .sub_views.stock_purchase_status_option_api import list_stock_purchase_status_options_api_view
 
 urlpatterns = [
     # auth API
@@ -118,6 +119,7 @@ urlpatterns = [
     path('api/stock-purchase-items/<int:item_id>/trace/', stock_purchase_item_trace_api_view, name='api-stock-purchase-item-trace'),
     path('api/stock-purchase-vendors/create/', create_stock_purchase_vendor_detail_api_view, name='api-stock-purchase-vendors-create'),
     path('api/stock-purchase-vendors/<int:pk>/', stock_purchase_vendor_detail_api_view, name='api-stock-purchase-vendors-detail'),
+    path('api/stock-purchase/status-options/', list_stock_purchase_status_options_api_view, name='list_stock_purchase_status_options_api_view'),
     # stock maintenance
     path('api/stock-maintenance/', list_stock_maintenance_api_view, name='api-stock-maintenance-list'),
     path('api/stock-maintenance/meta/', list_stock_maintenance_meta_api_view, name='api-stock-maintenance-meta'),

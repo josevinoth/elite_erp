@@ -14,7 +14,7 @@ from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .project import Project
 from .stock_maintenance_type_option import StockMaintenanceTypeOption
 from .stock_maintenance import StockMaintenance
-from .stock_purchase import StockPurchase, StockPurchaseItem, StockPurchaseVendorDetail
+from .stock_purchase import StockPurchaseItem, StockPurchaseVendorDetail
 from .task import Task
 from .task_status_option import TaskStatusOption
 from .team import Team
@@ -42,7 +42,6 @@ __all__ = [
 	"Vendor",
 	"Project",
 	"ProjectLifecycleStatusOption",
-	"StockPurchase",
 	"StockPurchaseItem",
 	"StockPurchaseVendorDetail",
 	"StockMaintenance",

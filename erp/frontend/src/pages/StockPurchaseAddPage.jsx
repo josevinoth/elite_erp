@@ -9,6 +9,7 @@ import {
   listVendors,
   updateStockPurchase,
   updateStockPurchaseVendorDetail,
+  listStockPurchaseStatusOptions,
 } from "../services/crudApi";
 
 const emptyItem = (id) => ({
@@ -50,7 +51,23 @@ function StockPurchaseAddPage() {
   const [savedPurchaseDetailId, setSavedPurchaseDetailId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [savingPurchaseDetails, setSavingPurchaseDetails] = useState(false);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(""); // for UI messages
+  const [statusId, setStatusId] = useState("");
+  const [statusOptions, setStatusOptions] = useState([]);
+      // Fetch status options
+      useEffect(() => {
+        let alive = true;
+        listStockPurchaseStatusOptions()
+          .then((data) => {
+            if (!alive) return;
+            setStatusOptions(data.status_options || []);
+          })
+          .catch(() => {
+            if (!alive) return;
+            setStatusOptions([]);
+          });
+        return () => { alive = false; };
+      }, []);
   const [purchaseStatus, setPurchaseStatus] = useState("");
   const [loadingRecord, setLoadingRecord] = useState(isEditMode);
   const [spNumber, setSpNumber] = useState("");
@@ -110,7 +127,7 @@ function StockPurchaseAddPage() {
           invoice_number: vendorDetail.invoice_number || "",
           invoice_date: vendorDetail.invoice_date || "",
           tax: vendorDetail.tax || "0",
-          total_value: vendorDetail.total_value || "0",
+          total_value: vendorDetail.total_value || "",
         });
         setSpNumber(record.purchase_number || "");
         setSavedPurchaseDetailId(vendorDetail.id || null);
@@ -118,6 +135,7 @@ function StockPurchaseAddPage() {
         setNotes(record.notes || "");
         setItems(loadedItems.length ? loadedItems : [emptyItem(1)]);
         setNextItemId((loadedItems.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
+        setStatusId(record.status_id ? String(record.status_id) : "");
       })
       .catch((error) => {
         if (!alive) return;
@@ -382,6 +400,7 @@ function StockPurchaseAddPage() {
         notes,
         vendor_detail_id: savedPurchaseDetailId,
         items: cleanedItems,
+        status_id: statusId,
       };
       const successData = isEditMode
         ? await updateStockPurchase(purchaseId, payload)
@@ -536,6 +555,22 @@ function StockPurchaseAddPage() {
               readOnly
               disabled
             />
+          </div>
+          <div className="modal-form__row">
+            <label className="modal-form__label" htmlFor="sp-status">Status *</label>
+            <select
+              id="sp-status"
+              name="status_id"
+              className="auth-input"
+              value={statusId}
+              onChange={e => setStatusId(e.target.value)}
+              required
+            >
+              <option value="">Select status</option>
+              {statusOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 

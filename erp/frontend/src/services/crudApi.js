@@ -431,6 +431,11 @@ export async function updateStockPurchaseVendorDetail(id, payload) {
   return parseJson(res);
 }
 
+export async function listStockPurchaseStatusOptions() {
+  const res = await fetch("/api/stock-purchase/status-options/", { credentials: "include" });
+  return parseJson(res);
+}
+
 // ── Stock Maintenance ─────────────────────────────────────
 export async function listStockMaintenance() {
   const res = await fetch("/api/stock-maintenance/", { credentials: "include" });

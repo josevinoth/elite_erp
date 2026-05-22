@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>History for {{ object }}</h1>
+<table class="admin-history table">
+    <thead>
+        <tr>
+            <th>Updated By</th>
+            <th>Updated On</th>
+            <th>Updated Value</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for entry in history %}
+        <tr>
+            <td>{{ entry.updated_by }}</td>
+            <td>{{ entry.updated_on }}</td>
+            <td>{{ entry.updated_value|default:"-" }}</td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="3">No history found.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+<a href="../" class="button">Back</a>
+{% endblock %}
+

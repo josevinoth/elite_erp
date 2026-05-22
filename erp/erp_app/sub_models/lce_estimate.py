@@ -2,7 +2,6 @@ from django.db import models
 
 from ..utils import normalize_text
 from .country_currency import CountryCurrency
-from .stock_purchase import StockPurchase
 
 
 class LCEChargeTypeOption(models.Model):
@@ -21,14 +20,6 @@ class LCEChargeTypeOption(models.Model):
 
 
 class LCEEstimate(models.Model):
-    stock_purchase = models.OneToOneField(
-        StockPurchase,
-        on_delete=models.CASCADE,
-        related_name="lce_estimate",
-        null=True,
-        blank=True,
-    )
-
     ex_works_material_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     packing_charges = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     documentation = models.DecimalField(max_digits=14, decimal_places=3, default=0)
@@ -76,8 +67,6 @@ class LCEEstimate(models.Model):
         ordering = ["-updated_at", "-id"]
 
     def __str__(self):
-        if self.stock_purchase:
-            return f"LCE - Purchase #{self.stock_purchase.pk}"
         return f"LCE - Record #{self.pk}"
 
     def save(self, *args, **kwargs):
@@ -112,5 +101,4 @@ class LCEBalanceSettlement(models.Model):
 
     def __str__(self):
         return f"LCE Settlement #{self.pk}"
-
 

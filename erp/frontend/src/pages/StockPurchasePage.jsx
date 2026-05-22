@@ -8,7 +8,7 @@ import {
 } from "../services/crudApi";
 
 const COLUMNS = [
-  { key: "purchase_number", label: "Purchase ID" },
+  { key: "purchase_id", label: "Purchase ID" },
   { key: "vendor", label: "Vendor" },
   { key: "invoice_number", label: "Invoice #" },
   { key: "purchase_date", label: "Invoice Date" },
@@ -66,4 +66,3 @@ function StockPurchasePage() {
 }
 
 export default StockPurchasePage;
-
