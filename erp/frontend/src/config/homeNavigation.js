@@ -24,44 +24,36 @@ export const homeNavItems = [
     label: "Projects",
     to: "/projects",
     icon: "projects",
-    children: [
-      {
-        label: "Requirements",
-        to: "/projects/requirements",
-        icon: "requirements",
-      },
-      {
-        label: "Quotation",
-        to: "/projects/quotation",
-        icon: "quotation",
-      },
-      {
-        label: "Customer PO",
-        to: "/projects/customer-po",
-        icon: "customerPo",
-      },
-      {
-        label: "Costing",
-        to: "/projects/costing",
-        icon: "costing",
-      },
-      {
-        label: "Cut Optimiser",
-        to: "/projects/cut-optimiser",
-        icon: "cutOptimiser",
-      },
-    ],
   },
+  { label: "LCE", to: "/projects/costing", icon: "costing" },
   { label: "Vendors", to: "/vendors", icon: "vendors" },
   {
-    label: "Stock Purchase",
-    to: "/stock-purchase",
-    icon: "stockPurchase",
-  },
-  {
-    label: "Stock Maintenance",
-    to: "/stock-maintenance",
-    icon: "stockMaintenance",
+    label: "Stocks:",
+    to: "/stocks",
+    icon: "stocks",
+    disableParentNavigation: true,
+    children: [
+      {
+        label: "Stocks List",
+        to: "/stocks",
+        icon: "stocks",
+      },
+      {
+        label: "Stock Purchase",
+        to: "/stock-purchase",
+        icon: "stockPurchase",
+      },
+      {
+        label: "Stock Maintenance",
+        to: "/stock-maintenance",
+        icon: "stockMaintenance",
+      },
+      {
+        label: "Item Master",
+        to: "/stock-items",
+        icon: "itemMaster",
+      },
+    ],
   },
   {
     label: "CDC Team Expence",

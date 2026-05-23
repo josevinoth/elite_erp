@@ -1,0 +1,104 @@
+from django.db import models
+
+from ..utils import normalize_text
+from .country_currency import CountryCurrency
+
+
+class LCEChargeTypeOption(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = normalize_text(self.name)
+        super().save(*args, **kwargs)
+
+
+class LCEEstimate(models.Model):
+    ex_works_material_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    packing_charges = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    documentation = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_1 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_1_type = models.CharField(max_length=120, blank=True)
+    other_charges_2 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_2_type = models.CharField(max_length=120, blank=True)
+    other_charges_3 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_3_type = models.CharField(max_length=120, blank=True)
+    other_charges_4 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    other_charges_4_type = models.CharField(max_length=120, blank=True)
+    foreign_currency = models.ForeignKey(
+        CountryCurrency,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lce_estimates",
+    )
+    total_supplier_price = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+
+    advance_payment_value = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    bank_exchange_rate = models.DecimalField(max_digits=14, decimal_places=6, default=0)
+    advance_payment_value_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+
+    balance_payment_value = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    balance_payment_value_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    total_supplier_price_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+
+    bank_muscat_charge_advance_payment = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    bank_muscat_charge_balance_payment = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    freight_charge = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    customs_duty_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    oman_customs_boe_charge_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    rop_customs_inspection_charge = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    unloading_charge_muscat_stores_1 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    unloading_charge_muscat_stores_2 = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    loading_charge_muscat_stores_delivery = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+
+    total = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    created_by = models.CharField(max_length=150, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return f"LCE - Record #{self.pk}"
+
+    def save(self, *args, **kwargs):
+        self.created_by = normalize_text(self.created_by)
+        self.other_charges_1_type = normalize_text(self.other_charges_1_type)
+        self.other_charges_2_type = normalize_text(self.other_charges_2_type)
+        self.other_charges_3_type = normalize_text(self.other_charges_3_type)
+        super().save(*args, **kwargs)
+
+
+class LCEBalanceSettlement(models.Model):
+    lce_estimate = models.ForeignKey(
+        LCEEstimate,
+        on_delete=models.CASCADE,
+        related_name="balance_settlements",
+    )
+    settlement_date = models.DateField()
+    foreign_currency = models.ForeignKey(
+        CountryCurrency,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lce_balance_settlements",
+    )
+    amount = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    factor = models.DecimalField(max_digits=14, decimal_places=6, default=0)
+    value = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["settlement_date", "id"]
+
+    def __str__(self):
+        return f"LCE Settlement #{self.pk}"
+

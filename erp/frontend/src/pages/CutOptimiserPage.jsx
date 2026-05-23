@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
 import { listProjects } from "../services/crudApi";
+import {
+  createCutOptimiserRecord,
+  getCutOptimiserRecordById,
+  getNextCutOptimiserRevision,
+  listCutOptimiserRecords,
+  updateCutOptimiserRecord,
+} from "../services/cutOptimiserStore";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import { downloadCutOptimiserPdf } from "../utils/cutOptimiserReport";
 import { buildPackedSheetsForScenario as buildPackedSheetsForScenarioV2, summarizeCutOrientations } from "../utils/cutPackingEngine";
@@ -290,6 +298,10 @@ function SheetVisual({ scenario, kerfMm }) {
 }
 
 function CutOptimiserPage() {
+  const { recordId } = useParams();
+  const navigate = useNavigate();
+  const isEditMode = Boolean(recordId);
+
   const [form, setForm] = useState({
     dimUnit: "ft",
     kerf: "3",
@@ -309,6 +321,8 @@ function CutOptimiserPage() {
   const [isPdfExporting, setIsPdfExporting] = useState(false);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
   const [draftStatus, setDraftStatus] = useState("");
+  const [revision, setRevision] = useState("1");
+  const [isDirty, setIsDirty] = useState(false);
 
   const unitOptions = useMemo(
     () => Object.keys(UNIT_TO_MM).map((u) => ({ value: u, label: UNIT_LABELS[u] })),
@@ -329,6 +343,16 @@ function CutOptimiserPage() {
     () => projectOptions.find((option) => option.value === selectedProjectKey) || null,
     [projectOptions, selectedProjectKey]
   );
+
+  useEffect(() => {
+    if (isEditMode) return;
+    if (!selectedProjectKey) {
+      setRevision("1");
+      return;
+    }
+    const nextRevision = getNextCutOptimiserRevision(selectedProjectKey);
+    setRevision(String(nextRevision));
+  }, [isEditMode, selectedProjectKey]);
 
   useEffect(() => {
     let active = true;
@@ -424,9 +448,78 @@ function CutOptimiserPage() {
       };
       window.localStorage.setItem(CUT_OPTIMISER_DRAFT_KEY, JSON.stringify(payload));
       setDraftStatus("Values saved temporarily on this browser.");
+      setIsDirty(false);
     } catch {
       setDraftStatus("Failed to save values.");
     }
+  };
+
+  const onSaveRecord = ({ redirectToList = false } = {}) => {
+    if (!selectedProjectKey) {
+      setDraftStatus("Select a project before saving the record.");
+      return false;
+    }
+
+    // Duplicate project check — add mode only
+    if (!isEditMode) {
+      const existing = listCutOptimiserRecords().filter(
+        (r) => String(r.selectedProjectKey) === String(selectedProjectKey)
+      );
+      if (existing.length > 0) {
+        const latest = existing[0];
+        const nextRev = Number(latest.revision) + 1;
+        const confirmed = window.confirm(
+          `A record for this project already exists!\n\n` +
+          `Project          : ${latest.projectLabel || selectedProject?.label || selectedProjectKey}\n` +
+          `Current Revision : R${latest.revision}\n\n` +
+          `Do you want to create a new revision (R${nextRev})?`
+        );
+        if (!confirmed) return false;
+      }
+    }
+
+    try {
+      const payload = {
+        selectedProjectKey,
+        projectLabel: selectedProject?.label || "",
+        form,
+        rawSheets,
+        cutItems,
+        result,
+      };
+
+      const saved = isEditMode
+        ? updateCutOptimiserRecord(recordId, payload)
+        : createCutOptimiserRecord(payload);
+
+      setRevision(String(saved.revision || 1));
+      setDraftStatus(isEditMode ? "Record updated." : "Record saved.");
+      setIsDirty(false);
+
+      if (redirectToList) {
+        navigate("/projects/cut-optimiser");
+      } else if (!isEditMode) {
+        navigate(`/projects/cut-optimiser/record/${saved.id}`, { replace: true });
+      }
+      return true;
+    } catch (err) {
+      setDraftStatus(err?.message || "Failed to save record.");
+      return false;
+    }
+  };
+
+  const onBackToList = () => {
+    if (isDirty) {
+      const confirmed = window.confirm(
+        "You have unsaved changes.\n\nDo you want to save the record before leaving?"
+      );
+      if (confirmed) {
+        const saved = onSaveRecord({ redirectToList: true });
+        if (!saved) return;
+        return;
+      }
+    }
+    navigate("/projects/cut-optimiser");
   };
 
   const clearDraft = () => {
@@ -439,14 +532,17 @@ function CutOptimiserPage() {
 
   const onFieldChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
   };
 
   const updateRawSheet = (id, key, value) => {
     setRawSheets((prev) => prev.map((row) => (row.id === id ? { ...row, [key]: value } : row)));
+    setIsDirty(true);
   };
 
   const updateCutItem = (id, key, value) => {
     setCutItems((prev) => prev.map((row) => (row.id === id ? { ...row, [key]: value } : row)));
+    setIsDirty(true);
   };
 
   const addRawSheet = () => {
@@ -455,6 +551,7 @@ function CutOptimiserPage() {
       buildRawSheet(nextRawId, `Sheet ${String.fromCharCode(64 + nextRawId)}`, "", ""),
     ]);
     setNextRawId((prev) => prev + 1);
+    setIsDirty(true);
   };
 
   const addCutItem = (focus = false) => {
@@ -462,14 +559,17 @@ function CutOptimiserPage() {
     setCutItems((prev) => [...prev, buildCutItem(newId, `Cut ${newId}`, "", "", "1")]);
     setNextCutId((prev) => prev + 1);
     if (focus) setPendingFocusCutId(newId);
+    setIsDirty(true);
   };
 
   const removeRawSheet = (id) => {
     setRawSheets((prev) => (prev.length > 1 ? prev.filter((row) => row.id !== id) : prev));
+    setIsDirty(true);
   };
 
   const removeCutItem = (id) => {
     setCutItems((prev) => (prev.length > 1 ? prev.filter((row) => row.id !== id) : prev));
+    setIsDirty(true);
   };
 
   const onCutQtyKeyDown = (row, index, e) => {
@@ -737,11 +837,19 @@ function CutOptimiserPage() {
     setCutItems([buildCutItem(1, "Cut 1", "2", "2", "1")]);
     setNextRawId(2);
     setNextCutId(2);
+    setSelectedProjectKey("");
+    setRevision("1");
+    setIsDirty(false);
   };
 
   return (
     <section className="module-page cut-optimiser-page">
-      <h1 className="module-page__title">Cut Optimiser</h1>
+      <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
+        <h1 className="module-page__title" style={{ margin: 0 }}>
+          {isEditMode ? "Cut Optimiser Edit" : "Cut Optimiser Add"}
+        </h1>
+        <button type="button" className="crud-add-btn" onClick={onBackToList}>Back to List</button>
+      </div>
       <p className="module-page__description">
         Add multiple panel cut sizes and multiple raw sheet sizes, then calculate sheet requirement scenarios.
       </p>
@@ -771,13 +879,25 @@ function CutOptimiserPage() {
               classNamePrefix="react-select"
               value={selectedProjectOption}
               options={projectOptions}
-              onChange={(option) => setSelectedProjectKey(option?.value || "")}
+              onChange={(option) => { setSelectedProjectKey(option?.value || ""); setIsDirty(true); }}
               isClearable
               isSearchable
               placeholder="Search project by ID or name..."
               noOptionsMessage={() => "No projects found"}
             />
             {projectsError ? <small className="users-status users-status--error">{projectsError}</small> : null}
+          </div>
+
+          <div className="cut-optimiser-row">
+            <label className="modal-form__label" htmlFor="revision">Revision</label>
+            <input
+              id="revision"
+              type="text"
+              className="auth-input"
+              value={`R${revision}`}
+              disabled
+              readOnly
+            />
           </div>
 
           <div className="cut-optimiser-list-head">
@@ -944,7 +1064,8 @@ function CutOptimiserPage() {
           {draftStatus ? <p className="users-status">{draftStatus}</p> : null}
 
           <div className="cut-optimiser-actions">
-            <button type="button" className="modal-btn" onClick={onSaveDraft}>Save</button>
+            <button type="button" className="modal-btn" onClick={onSaveRecord}>Save Record</button>
+            <button type="button" className="modal-btn" onClick={onSaveDraft}>Save Draft</button>
             <button type="button" className="modal-btn modal-btn--save" onClick={onCalculate}>Calculate</button>
             <button type="button" className="modal-btn modal-btn--cancel" onClick={onReset}>Reset</button>
           </div>

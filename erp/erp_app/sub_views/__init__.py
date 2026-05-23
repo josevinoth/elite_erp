@@ -46,6 +46,21 @@ from .lce_costing_api import (
     list_lce_cost_details_by_project_api_view,
     bulk_save_lce_cost_details_api_view,
 )
+from .lce_estimate_api import (
+    create_lce_charge_type_option_api_view,
+    create_lce_estimate_api_view,
+    lce_estimate_meta_api_view,
+    lce_estimate_record_api_view,
+    lce_purchase_items_api_view,
+    list_lce_estimates_api_view,
+)
+from .lab_furniture_item_api import (
+    create_lab_furniture_item_category_api_view,
+    create_lab_furniture_item_api_view,
+    list_lab_furniture_item_categories_api_view,
+    lab_furniture_item_detail_api_view,
+    list_lab_furniture_items_api_view,
+)
 from .projects_api import (
     create_project_api_view,
     create_project_lifecycle_status_option_api_view,
@@ -64,7 +79,12 @@ from .stock_maintenance_api import (
 from .stock_purchase_api import (
     create_stock_purchase_api_view,
     list_stock_purchases_api_view,
+    stock_purchase_item_trace_api_view,
     stock_purchase_detail_api_view,
+)
+from .stock_purchase_vendor_api import (
+    create_stock_purchase_vendor_detail_api_view,
+    stock_purchase_vendor_detail_api_view,
 )
 from .task_api import (
     create_task_api_view,
@@ -106,6 +126,8 @@ __all__ = [
     "create_project_api_view", "project_detail_api_view",
     "create_project_lifecycle_status_option_api_view",
     "list_stock_purchases_api_view", "create_stock_purchase_api_view", "stock_purchase_detail_api_view",
+    "stock_purchase_item_trace_api_view",
+    "create_stock_purchase_vendor_detail_api_view", "stock_purchase_vendor_detail_api_view",
     "list_stock_maintenance_api_view", "list_stock_maintenance_meta_api_view",
     "create_stock_maintenance_api_view", "stock_maintenance_detail_api_view",
     "create_stock_maintenance_type_option_api_view",
@@ -144,5 +166,16 @@ __all__ = [
     "list_lce_cost_details_by_project_api_view",
     "bulk_save_lce_cost_details_api_view",
     "calculate_lce_cost_index_api_view",
+    "create_lce_estimate_api_view",
+    "create_lce_charge_type_option_api_view",
+    "lce_estimate_meta_api_view",
+    "list_lce_estimates_api_view",
+    "lce_estimate_record_api_view",
+    "lce_purchase_items_api_view",
+    "list_lab_furniture_item_categories_api_view",
+    "create_lab_furniture_item_category_api_view",
+    "list_lab_furniture_items_api_view",
+    "create_lab_furniture_item_api_view",
+    "lab_furniture_item_detail_api_view",
 ]
 

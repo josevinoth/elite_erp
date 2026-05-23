@@ -469,6 +469,27 @@ select.auth-input option {
     color 180ms ease;
 }
 
+.home-sidenav__toggle {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.home-sidenav__toggle-icon {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: #cce8e5;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.home-sidenav:hover .home-sidenav__toggle-icon,
+.home-sidenav:focus-within .home-sidenav__toggle-icon {
+  opacity: 1;
+}
+
 .home-sidenav__link {
   font-size: 1rem;
 }
@@ -681,11 +702,15 @@ select.auth-input option {
 .users-status {
   margin: 0.45rem 0 0;
   font-size: 0.86rem;
-  color: var(--muted);
+  color: #60a5fa;
 }
 
 .users-status--error {
   color: var(--error);
+}
+
+.users-status--success {
+  color: #60a5fa;
 }
 
 .users-table {
@@ -728,6 +753,90 @@ select.auth-input option {
 
 .users-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.lce-form-grid {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lce-form-grid--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.lce-form-card {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #082f34;
+}
+
+.lce-form-card--formula {
+  background: rgba(22, 178, 165, 0.1);
+}
+
+.lce-form-card__label {
+  font-size: 0.83rem;
+  color: #d9f6f2;
+}
+
+.lce-form-card__input {
+  text-align: right;
+}
+
+.lce-form-card__input--readonly {
+  font-weight: 700;
+}
+
+.auth-input:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+  background: #e5e7eb;
+  opacity: 0.85;
+}
+
+.lce-charge-split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.8fr);
+  gap: 0.55rem;
+}
+
+.lce-charge-split-col {
+  min-width: 0;
+}
+
+.lce-charge-type-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+}
+
+.lce-charge-type-row .crud-add-btn {
+  padding: 0.45rem 0.55rem;
+  min-width: 2.25rem;
+  justify-content: center;
+}
+
+@media (max-width: 1100px) {
+  .lce-form-grid,
+  .lce-form-grid--four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lce-charge-split-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .lce-form-grid,
+  .lce-form-grid--four {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Keep the task list fully visible by using compact fixed-width columns with wrapping. */
@@ -1140,6 +1249,58 @@ select.auth-input option {
   gap: 0.5rem;
   justify-content: flex-end;
   padding-top: 0.4rem;
+}
+
+.stock-purchase-add-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.stock-purchase-add-form .modal-form__actions,
+.stock-purchase-add-form__row--full {
+  grid-column: 1 / -1;
+}
+
+.stock-purchase-add-form__tax-total-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.stock-purchase-add-form__invoice-tax-total-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.stock-purchase-add-form__purchase-details-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+@media (max-width: 1200px) {
+  .stock-purchase-add-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .stock-purchase-add-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stock-purchase-add-form__tax-total-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stock-purchase-add-form__invoice-tax-total-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stock-purchase-add-form__purchase-details-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .modal-btn {

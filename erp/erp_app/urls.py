@@ -21,7 +21,10 @@ from .views import (
     vendor_detail_api_view,
     list_stock_purchases_api_view,
     create_stock_purchase_api_view,
+    create_stock_purchase_vendor_detail_api_view,
     stock_purchase_detail_api_view,
+    stock_purchase_item_trace_api_view,
+    stock_purchase_vendor_detail_api_view,
     list_stock_maintenance_api_view,
     list_stock_maintenance_meta_api_view,
     create_stock_maintenance_api_view,
@@ -71,7 +74,19 @@ from .views import (
     list_lce_cost_details_by_project_api_view,
     bulk_save_lce_cost_details_api_view,
     calculate_lce_cost_index_api_view,
+    create_lce_charge_type_option_api_view,
+    create_lce_estimate_api_view,
+    lce_estimate_meta_api_view,
+    lce_estimate_record_api_view,
+    lce_purchase_items_api_view,
+    list_lce_estimates_api_view,
+    list_lab_furniture_items_api_view,
+    list_lab_furniture_item_categories_api_view,
+    create_lab_furniture_item_category_api_view,
+    create_lab_furniture_item_api_view,
+    lab_furniture_item_detail_api_view,
 )
+from .sub_views.stock_purchase_status_option_api import list_stock_purchase_status_options_api_view
 
 urlpatterns = [
     # auth API
@@ -101,6 +116,10 @@ urlpatterns = [
     path('api/stock-purchases/', list_stock_purchases_api_view, name='api-stock-purchases-list'),
     path('api/stock-purchases/create/', create_stock_purchase_api_view, name='api-stock-purchases-create'),
     path('api/stock-purchases/<int:pk>/', stock_purchase_detail_api_view, name='api-stock-purchases-detail'),
+    path('api/stock-purchase-items/<int:item_id>/trace/', stock_purchase_item_trace_api_view, name='api-stock-purchase-item-trace'),
+    path('api/stock-purchase-vendors/create/', create_stock_purchase_vendor_detail_api_view, name='api-stock-purchase-vendors-create'),
+    path('api/stock-purchase-vendors/<int:pk>/', stock_purchase_vendor_detail_api_view, name='api-stock-purchase-vendors-detail'),
+    path('api/stock-purchase/status-options/', list_stock_purchase_status_options_api_view, name='list_stock_purchase_status_options_api_view'),
     # stock maintenance
     path('api/stock-maintenance/', list_stock_maintenance_api_view, name='api-stock-maintenance-list'),
     path('api/stock-maintenance/meta/', list_stock_maintenance_meta_api_view, name='api-stock-maintenance-meta'),
@@ -157,4 +176,16 @@ urlpatterns = [
     path('api/lce-costing/by-project/<int:project_id>/', list_lce_cost_details_by_project_api_view, name='api-lce-costing-by-project'),
     path('api/lce-costing/cost-index/calculate/', calculate_lce_cost_index_api_view, name='api-lce-costing-cost-index-calculate'),
     path('api/lce-costing/<int:pk>/', lce_cost_detail_api_view, name='api-lce-costing-detail'),
+    path('api/lce-estimates/', list_lce_estimates_api_view, name='api-lce-estimates-list'),
+    path('api/lce-estimates/meta/', lce_estimate_meta_api_view, name='api-lce-estimates-meta'),
+    path('api/lce-estimates/charge-types/add/', create_lce_charge_type_option_api_view, name='api-lce-estimates-charge-types-add'),
+    path('api/lce-estimates/create/', create_lce_estimate_api_view, name='api-lce-estimates-create'),
+    path('api/lce-estimates/record/<int:lce_id>/', lce_estimate_record_api_view, name='api-lce-estimates-record'),
+    path('api/lce-estimates/purchase-items/<int:purchase_id>/', lce_purchase_items_api_view, name='api-lce-purchase-items'),
+    # lab furniture items
+    path('api/lab-furniture-items/', list_lab_furniture_items_api_view, name='api-lab-furniture-items-list'),
+    path('api/lab-furniture-item-categories/', list_lab_furniture_item_categories_api_view, name='api-lab-furniture-item-categories-list'),
+    path('api/lab-furniture-item-categories/create/', create_lab_furniture_item_category_api_view, name='api-lab-furniture-item-categories-create'),
+    path('api/lab-furniture-items/create/', create_lab_furniture_item_api_view, name='api-lab-furniture-items-create'),
+    path('api/lab-furniture-items/<int:pk>/', lab_furniture_item_detail_api_view, name='api-lab-furniture-items-detail'),
 ]

@@ -1,873 +1,416 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BsDownload } from "react-icons/bs";
-import Select from "react-select";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
-  bulkSaveLceCostDetails,
-  calculateLceCostIndex,
-  deleteLceCostDetail,
-  downloadLceCostingExport,
-  downloadLceCostingImportTemplate,
-  importLceCostingExcel,
-  listLceCostDetailsByProject,
-  listLceCostingMeta,
+  createLceChargeTypeOption,
+  createLceEstimate,
+  getLceEstimateById,
+  getLcePurchaseItems,
+  listLceEstimateMeta,
+  listStockPurchases,
+  updateLceEstimateById,
 } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
-import { exportRowsToExcel } from "../utils/exportToExcel";
 
-const IMPORT_REPORT_COLUMNS = [
-  { key: "row", label: "Row" },
-  { key: "status", label: "Status" },
-  { key: "message", label: "Details" },
-  { key: "project_input", label: "Project (Excel)" },
-  { key: "cost_head_input", label: "Cost Head (Excel)" },
-  { key: "amount_input", label: "Amount (Excel)" },
+const OTHER_CHARGE_FIELDS = [
+  ["other_charges_1", "Other Charges 1", "other_charges_1_type"],
+  ["other_charges_2", "Other Charges 2", "other_charges_2_type"],
+  ["other_charges_3", "Other Charges 3", "other_charges_3_type"],
+  ["other_charges_4", "Other Charges 4", "other_charges_4_type"],
 ];
 
-const COST_INDEX_COLUMNS = [
-  { key: "product_code", label: "Product Code" },
-  { key: "product_name", label: "Product Name" },
-  { key: "qty", label: "Qty" },
-  { key: "base_unit_omr", label: "Base Unit (OMR)" },
-  { key: "allocated_cost_omr", label: "Allocated Cost (OMR)" },
-  { key: "unit_landed_omr", label: "Landed Unit (OMR)" },
-  { key: "cost_index_ratio", label: "Cost Index Ratio" },
-  { key: "cost_index_pct", label: "Cost Index %" },
+const EDITABLE_FIELDS = [
+  ["ex_works_material_cost", "Ex Works Material Cost"],
+  ["packing_charges", "Packing Charges"],
+  ["documentation", "Documentation"],
+  ...OTHER_CHARGE_FIELDS.map(([valueKey, label]) => [valueKey, label.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")]),
+  ["advance_payment_value", "Advance Payment Value"],
+  ["bank_muscat_charge_advance_payment", "Total Advance Payment (OMR)"],
+  // ["bank_muscat_charge_balance_payment", "Balance Payment (OMR)"], // Removed as per user request
+   ["freight_charge", "Freight Charge (OMR)"],
+  ["customs_duty_omr", "Customs Duty (OMR)"],
+  ["oman_customs_boe_charge_omr", "Oman Customs Boe Charge (OMR)"],
+   ["rop_customs_inspection_charge", "Rop Customs Inspection Charge (OMR)"],
+   ["unloading_charge_muscat_stores_1", "Unloading Charge @ Muscat Stores 1 (OMR)"],
+   ["unloading_charge_muscat_stores_2", "Unloading Charge @ Muscat Stores 2 (OMR)"],
+  ["loading_charge_muscat_stores_delivery", "Loading Charge @ Muscat Stores At The Time Of Customer Delivery"],
 ];
 
-const ALLOCATION_BASIS_OPTIONS = [
-  { value: "value", label: "By Value" },
-  { value: "qty", label: "By Quantity" },
-  { value: "weight", label: "By Weight" },
-  { value: "area", label: "By Area" },
-  { value: "equal", label: "Equal Split" },
-  { value: "direct", label: "Direct (Single Product)" },
+const FORMULA_FIELDS = [
+  ["total_supplier_price", "Total Supplier Price"],
+  ["balance_payment_value", "Balance Payment Value"],
+  // ["balance_payment_value_omr", "Balance Payment Value (OMR)"], // Removed as per user request
+  ["total_supplier_price_omr", "LCE COST (OMR)"],
+   ["total", "Total (OMR)"],
+  ["cost_factor", "Cost Factor"],
 ];
 
-const PRODUCT_CURRENCY_OPTIONS = ["OMR", "USD", "EUR", "INR"].map((code) => ({
-  value: code,
-  label: code,
-}));
+const EXTRA_FIELDS = ["other_charges_1_type", "other_charges_2_type", "other_charges_3_type", "other_charges_4_type", "foreign_currency_id"];
+const DEFAULT_FORM = Object.fromEntries([...EDITABLE_FIELDS, ...FORMULA_FIELDS].map(([k]) => [k, "0"]));
+EXTRA_FIELDS.forEach((key) => { DEFAULT_FORM[key] = ""; });
 
-const UNIT_OPTIONS = ["Sheet", "Sqm", "Nos", "Meter", "Lot", "Set", "Pair"].map((u) => ({
-  value: u,
-  label: u,
-}));
+const FOREIGN_CURRENCY_KEYS = new Set([
+  "ex_works_material_cost",
+  "packing_charges",
+  "documentation",
+  "other_charges_1",
+  "other_charges_2",
+  "other_charges_3",
+  "other_charges_4",
+  "advance_payment_value",
+  "balance_payment_value",
+  "total_supplier_price",
+]);
 
-const SELECT_STYLES = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: 34,
-    backgroundColor: "#0a3338",
-    borderColor: state.isFocused ? "#16b2a5" : "#1e666d",
-    boxShadow: state.isFocused ? "0 0 0 3px rgba(22,178,165,0.2)" : "none",
-    ":hover": { borderColor: "#25d2c3" },
-    fontSize: "0.82rem",
-  }),
-  singleValue: (base) => ({ ...base, color: "#f0fffe" }),
-  input: (base) => ({ ...base, color: "#f0fffe" }),
-  placeholder: (base) => ({ ...base, color: "#aacbc8", fontSize: "0.8rem" }),
-  menu: (base) => ({ ...base, backgroundColor: "#0b3a40", zIndex: 3000 }),
-  menuPortal: (base) => ({ ...base, zIndex: 4000 }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isFocused ? "#11474f" : "#0b3a40",
-    color: "#f0fffe",
-    fontSize: "0.82rem",
-  }),
-};
+const toNumber = (value) => { const p = Number(value); return Number.isFinite(p) ? p : 0; };
+const toFixed = (value, digits = 2) => String(Math.round((value + Number.EPSILON) * 10 ** digits) / 10 ** digits);
 
-const PROJECT_SELECT_STYLES = {
-  ...SELECT_STYLES,
-  control: (base, state) => ({
-    ...SELECT_STYLES.control(base, state),
-    minHeight: 40,
-    fontSize: "0.92rem",
-  }),
-};
+const calculateLinkedItemsTotalPrice = (items = []) => toFixed(
+  items.reduce((sum, item) => sum + toNumber(item?.total_price), 0), 2
+);
 
-function CostingPage() {
-  const currentUser = useMemo(() => getSessionUser(), []);
-  const loggedInUsername = currentUser?.username || "";
-  const isAdmin = useMemo(() => {
-    const role = (currentUser?.role || "").trim().toLowerCase();
-    return ["admin", "super admin", "staff"].includes(role);
-  }, [currentUser]);
+const applyLinkedItemsToForm = (values, items = []) => applyFormulas({
+  ...values,
+  ex_works_material_cost: calculateLinkedItemsTotalPrice(items),
+});
 
-  // Meta
-  const [projectOptions, setProjectOptions] = useState([]);
-  const [costHeadDefs, setCostHeadDefs] = useState([]);
+const emptySettlementRow = (rowId, foreignCurrencyId = "") => ({
+  rowId,
+  settlement_date: "",
+  foreign_currency_id: foreignCurrencyId,
+  payment_amount: "0", // EUR
+  factor: "0", // Exchange rate
+  amount: "0", // OMR, always calculated
+});
 
-  // Selection
-  const [selectedProject, setSelectedProject] = useState(null);
-
-  // Inline form rows — one per LCE cost-head definition entry
-  const [formRows, setFormRows] = useState([]);
-
-  // UI state
-  const [saving, setSaving] = useState(false);
-  const [loadingCosts, setLoadingCosts] = useState(false);
-  const [saveStatus, setSaveStatus] = useState("");
-  const [savedRows, setSavedRows] = useState([]);
-  const [deleting, setDeleting] = useState(null);
-  const [tableError, setTableError] = useState("");
-
-  // Import/Export
-  const fileInputRef = useRef(null);
-  const [importing, setImporting] = useState(false);
-  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
-  const [downloadingExport, setDownloadingExport] = useState(false);
-  const [exportingReport, setExportingReport] = useState(false);
-  const [importStatus, setImportStatus] = useState("");
-  const [importRowReports, setImportRowReports] = useState([]);
-
-  // Cost index calculator state
-  const [productRows, setProductRows] = useState([
-    {
-      id: 1,
-      product_code: "",
-      product_name: "",
-      qty: "1",
-      base_unit_cost: "",
-      currency: "OMR",
-      weight: "",
-      area: "",
-    },
-  ]);
-  const [costAllocationSettings, setCostAllocationSettings] = useState({});
-  const [fxRates, setFxRates] = useState({ USD: "", EUR: "", INR: "" });
-  const [defaultForeignRate, setDefaultForeignRate] = useState("");
-  const [calculatingIndex, setCalculatingIndex] = useState(false);
-  const [costIndexStatus, setCostIndexStatus] = useState("");
-  const [costIndexSummary, setCostIndexSummary] = useState(null);
-  const [costIndexRows, setCostIndexRows] = useState([]);
-  const [exportingCostIndex, setExportingCostIndex] = useState(false);
-
-  // ── Load meta ────────────────────────────────────────────
-  const loadMeta = useCallback(async () => {
-    const data = await listLceCostingMeta();
-    setProjectOptions(
-      Array.isArray(data.projects) ? data.projects.map((p) => ({ value: p.value, label: p.label })) : []
+// Enhanced: preserve payment_amount if missing from backend, using previous settlements as fallback
+const mapSettlementRows = (rows, fallbackCurrencyId = "", prevSettlements = []) => {
+  const mapped = (Array.isArray(rows) ? rows : []).map((row, index) => {
+    const rowId = Number(row?.id) || index + 1;
+    // Try to find previous settlement by rowId or id
+    const prev = prevSettlements.find(
+      (p) => Number(p?.rowId) === rowId || Number(p?.id) === rowId
     );
-    setCostHeadDefs(Array.isArray(data.cost_heads) ? data.cost_heads : []);
-  }, []);
+    // On initial load, only fallback if backend value is undefined or null (not for empty string or '0')
+    let paymentAmount = row?.payment_amount;
+    if (paymentAmount === undefined || paymentAmount === null) {
+      paymentAmount = prev ? prev.payment_amount : "0";
+    }
+    let factor = row?.factor;
+    if (factor === undefined || factor === null) {
+      factor = prev ? prev.factor : "0";
+    }
+    return {
+      rowId,
+      settlement_date: String(row?.settlement_date || prev?.settlement_date || ""),
+      foreign_currency_id: String(row?.foreign_currency_id || fallbackCurrencyId || prev?.foreign_currency_id || ""),
+      payment_amount: String(paymentAmount),
+      factor: String(factor),
+      amount: String(toNumber(paymentAmount) * toNumber(factor)),
+    };
+  });
+  return mapped.length ? mapped : [emptySettlementRow(1, fallbackCurrencyId)];
+};
 
-  useEffect(() => {
-    loadMeta().catch(() => {
-      setProjectOptions([]);
-      setCostHeadDefs([]);
-    });
-  }, [loadMeta]);
+// SearchableSelect component for dropdowns
+function SearchableSelect({ value, onChange, options, placeholder, disabled = false }) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
 
-  // ── Build blank form rows ─────────────────────────────────
-  const buildEmptyRows = useCallback(
-    (defs) =>
-      defs.map((def, idx) => ({
-        _defIdx: idx,
-        id: null,
-        cost_head: def.name || "",
-        amount: "",
-        currency: def.currency || "",
-        quantity: "1",
-        unit: "",
-        reference_note: def.reference_note || "",
-        remarks: "",
-      })),
-    []
+  const filtered = options.filter((opt) =>
+    opt.label.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Seed blank rows when definitions arrive
+  const selected = options.find((opt) => opt.value === value);
+
   useEffect(() => {
-    if (costHeadDefs.length > 0 && formRows.length === 0) {
-      setFormRows(buildEmptyRows(costHeadDefs));
-    }
-  }, [costHeadDefs, formRows.length, buildEmptyRows]);
-
-  // ── Load costs when project changes ───────────────────────
-  useEffect(() => {
-    if (!selectedProject) {
-      setFormRows(buildEmptyRows(costHeadDefs));
-      setSavedRows([]);
-      setSaveStatus("");
-      return;
-    }
-
-    let alive = true;
-    setLoadingCosts(true);
-    setSaveStatus("");
-
-    listLceCostDetailsByProject(selectedProject.value)
-      .then((data) => {
-        if (!alive) return;
-        const existing = Array.isArray(data.lce_cost_details) ? data.lce_cost_details : [];
-        setSavedRows(existing);
-
-        // key = "cost_head_lower||reference_note_lower"
-        const lookup = {};
-        for (const row of existing) {
-          const key = `${String(row.cost_head || "").trim().toLowerCase()}||${String(row.reference_note || "").trim().toLowerCase()}`;
-          lookup[key] = row;
-        }
-
-        setFormRows(
-          costHeadDefs.map((def, idx) => {
-            const key = `${String(def.name || "").trim().toLowerCase()}||${String(def.reference_note || "").trim().toLowerCase()}`;
-            const saved = lookup[key] || null;
-            return {
-              _defIdx: idx,
-              id: saved ? saved.id : null,
-              cost_head: def.name || "",
-              amount: saved ? String(saved.amount ?? "") : "",
-              currency: saved ? (saved.currency || def.currency || "") : (def.currency || ""),
-              quantity: saved ? String(saved.quantity ?? "1") : "1",
-              unit: saved ? (saved.unit || "") : "",
-              reference_note: saved
-                ? (saved.reference_note || def.reference_note || "")
-                : (def.reference_note || ""),
-              remarks: saved ? (saved.remarks || "") : "",
-            };
-          })
-        );
-      })
-      .catch(() => {
-        if (!alive) return;
-        setFormRows(buildEmptyRows(costHeadDefs));
-        setSavedRows([]);
-      })
-      .finally(() => {
-        if (alive) setLoadingCosts(false);
-      });
-
-    return () => {
-      alive = false;
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+      }
     };
-  }, [selectedProject, costHeadDefs, buildEmptyRows]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  useEffect(() => {
-    setCostAllocationSettings((prev) => {
-      const next = { ...prev };
-      for (const row of savedRows) {
-        if (!next[row.id]) {
-          next[row.id] = { allocation_basis: "value", applies_to: "ALL" };
-        }
-      }
-      return next;
-    });
-  }, [savedRows]);
-
-  // ── Field change handler ──────────────────────────────────
-  const handleRowChange = (defIdx, field, value) => {
-    setFormRows((prev) =>
-      prev.map((row) => (row._defIdx === defIdx ? { ...row, [field]: value } : row))
-    );
-  };
-
-  const handleProductRowChange = (rowId, field, value) => {
-    setProductRows((prev) =>
-      prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row))
-    );
-  };
-
-  const handleAddProductRow = () => {
-    setProductRows((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        product_code: "",
-        product_name: "",
-        qty: "1",
-        base_unit_cost: "",
-        currency: "OMR",
-        weight: "",
-        area: "",
-      },
-    ]);
-  };
-
-  const handleRemoveProductRow = (rowId) => {
-    setProductRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.id !== rowId)));
-  };
-
-  // ── Save All ──────────────────────────────────────────────
-  const handleSaveAll = async () => {
-    if (!selectedProject) {
-      setSaveStatus("Please select a project first.");
-      return;
-    }
-    setSaving(true);
-    setSaveStatus("");
-    try {
-      const rowsToSave = formRows
-        .filter((row) => {
-          const amt = parseFloat(row.amount);
-          return !isNaN(amt) && amt !== 0;
-        })
-        .map((row) => ({
-          id: row.id || null,
-          cost_head: row.cost_head,
-          amount: row.amount,
-          currency: row.currency,
-          quantity: row.quantity || "1",
-          unit: row.unit,
-          reference_note: row.reference_note,
-          remarks: row.remarks,
-          created_by: loggedInUsername,
-        }));
-
-      if (rowsToSave.length === 0) {
-        setSaveStatus("No amounts entered. Fill in at least one cost line.");
-        setSaving(false);
-        return;
-      }
-
-      const data = await bulkSaveLceCostDetails({
-        project: selectedProject.value,
-        rows: rowsToSave,
-      });
-
-      const saved = Array.isArray(data.lce_cost_details) ? data.lce_cost_details : [];
-      setSavedRows(saved);
-
-      // Patch IDs back into form rows
-      const idLookup = {};
-      for (const row of saved) {
-        const key = `${String(row.cost_head || "").trim().toLowerCase()}||${String(row.reference_note || "").trim().toLowerCase()}`;
-        idLookup[key] = row.id;
-      }
-      setFormRows((prev) =>
-        prev.map((row) => {
-          const key = `${String(row.cost_head || "").trim().toLowerCase()}||${String(row.reference_note || "").trim().toLowerCase()}`;
-          return idLookup[key] !== undefined ? { ...row, id: idLookup[key] } : row;
-        })
-      );
-
-      setSaveStatus(`✓ Saved ${saved.length} cost line(s) successfully.`);
-    } catch (err) {
-      setSaveStatus(err.message || "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── Delete a saved row ────────────────────────────────────
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this cost record?")) return;
-    setDeleting(id);
-    setTableError("");
-    try {
-      await deleteLceCostDetail(id);
-      setSavedRows((prev) => prev.filter((r) => r.id !== id));
-      setFormRows((prev) =>
-        prev.map((row) => (row.id === id ? { ...row, id: null, amount: "" } : row))
-      );
-    } catch (err) {
-      setTableError(err.message || "Delete failed.");
-    } finally {
-      setDeleting(null);
-    }
-  };
-
-  // ── Import / Export ───────────────────────────────────────
-  const handleImportClick = () => fileInputRef.current?.click();
-
-  const handleTemplateDownload = async () => {
-    setDownloadingTemplate(true);
-    try { await downloadLceCostingImportTemplate(); }
-    catch (err) { setImportStatus(err.message || "Template download failed."); }
-    finally { setDownloadingTemplate(false); }
-  };
-
-  const handleExcelExport = async () => {
-    setDownloadingExport(true);
-    try { await downloadLceCostingExport(); }
-    catch (err) { setImportStatus(err.message || "Export failed."); }
-    finally { setDownloadingExport(false); }
-  };
-
-  const handleImportReportExport = async () => {
-    setExportingReport(true);
-    try {
-      await exportRowsToExcel({
-        fileName: "LCE Costing Import Report",
-        sheetName: "LCE Costing Import Report",
-        columns: IMPORT_REPORT_COLUMNS,
-        rows: importRowReports.filter((r) => (r.status || "").toLowerCase() !== "created"),
-      });
-    } catch (err) { setImportStatus(err.message || "Export failed."); }
-    finally { setExportingReport(false); }
-  };
-
-  const handleImportFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setImporting(true);
-    setImportStatus("");
-    setImportRowReports([]);
-    try {
-      const data = await importLceCostingExcel(file);
-      const s = data.summary || {};
-      setImportStatus(
-        `Imported ${s.created || 0}, Blank rows ${s.blank_rows || 0}, Duplicates ${s.duplicates || 0}, Failed ${s.failed || 0}.`
-      );
-      setImportRowReports(Array.isArray(data.row_reports) ? data.row_reports : []);
-      if (selectedProject) {
-        const refreshed = await listLceCostDetailsByProject(selectedProject.value);
-        setSavedRows(Array.isArray(refreshed.lce_cost_details) ? refreshed.lce_cost_details : []);
-      }
-    } catch (err) {
-      setImportStatus(err.message || "Import failed.");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const handleCalculateCostIndex = async () => {
-    if (!selectedProject) {
-      setCostIndexStatus("Please select a project first.");
-      return;
-    }
-
-    const normalizedProducts = productRows
-      .map((row, idx) => ({
-        product_code: String(row.product_code || "").trim(),
-        product_name: String(row.product_name || "").trim(),
-        qty: row.qty,
-        base_unit_cost: row.base_unit_cost,
-        currency: row.currency || "OMR",
-        weight: row.weight,
-        area: row.area,
-        sort_id: idx,
-      }))
-      .filter((row) => Number(row.qty) > 0 && (row.product_code || row.product_name));
-
-    if (!normalizedProducts.length) {
-      setCostIndexStatus("Add at least one product with qty > 0 and code/name.");
-      return;
-    }
-
-    const costRowsPayload = savedRows.map((row) => {
-      const settings = costAllocationSettings[row.id] || { allocation_basis: "value", applies_to: "ALL" };
-      return {
-        id: row.id,
-        cost_head: row.cost_head,
-        amount: row.amount,
-        quantity: row.quantity,
-        currency: row.currency,
-        reference_note: row.reference_note,
-        allocation_basis: settings.allocation_basis || "value",
-        applies_to: [settings.applies_to || "ALL"],
-      };
-    });
-
-    setCalculatingIndex(true);
-    setCostIndexStatus("");
-    try {
-      const data = await calculateLceCostIndex({
-        project: selectedProject.value,
-        products: normalizedProducts,
-        cost_rows: costRowsPayload,
-        fx_rates: fxRates,
-        default_foreign_rate: defaultForeignRate,
-      });
-      setCostIndexRows(Array.isArray(data.products) ? data.products : []);
-      setCostIndexSummary(data.summary || null);
-      setCostIndexStatus("Cost index calculated successfully.");
-    } catch (err) {
-      setCostIndexRows([]);
-      setCostIndexSummary(null);
-      setCostIndexStatus(err.message || "Cost index calculation failed.");
-    } finally {
-      setCalculatingIndex(false);
-    }
-  };
-
-  const handleExportCostIndex = async () => {
-    setExportingCostIndex(true);
-    try {
-      await exportRowsToExcel({
-        fileName: "LCE Cost Index",
-        sheetName: "LCE Cost Index",
-        columns: COST_INDEX_COLUMNS,
-        rows: costIndexRows,
-      });
-    } catch (err) {
-      setCostIndexStatus(err.message || "Failed to export cost index.");
-    } finally {
-      setExportingCostIndex(false);
-    }
-  };
-
-  // ── Render ────────────────────────────────────────────────
   return (
-    <section className="module-page">
-
-      {/* Title + Project selector */}
-      <h1 className="module-page__title" style={{ marginBottom: "0.9rem" }}>LCE Costing</h1>
-
-      <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
-        <label style={{ color: "#cce8e5", fontWeight: 600, whiteSpace: "nowrap" }}>
-          Project:
-        </label>
-        <div style={{ flex: 1, minWidth: 300, maxWidth: 520 }}>
-          <Select
-            options={projectOptions}
-            value={selectedProject}
-            onChange={(opt) => { setSelectedProject(opt); setSaveStatus(""); }}
-            placeholder="Select a project to load / enter costs..."
-            isClearable
-            isSearchable
-            styles={PROJECT_SELECT_STYLES}
-            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-            menuPosition="fixed"
-          />
-        </div>
-        {selectedProject && (
-          <button
-            type="button"
-            className="crud-add-btn"
-            onClick={handleSaveAll}
-            disabled={saving || loadingCosts}
-            style={{ minWidth: 100 }}
-          >
-            {saving ? "Saving..." : "💾 Save All"}
-          </button>
-        )}
+    <div ref={containerRef} style={{ position: "relative", width: "100%" }}>
+      <div
+        className="auth-input"
+        style={{
+          background: disabled ? "#e5e7eb" : "#ffffff",
+          color: disabled ? "#9ca3af" : "#111827",
+          cursor: disabled ? "not-allowed" : "pointer",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0.5rem 0.75rem",
+          minHeight: 40,
+          borderRadius: 4,
+          opacity: disabled ? 0.6 : 1,
+        }}
+        onClick={() => !disabled && setOpen((p) => !p)}
+      >
+        <span>{selected?.label || placeholder}</span>
+        <span>▼</span>
       </div>
-
-      {saveStatus ? (
-        <p className="users-status" style={{ marginBottom: "0.75rem" }}>{saveStatus}</p>
-      ) : null}
-
-      {/* ── Structured inline cost-entry table ── */}
-      {loadingCosts ? (
-        <p className="users-status">Loading costs for project...</p>
-      ) : (
+      {open && !disabled && (
         <div
-          className="users-table-wrap"
-          style={{ overflowX: "auto", marginBottom: "1.5rem", maxHeight: "65vh", overflowY: "auto" }}
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            marginTop: 4,
+            background: "#ffffff",
+            border: "1px solid #d1d5db",
+            borderRadius: 4,
+            zIndex: 10,
+            boxShadow: "0 10px 15px rgba(0,0,0,0.1)",
+          }}
         >
-          <table className="users-table" style={{ minWidth: 1000 }}>
-            <thead>
-              <tr>
-                <th
-                  style={{ minWidth: 310, textAlign: "left", position: "sticky", top: 0, zIndex: 1 }}
-                  className="users-table__sticky-head"
+          <input
+            type="search"
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "0.5rem 0.75rem",
+              border: "none",
+              borderBottom: "1px solid #e5e7eb",
+              outline: "none",
+              fontSize: "0.875rem",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div style={{ maxHeight: 200, overflowY: "auto" }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: "0.75rem", color: "#6b7280", textAlign: "center" }}>No options found</div>
+            ) : (
+              filtered.map((opt) => (
+                <div
+                  key={opt.value}
+                  style={{
+                    padding: "0.5rem 0.75rem",
+                    cursor: "pointer",
+                    background: value === opt.value ? "#d1fae5" : "transparent",
+                    color: value === opt.value ? "#065f46" : "#111827",
+                    fontWeight: value === opt.value ? 600 : 400,
+                    fontSize: "0.875rem",
+                  }}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.background = "#f3f4f6";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.background = value === opt.value ? "#d1fae5" : "transparent";
+                  }}
                 >
-                  Cost Head
-                </th>
-                <th className="users-table__sticky-head" style={{ minWidth: 200 }}>Reference / Note</th>
-                <th className="users-table__sticky-head" style={{ minWidth: 110 }}>Currency</th>
-                <th className="users-table__sticky-head" style={{ minWidth: 120, textAlign: "right" }}>Amount</th>
-                <th className="users-table__sticky-head" style={{ minWidth: 80, textAlign: "right" }}>Qty</th>
-                <th className="users-table__sticky-head" style={{ minWidth: 110 }}>Unit</th>
-                <th className="users-table__sticky-head" style={{ minWidth: 160 }}>Remarks</th>
-                <th className="users-table__sticky-head" style={{ minWidth: 50 }}>Del</th>
-              </tr>
-            </thead>
-            <tbody>
-              {formRows.map((row) => (
-                <tr key={row._defIdx} style={row.id ? { background: "rgba(22,178,165,0.05)" } : undefined}>
-                  {/* Cost Head — fixed label */}
-                  <td
-                    style={{
-                      color: "#d4f0ed",
-                      fontWeight: 500,
-                      fontSize: "0.83rem",
-                      whiteSpace: "normal",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    {row.cost_head}
-                    {row.id ? (
-                      <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#16b2a5" }}>✓</span>
-                    ) : null}
-                  </td>
-
-                  {/* Reference Note */}
-                  <td>
-                    <input
-                      type="text"
-                      className="auth-input"
-                      style={{ fontSize: "0.8rem", padding: "0.22rem 0.4rem", width: "100%" }}
-                      value={row.reference_note}
-                      onChange={(e) => handleRowChange(row._defIdx, "reference_note", e.target.value)}
-                    />
-                  </td>
-
-                  {/* Currency */}
-                  <td>
-                    <input
-                      type="text"
-                      className="auth-input"
-                      style={{ fontSize: "0.8rem", padding: "0.22rem 0.4rem", width: "100%" }}
-                      value={row.currency}
-                      onChange={(e) => handleRowChange(row._defIdx, "currency", e.target.value)}
-                    />
-                  </td>
-
-                  {/* Amount */}
-                  <td>
-                    <input
-                      type="number"
-                      className="auth-input"
-                      style={{ fontSize: "0.8rem", padding: "0.22rem 0.4rem", width: "100%", textAlign: "right" }}
-                      value={row.amount}
-                      step="any"
-                      min="0"
-                      placeholder="0"
-                      onChange={(e) => handleRowChange(row._defIdx, "amount", e.target.value)}
-                    />
-                  </td>
-
-                  {/* Quantity */}
-                  <td>
-                    <input
-                      type="number"
-                      className="auth-input"
-                      style={{ fontSize: "0.8rem", padding: "0.22rem 0.4rem", width: "100%", textAlign: "right" }}
-                      value={row.quantity}
-                      step="any"
-                      min="0"
-                      onChange={(e) => handleRowChange(row._defIdx, "quantity", e.target.value)}
-                    />
-                  </td>
-
-                  {/* Unit dropdown */}
-                  <td>
-                    <Select
-                      options={UNIT_OPTIONS}
-                      value={UNIT_OPTIONS.find((o) => o.value === row.unit) || null}
-                      onChange={(opt) => handleRowChange(row._defIdx, "unit", opt ? opt.value : "")}
-                      placeholder="Unit"
-                      isClearable
-                      styles={SELECT_STYLES}
-                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                      menuPosition="fixed"
-                    />
-                  </td>
-
-                  {/* Remarks */}
-                  <td>
-                    <input
-                      type="text"
-                      className="auth-input"
-                      style={{ fontSize: "0.8rem", padding: "0.22rem 0.4rem", width: "100%" }}
-                      value={row.remarks}
-                      onChange={(e) => handleRowChange(row._defIdx, "remarks", e.target.value)}
-                    />
-                  </td>
-
-                  {/* Delete saved row */}
-                  <td style={{ textAlign: "center" }}>
-                    {row.id ? (
-                      <button
-                        type="button"
-                        className="users-action users-action--delete"
-                        title="Delete saved entry"
-                        disabled={deleting === row.id}
-                        onClick={() => handleDelete(row.id)}
-                      >
-                        ✕
-                      </button>
-                    ) : (
-                      <span style={{ color: "#3a6060", fontSize: "0.7rem" }}>—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  {opt.label}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      {tableError ? (
-        <p className="users-status users-status--error" style={{ marginBottom: "1rem" }}>{tableError}</p>
-      ) : null}
+function applyFormulas(values, settlementRowsWithValue = []) {
+  const next = { ...values };
+  // Settled Total (Foreign Currency) = sum of Payment Amounts (foreign currency) in Payment History
+  const settledTotalForeign = settlementRowsWithValue && settlementRowsWithValue.length > 0
+    ? settlementRowsWithValue.reduce((sum, row) => sum + toNumber(row.payment_amount || 0), 0)
+    : 0;
 
-      {/* ── Cost Index Calculator ── */}
-      <div style={{ borderTop: "1px solid #1e666d", paddingTop: "1rem", marginBottom: "1.25rem" }}>
-        <div className="crud-page__header" style={{ marginBottom: "0.5rem" }}>
-          <h2 className="module-page__title" style={{ margin: 0, fontSize: "1rem" }}>
-            Cost Index Calculator
-          </h2>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="crud-add-btn"
-              onClick={handleCalculateCostIndex}
-              disabled={calculatingIndex || !selectedProject}
-            >
-              {calculatingIndex ? "Calculating..." : "Calculate Cost Index"}
+  // Pending (Foreign Currency) = EX WORKS MATERIAL COST - Settled Total (Foreign Currency)
+  // Removed pending_value_foreign_currency as per request
+
+  const totalSupplierPrice =
+    toNumber(next.ex_works_material_cost) + toNumber(next.packing_charges) + toNumber(next.documentation)
+    + toNumber(next.other_charges_1) + toNumber(next.other_charges_2)
+    + toNumber(next.other_charges_3) + toNumber(next.other_charges_4);
+
+  // ADVANCE PAYMENT VALUE = sum of Payment Amount (EUR) in Payment History
+  const advancePayment = settlementRowsWithValue && settlementRowsWithValue.length > 0
+    ? settlementRowsWithValue.reduce((sum, row) => sum + toNumber(row.payment_amount || 0), 0)
+    : 0;
+
+  // Total ADVANCE PAYMENT (OMR) = sum of Payment Amount (EUR) * BANK EXCHANGE RATE (MUSCAT) in Payment History
+  const totalAdvancePaymentOMR = settlementRowsWithValue && settlementRowsWithValue.length > 0
+    ? settlementRowsWithValue.reduce((sum, row) => sum + (toNumber(row.payment_amount) * toNumber(row.factor)), 0)
+    : toNumber(next.bank_muscat_charge_advance_payment);
+
+  // BALANCE PAYMENT (OMR) = EX WORKS MATERIAL COST (EUR) - ADVANCE PAYMENT VALUE (EUR)
+  const balancePayment = toNumber(next.ex_works_material_cost) - advancePayment;
+
+  next.advance_payment_value = toFixed(advancePayment, 2);
+  next.bank_muscat_charge_advance_payment = toFixed(totalAdvancePaymentOMR, 2);
+  next.bank_muscat_charge_balance_payment = toFixed(balancePayment, 2);
+
+  next.total_supplier_price = toFixed(totalSupplierPrice, 2);
+  // The following OMR fields are now only for display, not used in formulas
+  next.advance_payment_value_omr = toFixed(totalAdvancePaymentOMR, 2);
+  next.balance_payment_value = toFixed(balancePayment, 2);
+  next.balance_payment_value_omr = "";
+  // Set Total Supplier Price (OMR) = Total Advance Payment (OMR) (sum of Amount (OMR) in Payment History)
+  next.total_supplier_price_omr = toFixed(totalAdvancePaymentOMR, 2);
+  next.total = toFixed(
+    toNumber(next.bank_muscat_charge_advance_payment) + toNumber(next.bank_muscat_charge_balance_payment)
+    + toNumber(next.freight_charge) + toNumber(next.customs_duty_omr)
+    + toNumber(next.oman_customs_boe_charge_omr) + toNumber(next.rop_customs_inspection_charge)
+    + toNumber(next.unloading_charge_muscat_stores_1) + toNumber(next.unloading_charge_muscat_stores_2)
+    + toNumber(next.loading_charge_muscat_stores_delivery)
+  );
+  const exWorks = toNumber(next.ex_works_material_cost);
+  next.cost_factor = toFixed(exWorks > 0 ? toNumber(next.total) / exWorks : 0, 2);
+  return next;
+}
+
+function formatPurchaseOption(row) {
+  const id = String(row?.id ?? "");
+  const purchaseNumber = String(row?.purchase_number || row?.purchaseNumber || "").trim();
+  const invoiceNumber = String(row?.invoice_number || row?.invoiceNumber || "").trim();
+  const base = purchaseNumber ? `Purchase: ${purchaseNumber}` : `Purchase ID: ${id}`;
+  const label = invoiceNumber ? `${base} | Invoice: ${invoiceNumber}` : base;
+  return { value: id, label };
+}
+
+/* ─────────────────── Purchase Item Selection Modal ─────────────────── */
+function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, currentLceId, selectedForeignCurrencyCode }) {
+  const [checked, setChecked] = useState(() => new Set(initialSelected));
+  const [search, setSearch] = useState("");
+
+  // An item is "taken" if it's linked to a DIFFERENT LCE (not this one).
+  const isTaken = (item) =>
+    item.lce_estimate_id && String(item.lce_estimate_id) !== String(currentLceId || "");
+
+  const filteredItems = items.filter((item) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      String(item.grn_number || "").toLowerCase().includes(q) ||
+      String(item.item_name || "").toLowerCase().includes(q) ||
+      String(item.item_code || "").toLowerCase().includes(q) ||
+      String(item.item_category || "").toLowerCase().includes(q) ||
+      String(item.purchase_number || "").toLowerCase().includes(q) ||
+      String(item.invoice_number || "").toLowerCase().includes(q)
+    );
+  });
+
+  const selectableIds = filteredItems.filter((i) => !isTaken(i)).map((i) => i.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => checked.has(id));
+
+  const toggle = (id) => {
+    setChecked((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  };
+
+  const thStyle = {
+    background: "#0f5860",
+    color: "#e9fffd",
+    borderBottom: "2px solid #28a9a0",
+    fontWeight: 700,
+    letterSpacing: "0.03em",
+    position: "sticky",
+    top: 0,
+    zIndex: 2,
+    whiteSpace: "nowrap",
+  };
+
+  return (
+    <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#0a3a40", color: "#f0fffe", borderRadius: 10, border: "1px solid #1a6f77", padding: "1.25rem 1.5rem", maxWidth: 1200, width: "95%", maxHeight: "85vh", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+
+        {/* ── Header bar ── */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.65rem 0.85rem", borderRadius: 6, background: "#08464d", border: "1px solid #1d737b" }}>
+          <h3 style={{ margin: 0, fontSize: "1.05rem", letterSpacing: "0.02em" }}>Select Purchase Items</h3>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="crud-add-btn"
+              onClick={() => setChecked((prev) => { const n = new Set(prev); selectableIds.forEach((id) => n.add(id)); return n; })}>
+              Select All
             </button>
-            {costIndexRows.length > 0 ? (
-              <button
-                type="button"
-                className="crud-add-btn"
-                onClick={handleExportCostIndex}
-                disabled={exportingCostIndex}
-              >
-                <BsDownload aria-hidden="true" />
-                <span>{exportingCostIndex ? "Exporting..." : "Download Cost Index"}</span>
-              </button>
-            ) : null}
+            <button type="button" className="crud-add-btn" style={{ background: "#6c757d" }}
+              onClick={() => setChecked(new Set())}>
+              Clear
+            </button>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <label style={{ color: "#cce8e5", display: "grid", gap: "0.25rem" }}>
-            <span>{"USD -> OMR"}</span>
-            <input
-              type="number"
-              className="auth-input"
-              value={fxRates.USD}
-              step="any"
-              onChange={(e) => setFxRates((prev) => ({ ...prev, USD: e.target.value }))}
-            />
-          </label>
-          <label style={{ color: "#cce8e5", display: "grid", gap: "0.25rem" }}>
-            <span>{"EUR -> OMR"}</span>
-            <input
-              type="number"
-              className="auth-input"
-              value={fxRates.EUR}
-              step="any"
-              onChange={(e) => setFxRates((prev) => ({ ...prev, EUR: e.target.value }))}
-            />
-          </label>
-          <label style={{ color: "#cce8e5", display: "grid", gap: "0.25rem" }}>
-            <span>{"INR -> OMR"}</span>
-            <input
-              type="number"
-              className="auth-input"
-              value={fxRates.INR}
-              step="any"
-              onChange={(e) => setFxRates((prev) => ({ ...prev, INR: e.target.value }))}
-            />
-          </label>
-          <label style={{ color: "#cce8e5", display: "grid", gap: "0.25rem" }}>
-            <span>Default Foreign Rate</span>
-            <input
-              type="number"
-              className="auth-input"
-              value={defaultForeignRate}
-              step="any"
-              onChange={(e) => setDefaultForeignRate(e.target.value)}
-            />
-          </label>
-        </div>
+        {/* ── Search bar ── */}
+        <input
+          type="search"
+          className="auth-input"
+          placeholder="Search by GRN, item name, code, category, purchase or invoice…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ background: "#062f34", border: "1px solid #1e666d", color: "#f0fffe" }}
+        />
 
-        <h3 className="module-page__title" style={{ margin: "0.5rem 0", fontSize: "0.95rem" }}>Products</h3>
-        <div className="users-table-wrap" style={{ maxHeight: "18rem", overflowY: "auto", marginBottom: "0.75rem" }}>
-          <table className="users-table" style={{ minWidth: 900 }}>
+        {/* ── Table ── */}
+        <div className="users-table-wrap" style={{ overflowY: "auto", flex: 1 }}>
+          <table className="users-table" style={{ width: "100%" }}>
             <thead>
               <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th style={{ textAlign: "right" }}>Qty</th>
-                <th style={{ textAlign: "right" }}>Base Unit Cost</th>
-                <th>Currency</th>
-                <th style={{ textAlign: "right" }}>Weight</th>
-                <th style={{ textAlign: "right" }}>Area</th>
-                <th />
+                <th style={{ ...thStyle, width: 36, textAlign: "center" }}>
+                  <input type="checkbox" checked={allSelected}
+                    onChange={() => {
+                      setChecked((prev) => {
+                        const n = new Set(prev);
+                        if (allSelected) selectableIds.forEach((id) => n.delete(id));
+                        else selectableIds.forEach((id) => n.add(id));
+                        return n;
+                      });
+                    }}
+                  />
+                </th>
+                <th style={thStyle}>GRN No.</th>
+                <th style={thStyle}>Purchase No.</th>
+                <th style={thStyle}>Invoice No.</th>
+                <th style={thStyle}>Item Category</th>
+                <th style={thStyle}>Item Name</th>
+                <th style={thStyle}>Item Code</th>
+                <th style={thStyle}>Qty</th>
+                <th style={thStyle}>Unit Price</th>
+                <th style={thStyle}>Total Price</th>
+                <th style={thStyle}>LCE</th>
               </tr>
             </thead>
             <tbody>
-              {productRows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <input className="auth-input" value={row.product_code} onChange={(e) => handleProductRowChange(row.id, "product_code", e.target.value)} />
-                  </td>
-                  <td>
-                    <input className="auth-input" value={row.product_name} onChange={(e) => handleProductRowChange(row.id, "product_name", e.target.value)} />
-                  </td>
-                  <td>
-                    <input type="number" className="auth-input" style={{ textAlign: "right" }} value={row.qty} step="any" onChange={(e) => handleProductRowChange(row.id, "qty", e.target.value)} />
-                  </td>
-                  <td>
-                    <input type="number" className="auth-input" style={{ textAlign: "right" }} value={row.base_unit_cost} step="any" onChange={(e) => handleProductRowChange(row.id, "base_unit_cost", e.target.value)} />
-                  </td>
-                  <td>
-                    <Select
-                      options={PRODUCT_CURRENCY_OPTIONS}
-                      value={PRODUCT_CURRENCY_OPTIONS.find((o) => o.value === row.currency) || null}
-                      onChange={(opt) => handleProductRowChange(row.id, "currency", opt ? opt.value : "OMR")}
-                      isClearable={false}
-                      styles={SELECT_STYLES}
-                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                      menuPosition="fixed"
-                    />
-                  </td>
-                  <td>
-                    <input type="number" className="auth-input" style={{ textAlign: "right" }} value={row.weight} step="any" onChange={(e) => handleProductRowChange(row.id, "weight", e.target.value)} />
-                  </td>
-                  <td>
-                    <input type="number" className="auth-input" style={{ textAlign: "right" }} value={row.area} step="any" onChange={(e) => handleProductRowChange(row.id, "area", e.target.value)} />
-                  </td>
-                  <td>
-                    <button type="button" className="users-action users-action--delete" onClick={() => handleRemoveProductRow(row.id)}>✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <button type="button" className="crud-add-btn" onClick={handleAddProductRow}>+ Add Product</button>
-
-        <h3 className="module-page__title" style={{ margin: "0.75rem 0 0.5rem", fontSize: "0.95rem" }}>Cost Allocation Rules</h3>
-        <div className="users-table-wrap" style={{ maxHeight: "16rem", overflowY: "auto", marginBottom: "0.75rem" }}>
-          <table className="users-table" style={{ minWidth: 860 }}>
-            <thead>
-              <tr>
-                <th>Cost Head</th>
-                <th style={{ textAlign: "right" }}>Line Total</th>
-                <th>Basis</th>
-                <th>Applies To</th>
-              </tr>
-            </thead>
-            <tbody>
-              {savedRows.map((row) => {
-                const settings = costAllocationSettings[row.id] || { allocation_basis: "value", applies_to: "ALL" };
-                const appliesOptions = [
-                  { value: "ALL", label: "All Products" },
-                  ...productRows
-                    .filter((p) => p.product_code || p.product_name)
-                    .map((p) => {
-                      const key = (p.product_code || p.product_name).trim();
-                      return { value: key, label: key };
-                    }),
-                ];
+              {filteredItems.length === 0 ? (
+                <tr><td colSpan={11} style={{ textAlign: "center", padding: "1rem", color: "#8ab8b6" }}>No items match your search.</td></tr>
+              ) : filteredItems.map((item) => {
+                const taken = isTaken(item);
+                const lceTag = item.lce_estimate_id ? `LCE_${String(item.lce_estimate_id).padStart(3, "0")}` : "—";
                 return (
-                  <tr key={row.id}>
-                    <td>{row.cost_head}</td>
-                    <td style={{ textAlign: "right" }}>{row.line_total}</td>
-                    <td style={{ minWidth: 170 }}>
-                      <Select
-                        options={ALLOCATION_BASIS_OPTIONS}
-                        value={ALLOCATION_BASIS_OPTIONS.find((o) => o.value === settings.allocation_basis) || ALLOCATION_BASIS_OPTIONS[0]}
-                        onChange={(opt) => setCostAllocationSettings((prev) => ({
-                          ...prev,
-                          [row.id]: { ...settings, allocation_basis: opt ? opt.value : "value" },
-                        }))}
-                        isClearable={false}
-                        styles={SELECT_STYLES}
-                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                        menuPosition="fixed"
-                      />
+                  <tr
+                    key={item.id}
+                    title={taken ? `Already linked to ${lceTag}. Delink it first to reassign.` : ""}
+                    style={{
+                      opacity: taken ? 0.45 : 1,
+                      background: taken ? "rgba(255,80,80,0.07)" : checked.has(item.id) ? "rgba(22,178,165,0.18)" : undefined,
+                      cursor: taken ? "not-allowed" : "default",
+                    }}
+                  >
+                    <td style={{ textAlign: "center" }}>
+                      <input type="checkbox" checked={checked.has(item.id)} disabled={taken}
+                        onChange={() => !taken && toggle(item.id)} />
                     </td>
-                    <td style={{ minWidth: 200 }}>
-                      <Select
-                        options={appliesOptions}
-                        value={appliesOptions.find((o) => o.value === settings.applies_to) || appliesOptions[0]}
-                        onChange={(opt) => setCostAllocationSettings((prev) => ({
-                          ...prev,
-                          [row.id]: { ...settings, applies_to: opt ? opt.value : "ALL" },
-                        }))}
-                        isClearable={false}
-                        styles={SELECT_STYLES}
-                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                        menuPosition="fixed"
-                      />
-                    </td>
+                    <td>{item.grn_number}</td>
+                    <td>{item.purchase_number || "—"}</td>
+                    <td>{item.invoice_number || "—"}</td>
+                    <td>{item.item_category}</td>
+                    <td>{item.item_name}</td>
+                    <td>{item.item_code}</td>
+                    <td>{item.quantity}</td>
+                    <td>{item.unit_price} {selectedForeignCurrencyCode}</td>
+                    <td>{item.total_price} {selectedForeignCurrencyCode}</td>
+                    <td style={taken ? { color: "#f87171", fontWeight: 600 } : {}}>{lceTag}</td>
                   </tr>
                 );
               })}
@@ -875,124 +418,752 @@ function CostingPage() {
           </table>
         </div>
 
-        {costIndexStatus ? <p className="users-status">{costIndexStatus}</p> : null}
-
-        {costIndexSummary ? (
-          <div style={{ color: "#cce8e5", marginBottom: "0.5rem" }}>
-            <strong>Summary:</strong>{" "}
-            Base OMR {costIndexSummary.total_base_omr} | Allocated OMR {costIndexSummary.total_allocated_omr} | Landed OMR {costIndexSummary.total_landed_omr}
+        {/* ── Footer ── */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.82rem", color: "#8ab8b6" }}>
+            {filteredItems.filter((i) => isTaken(i)).length > 0 &&
+              `${filteredItems.filter((i) => isTaken(i)).length} item(s) already linked to another LCE (shown in red, disabled).`}
+          </span>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="crud-add-btn" style={{ background: "#6c757d" }} onClick={onClose}>Cancel</button>
+            <button type="button" className="crud-add-btn" onClick={() => onConfirm([...checked])}>
+              Confirm Selection ({checked.size})
+            </button>
           </div>
-        ) : null}
+        </div>
 
-        {costIndexRows.length ? (
-          <div className="users-table-wrap" style={{ maxHeight: "18rem", overflowY: "auto" }}>
-            <table className="users-table">
-              <thead>
-                <tr>
-                  <th>Code</th>
-                  <th>Name</th>
-                  <th style={{ textAlign: "right" }}>Qty</th>
-                  <th style={{ textAlign: "right" }}>Base Unit OMR</th>
-                  <th style={{ textAlign: "right" }}>Allocated OMR</th>
-                  <th style={{ textAlign: "right" }}>Landed Unit OMR</th>
-                  <th style={{ textAlign: "right" }}>Index Ratio</th>
-                  <th style={{ textAlign: "right" }}>Index %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {costIndexRows.map((row) => (
-                  <tr key={row.product_key || `${row.product_code}-${row.product_name}`}>
-                    <td>{row.product_code}</td>
-                    <td>{row.product_name}</td>
-                    <td style={{ textAlign: "right" }}>{row.qty}</td>
-                    <td style={{ textAlign: "right" }}>{row.base_unit_omr}</td>
-                    <td style={{ textAlign: "right" }}>{row.allocated_cost_omr}</td>
-                    <td style={{ textAlign: "right" }}>{row.unit_landed_omr}</td>
-                    <td style={{ textAlign: "right" }}>{row.cost_index_ratio}</td>
-                    <td style={{ textAlign: "right" }}>{row.cost_index_pct}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────── Main LCE Page ─────────────────── */
+function CostingPage() {
+  const { lceId } = useParams();
+  const navigate = useNavigate();
+  const currentUser = useMemo(() => getSessionUser(), []);
+  const isAddMode = !lceId;
+
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+  const [chargeTypeOptions, setChargeTypeOptions] = useState([]);
+  const [currencyOptions, setCurrencyOptions] = useState([]);
+  const [stockPurchaseOptions, setStockPurchaseOptions] = useState([]);
+
+  // linked items (persisted on the LCE)
+  const [linkedItems, setLinkedItems] = useState([]);
+  const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [balanceSettlements, setBalanceSettlements] = useState([emptySettlementRow(1)]);
+  const [nextSettlementRowId, setNextSettlementRowId] = useState(2);
+
+  // modal state
+  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState([]);
+  const [modalItems, setModalItems] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setStatus("");
+
+    const resolveAndLoad = async () => {
+      const [metaData, recordData] = await Promise.all([
+        listLceEstimateMeta(),
+        lceId ? getLceEstimateById(lceId) : Promise.resolve(null),
+      ]);
+      if (!alive) return;
+
+      const metaChargeTypes = Array.isArray(metaData?.charge_types) ? metaData.charge_types : [];
+      const EXCLUDED = ["OTHER CHARGES 1", "OTHER CHARGES 2", "OTHER CHARGES 3", "OTHER CHARGES 4"];
+      const defaultChargeTypes = ["EMPTY CONTAINER WEIGHING CHARGE", "CONTAINER LOADING FEE", "LOADED CONTAINER WEIGHING CHARGE"];
+      const mergedChargeTypes = [...new Set([...metaChargeTypes.map((r) => r.name), ...defaultChargeTypes])]
+        .filter((name) => !EXCLUDED.includes(name.toUpperCase()));
+      setChargeTypeOptions(mergedChargeTypes.map((name) => ({ value: name, label: name })));
+
+      const currencies = Array.isArray(metaData?.currencies) ? metaData.currencies : [];
+      setCurrencyOptions(currencies.map((row) => ({
+        value: String(row.id),
+        label: row.label || `${row.country_name} - ${row.currency_code}`,
+        currencyCode: String(row.currency_code || "").trim().toUpperCase(),
+      })));
+
+      let purchases = Array.isArray(metaData?.stock_purchases) ? metaData.stock_purchases : [];
+      if (purchases.length === 0) {
+        const stockListData = await listStockPurchases();
+        purchases = Array.isArray(stockListData?.stock_purchases) ? stockListData.stock_purchases : [];
+      }
+      setStockPurchaseOptions(
+        purchases
+          .map((row) => ({
+            value: String(row.id),
+            label: row?.label || formatPurchaseOption(row).label,
+          }))
+          .filter((row) => row.value)
+      );
+
+      if (!recordData) {
+        setForm(applyFormulas({ ...DEFAULT_FORM }));
+        setBalanceSettlements([emptySettlementRow(1)]);
+        setNextSettlementRowId(2);
+        setLoading(false);
+        return;
+      }
+
+      const estimate = recordData.lce_estimate || {};
+      const merged = { ...DEFAULT_FORM };
+      [...EDITABLE_FIELDS, ...FORMULA_FIELDS].forEach(([key]) => { merged[key] = String(estimate[key] ?? merged[key]); });
+      EXTRA_FIELDS.forEach((key) => { merged[key] = String(estimate[key] ?? merged[key] ?? ""); });
+      const items = Array.isArray(estimate.purchase_items) ? estimate.purchase_items : [];
+      setLinkedItems(items);
+      setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
+      const settlementRows = mapSettlementRows(estimate.balance_settlements, merged.foreign_currency_id || "");
+      setBalanceSettlements(settlementRows);
+      // Recalculate formulas using loaded settlements
+      setForm((prevForm) => applyFormulas(applyLinkedItemsToForm(merged, items), settlementRows));
+      setNextSettlementRowId((settlementRows.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
+      setLoading(false);
+    };
+
+    resolveAndLoad().catch((err) => {
+      if (!alive) return;
+      setStatus(err.message || "Failed to load LCE details.");
+      setLoading(false);
+    });
+
+    return () => { alive = false; };
+  }, [lceId]);
+
+  // Ensure calculated fields are always up-to-date when editing an LCE
+  useEffect(() => {
+    if (!lceId) return; // Only for edit mode
+    // Recalculate formulas using current form, linkedItems, and settlements
+    setForm((prevForm) => applyFormulas(applyLinkedItemsToForm(prevForm, linkedItems), balanceSettlements));
+  }, [lceId, linkedItems, balanceSettlements]);
+
+  const handleChange = (key, value) => setForm((prev) => applyLinkedItemsToForm({ ...prev, [key]: value }, linkedItems));
+
+  const handleChargeTypeAdd = async (typeKey) => {
+    const raw = window.prompt("Enter new charge type");
+    const value = String(raw || "").trim();
+    if (!value) return;
+    if (chargeTypeOptions.some((o) => o.value.toLowerCase() === value.toLowerCase())) {
+      window.alert("Charge type already exists."); return;
+    }
+    try {
+      const data = await createLceChargeTypeOption(value);
+      const created = data?.charge_type?.name || value;
+      setChargeTypeOptions((prev) => [...prev, { value: created, label: created }]);
+      setForm((prev) => ({ ...prev, [typeKey]: created }));
+    } catch (error) { setStatus(error?.message || "Failed to add charge type."); }
+  };
+
+  const togglePurchaseId = (purchaseId) => {
+    setSelectedPurchaseIds((prev) => {
+      if (prev.includes(purchaseId)) {
+        return prev.filter((id) => id !== purchaseId);
+      }
+      return [...prev, purchaseId];
+    });
+  };
+
+  const selectedPurchaseLabel = useMemo(() => {
+    if (!selectedPurchaseIds.length) return "Select purchase / invoice";
+    if (selectedPurchaseIds.length === 1) {
+      const row = stockPurchaseOptions.find((o) => o.value === selectedPurchaseIds[0]);
+      return row?.label || "1 selected";
+    }
+    return `${selectedPurchaseIds.length} purchase(s) selected`;
+  }, [selectedPurchaseIds, stockPurchaseOptions]);
+
+  const selectedForeignCurrencyCode = useMemo(() => {
+    const selected = currencyOptions.find((o) => String(o.value) === String(form.foreign_currency_id || ""));
+    return selected?.currencyCode || "FOREIGN CURRENCY";
+  }, [currencyOptions, form.foreign_currency_id]);
+
+  const withForeignCurrencyLabel = (key, label) => {
+    // Restore currency units in label as before
+    if (FOREIGN_CURRENCY_KEYS.has(key)) {
+      return `${label} (${selectedForeignCurrencyCode})`;
+    }
+    if (key === "foreign_currency_id") {
+      return "Foreign Currency";
+    }
+    return label;
+  };
+
+  const settlementRowsWithValue = useMemo(
+    () => balanceSettlements.map((row) => ({
+      ...row,
+      value: toFixed(toNumber(row.payment_amount) * toNumber(row.factor), 2),
+    })),
+    [balanceSettlements]
+  );
+
+  const settledValueTotal = useMemo(
+    () => toFixed(settlementRowsWithValue.reduce((sum, row) => sum + toNumber(row.value), 0), 2),
+    [settlementRowsWithValue]
+  );
+
+  // Add settledValueTotalEUR for foreign currency
+  const settledValueTotalEUR = useMemo(
+    () => toFixed(settlementRowsWithValue.reduce((sum, row) => sum + toNumber(row.payment_amount), 0), 2),
+    [settlementRowsWithValue]
+  );
+
+  // --- FORCE FORMULA RECALCULATION ON SETTLEMENT CHANGE ---
+  const handleSettlementChange = (rowId, key, value) => {
+    setBalanceSettlements((prev) => {
+      const updated = prev.map((row) => (row.rowId === rowId ? { ...row, [key]: value } : row));
+      // Force recalculation of form fields based on new settlements
+      setForm((oldForm) => applyFormulas({ ...oldForm }, updated));
+      return updated;
+    });
+  };
+
+  const addSettlementRow = () => {
+    setBalanceSettlements((prev) => [...prev, emptySettlementRow(nextSettlementRowId, form.foreign_currency_id || "")]);
+    setNextSettlementRowId((prev) => prev + 1);
+  };
+
+  const removeSettlementRow = (rowId) => {
+    setBalanceSettlements((prev) => (prev.length > 1 ? prev.filter((row) => row.rowId !== rowId) : prev));
+  };
+
+  const handleShowItems = async () => {
+    if (!selectedPurchaseIds.length) { setStatus("Please select at least one purchase."); return; }
+    setModalLoading(true);
+    setStatus("");
+    try {
+      const responses = await Promise.all(selectedPurchaseIds.map((purchaseId) => getLcePurchaseItems(purchaseId)));
+      const merged = [];
+      const seen = new Set();
+      responses.forEach((data) => {
+        const rows = Array.isArray(data?.items) ? data.items : [];
+        rows.forEach((row) => {
+          if (seen.has(row.id)) return;
+          seen.add(row.id);
+          merged.push(row);
+        });
+      });
+      setModalItems(merged);
+      setModalOpen(true);
+    } catch (err) {
+      setStatus(err?.message || "Failed to load purchase items.");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleModalConfirm = (ids) => {
+    const modalIds = new Set(modalItems.map((i) => i.id));
+    const keepFromPrevious = selectedItemIds.filter((id) => !modalIds.has(id));
+    const nextIds = [...keepFromPrevious, ...ids];
+    setSelectedItemIds(nextIds);
+
+    const keepRows = linkedItems.filter((row) => !modalIds.has(row.id));
+    const pickedRows = modalItems.filter((row) => ids.includes(row.id));
+      const nextLinkedItems = [...keepRows, ...pickedRows];
+      setLinkedItems(nextLinkedItems);
+      setForm((prev) => applyLinkedItemsToForm(prev, nextLinkedItems));
+    setModalOpen(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setStatus("");
+
+    const settlementPayload = settlementRowsWithValue
+      .filter((row) => (
+        String(row.settlement_date || "").trim()
+        || toNumber(row.payment_amount) !== 0
+        || toNumber(row.factor) !== 0
+        || String(row.foreign_currency_id || "").trim()
+      ))
+      .map((row) => ({
+        settlement_date: String(row.settlement_date || "").trim(),
+        foreign_currency_id: String(row.foreign_currency_id || "").trim(),
+        payment_amount: row.payment_amount,
+        factor: row.factor,
+        amount: String(toNumber(row.payment_amount) * toNumber(row.factor)),
+      }));
+
+    if (settlementPayload.some((row) => !row.settlement_date)) {
+      setStatus("Settlement date is required for each balance settlement row.");
+      setSaving(false);
+      return;
+    }
+
+    try {
+      const payload = {
+        ...Object.fromEntries(EDITABLE_FIELDS.filter(([key]) => key !== "ex_works_material_cost").map(([key]) => [key, form[key]])),
+        ex_works_material_cost: calculateLinkedItemsTotalPrice(linkedItems),
+        other_charges_1_type: form.other_charges_1_type || "",
+        other_charges_2_type: form.other_charges_2_type || "",
+        other_charges_3_type: form.other_charges_3_type || "",
+        other_charges_4_type: form.other_charges_4_type || "",
+        foreign_currency_id: form.foreign_currency_id || "",
+        item_ids: selectedItemIds,
+        balance_settlements: settlementPayload,
+        created_by: currentUser?.username || "",
+      };
+      const data = isAddMode ? await createLceEstimate(payload) : await updateLceEstimateById(lceId, payload);
+      const estimate = data.lce_estimate || {};
+      const merged = { ...form }; // Start with previous form state
+      [...EDITABLE_FIELDS, ...FORMULA_FIELDS].forEach(([key]) => {
+        if (estimate[key] !== undefined && estimate[key] !== null) {
+          merged[key] = String(estimate[key]);
+        }
+      });
+      EXTRA_FIELDS.forEach((key) => {
+        if (estimate[key] !== undefined && estimate[key] !== null) {
+          merged[key] = String(estimate[key]);
+        }
+      });
+      const items = Array.isArray(estimate.purchase_items) ? estimate.purchase_items : [];
+      setLinkedItems(items);
+      setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
+      // Only update settlements if backend returns a non-empty array, otherwise preserve current state
+      let settlementRows = balanceSettlements;
+      if (Array.isArray(estimate.balance_settlements) && estimate.balance_settlements.length > 0) {
+        // Use enhanced mapping: preserve payment_amount if missing from backend
+        settlementRows = mapSettlementRows(
+          estimate.balance_settlements,
+          merged.foreign_currency_id || "",
+          balanceSettlements
+        );
+        setBalanceSettlements(settlementRows);
+        setNextSettlementRowId((settlementRows.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
+      } else {
+        // Do NOT update balanceSettlements if backend returns empty/null/undefined
+        settlementRows = balanceSettlements;
+      }
+      // Always recalculate formulas using the latest settlements
+      setForm(() => applyFormulas(applyLinkedItemsToForm(merged, items), settlementRows));
+      setStatus("LCE saved successfully.");
+      if (isAddMode && estimate.id) navigate(`/projects/costing/record/${estimate.id}`, { replace: true });
+    } catch (err) {
+      setStatus(err.message || "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const lceLabel = lceId ? `LCE_${String(lceId).padStart(3, "0")}` : "(New)";
+
+  return (
+    <section className="module-page">
+      <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
+        <div>
+          <h1 className="module-page__title" style={{ margin: 0 }}>
+            {isAddMode ? "LCE Add" : `LCE Form — ${lceLabel}`}
+          </h1>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button type="button" className="crud-add-btn" onClick={() => navigate("/projects/costing")}>Back to LCE List</button>
+          <button type="button" className="crud-add-btn" onClick={handleSave} disabled={saving || loading}>
+            {saving ? "Saving..." : "Save LCE Details"}
+          </button>
+        </div>
       </div>
 
-      {/* ── Import / Export (admin) ── */}
-      {isAdmin && (
-        <div style={{ borderTop: "1px solid #1e666d", paddingTop: "1rem" }}>
-          <div className="crud-page__header" style={{ marginBottom: "0.5rem" }}>
-            <h2 className="module-page__title" style={{ margin: 0, fontSize: "1rem" }}>
-              Import / Export LCE Costing Excel
-            </h2>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="crud-add-btn"
-                onClick={handleTemplateDownload}
-                disabled={downloadingTemplate || importing || downloadingExport}
+      {status ? <p className="users-status">{status}</p> : null}
+      {loading ? <p className="users-status">Loading...</p> : null}
+
+      {!loading ? (
+        <>
+          {/* ── Cost fields ── */}
+          <div className="lce-form-grid lce-form-grid--four">
+            {/* Add Foreign Currency field at the top of the form */}
+            <label key="foreign_currency_id" className="lce-form-card">
+              <span className="lce-form-card__label">{withForeignCurrencyLabel("foreign_currency_id", "Foreign Currency")}</span>
+              <select
+                className="auth-input lce-form-card__input"
+                value={form["foreign_currency_id"] || ""}
+                onChange={e => handleChange("foreign_currency_id", e.target.value)}
               >
-                {downloadingTemplate ? "Downloading..." : "Download Template"}
-              </button>
-              <button
-                type="button"
-                className="crud-add-btn"
-                onClick={handleImportClick}
-                disabled={importing || downloadingTemplate || downloadingExport}
-              >
-                {importing ? "Importing..." : "Import Excel"}
-              </button>
-              <button
-                type="button"
-                className="crud-add-btn"
-                onClick={handleExcelExport}
-                disabled={downloadingExport || importing || downloadingTemplate}
-              >
-                <BsDownload aria-hidden="true" />
-                <span>{downloadingExport ? "Exporting..." : "Export Excel"}</span>
-              </button>
+                <option value="">Select currency</option>
+                {currencyOptions.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+            {EDITABLE_FIELDS.filter(([key]) => key !== "bank_exchange_rate").map(([key, label]) => {
+              const isCalculatedExWorks = key === "ex_works_material_cost";
+              const otherField = OTHER_CHARGE_FIELDS.find(([vk]) => vk === key);
+              if (isCalculatedExWorks) {
+                return (
+                  <label key={key} className="lce-form-card">
+                    <span className="lce-form-card__label">
+                      <strong>{withForeignCurrencyLabel(key, label)}</strong> <small style={{ color: "#cce8e5", fontWeight: 400 }}>(calculated from linked items)</small>
+                    </span>
+                    <input
+                      type="number"
+                      className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                      step="any"
+                      value={form[key]}
+                      disabled
+                      readOnly
+                    />
+                  </label>
+                );
+              }
+              if (otherField) {
+                const [, chargeLabel, typeKey] = otherField;
+                return (
+                  <div key={key} className="lce-form-card">
+                    <span className="lce-form-card__label">{withForeignCurrencyLabel(key, chargeLabel)}</span>
+                    <div className="lce-charge-split-row">
+                      <div className="lce-charge-split-col">
+                        <div className="lce-charge-type-row">
+                          <select
+                            className="auth-input lce-form-card__input"
+                            style={{ background: "#ffffff", color: "#111827", minWidth: 0 }}
+                            value={form[typeKey] || ""}
+                            onChange={(e) => handleChange(typeKey, e.target.value)}
+                          >
+                            <option value="">Select charge type</option>
+                            {chargeTypeOptions.map((o) => <option key={`${typeKey}-${o.value}`} value={o.value}>{o.label}</option>)}
+                          </select>
+                          <button
+                            type="button"
+                            className="crud-add-btn"
+                            onClick={() => handleChargeTypeAdd(typeKey)}
+                            aria-label="Add charge type"
+                            title="Add charge type"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div className="lce-charge-split-col">
+                        <input
+                          type="number"
+                          className="auth-input lce-form-card__input"
+                          style={{ textAlign: "right" }}
+                          step="any"
+                          value={form[key]}
+                          disabled={!form[typeKey]}
+                          onChange={(e) => handleChange(key, e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+               // Make Advance Payment Value always read-only and calculated
+               if (key === "advance_payment_value") {
+                 return [
+                   <label key={key} className="lce-form-card">
+                     <span className="lce-form-card__label">
+                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small style={{ color: "#cce8e5", fontWeight: 400 }}>(sum of Payment Amount (OMR) in Payment History)</small>
+                     </span>
+                     <input
+                       type="number"
+                       className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                       step="any"
+                       value={form[key]}
+                       disabled
+                       readOnly
+                     />
+                   </label>,
+                   // Insert Balance Payment Value (EUR) field here
+                   <label key="balance_payment_value" className="lce-form-card">
+                      <span className="lce-form-card__label">
+                        <strong>{withForeignCurrencyLabel("balance_payment_value", "Balance Payment Value")}</strong>
+                      </span>
+                     <input
+                       type="number"
+                       className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                       step="any"
+                       value={form["balance_payment_value"]}
+                       disabled
+                       readOnly
+                     />
+                   </label>
+                 ];
+               }
+               // Make Total Advance Payment (OMR) always disabled and read-only
+               if (key === "bank_muscat_charge_advance_payment") {
+                 return (
+                   <label key={key} className="lce-form-card">
+                     <span className="lce-form-card__label">
+                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small style={{ color: "#cce8e5", fontWeight: 400 }}>(sum of Amount (OMR) in Payment History)</small>
+                     </span>
+                     <input
+                       type="number"
+                       className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                       step="any"
+                       value={form[key]}
+                       disabled
+                       readOnly
+                     />
+                   </label>
+                 );
+               }
+              return (
+                <label key={key} className="lce-form-card">
+                  <span className="lce-form-card__label">{withForeignCurrencyLabel(key, label)}</span>
+                  <input type="number" className="auth-input lce-form-card__input" step="any" value={form[key]} onChange={(e) => handleChange(key, e.target.value)} />
+                </label>
+              );
+            })}
+
+            {FORMULA_FIELDS.filter(([key]) => key !== "balance_payment_value").map(([key, label]) => {
+              let displayLabel = key === "total_supplier_price_omr" ? "LCE COST (OMR)" : withForeignCurrencyLabel(key, label);
+              return (
+                <label key={key} className="lce-form-card lce-form-card--formula">
+                  <span className="lce-form-card__label"><strong>{displayLabel}</strong></span>
+                  <input type="number" className="auth-input lce-form-card__input lce-form-card__input--readonly" value={form[key]} readOnly />
+                </label>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              marginTop: "1.25rem",
+              padding: "1rem",
+              border: "1px solid #1a6f77",
+              borderRadius: 8,
+              background: "#0a3a40",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0 }}>Payment History</h3>
+              <button type="button" className="crud-add-btn" onClick={addSettlementRow}>+ Add Settlement</button>
+            </div>
+             <p style={{ margin: "0.5rem 0 0.8rem", color: "#cce8e5", fontSize: "0.86rem" }}>
+               Final Value (OMR) = Factor x Amount.
+             </p>
+
+                    <div className="table-responsive">
+                      <table className="users-table" style={{ width: "100%" }}>
+                        <thead>
+                          <tr>
+                            <th>Payment Date</th>
+                            {/* Removed Foreign Currency column */}
+                              <th>{`Payment Amount (${selectedForeignCurrencyCode})`}</th>
+                            <th>BANK EXCHANGE RATE (MUSCAT)</th>
+                              <th>Payment Amount (OMR)</th>
+                            <th style={{ width: 90 }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {settlementRowsWithValue.map((row) => (
+                            <tr key={row.rowId}>
+                              <td>
+                                <input
+                                  type="date"
+                                  className="auth-input"
+                                  value={row.settlement_date}
+                                  onChange={(e) => handleSettlementChange(row.rowId, "settlement_date", e.target.value)}
+                                />
+                              </td>
+                              {/* Removed Foreign Currency cell */}
+                              <td>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  className="auth-input"
+                                  value={row.payment_amount}
+                                  onChange={(e) => handleSettlementChange(row.rowId, "payment_amount", e.target.value)}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  className="auth-input"
+                                  value={row.factor}
+                                  onChange={(e) => handleSettlementChange(row.rowId, "factor", e.target.value)}
+                                  aria-label="BANK EXCHANGE RATE (MUSCAT)"
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  className="auth-input"
+                                  value={toFixed(toNumber(row.payment_amount) * toNumber(row.factor), 2)}
+                                  readOnly
+                                  disabled
+                                />
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="crud-add-btn"
+                                  style={{ background: "#6c757d", width: "100%" }}
+                                  onClick={() => removeSettlementRow(row.rowId)}
+                                  disabled={settlementRowsWithValue.length <= 1}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+            <div style={{ display: "flex", gap: "1rem", marginTop: "0.85rem", flexWrap: "wrap" }}>
+              {/* Settled Total display removed as per request */}
+              {/* Pending field removed as per request */}
             </div>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            style={{ display: "none" }}
-            onChange={handleImportFileChange}
-          />
-          {importStatus ? <p className="users-status">{importStatus}</p> : null}
-          {importRowReports.length ? (
-            <>
-              <div className="crud-page__header" style={{ margin: "0.5rem 0" }}>
-                <h3 className="module-page__title" style={{ margin: 0, fontSize: "0.95rem" }}>Import Details</h3>
-                <button
-                  type="button"
-                  className="crud-add-btn"
-                  onClick={handleImportReportExport}
-                  disabled={exportingReport}
-                >
-                  <BsDownload aria-hidden="true" />
-                  <span>{exportingReport ? "Exporting..." : "Download Report"}</span>
-                </button>
+
+          {/* ── Purchase invoice selector (top) ── */}
+          <div
+            style={{
+              marginTop: "1.5rem",
+              padding: "1rem",
+              border: "1px solid #1a6f77",
+              borderRadius: 6,
+              background: "#0a3a40",
+              color: "#f0fffe",
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Link Purchase Invoice Items</h3>
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 300px" }}>
+                <label style={{ display: "block", marginBottom: 4, fontWeight: 600, fontSize: "0.85rem" }}>Purchase / Invoice</label>
+                <details style={{ width: "100%" }}>
+                  <summary
+                    className="auth-input"
+                    style={{
+                      listStyle: "none",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      minHeight: 40,
+                      background: "#0a3338",
+                    }}
+                  >
+                    {selectedPurchaseLabel}
+                  </summary>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      border: "1px solid #1e666d",
+                      borderRadius: 6,
+                      maxHeight: 180,
+                      overflowY: "auto",
+                      background: "#062f34",
+                      padding: "0.4rem 0.5rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: "0.5rem", marginBottom: 8 }}>
+                      <button type="button" className="crud-add-btn" onClick={() => setSelectedPurchaseIds(stockPurchaseOptions.map((o) => o.value))}>
+                        Select All
+                      </button>
+                      <button type="button" className="crud-add-btn" style={{ background: "#6c757d" }} onClick={() => setSelectedPurchaseIds([])}>
+                        Clear
+                      </button>
+                    </div>
+                    {stockPurchaseOptions.map((o) => (
+                      <label
+                        key={o.value}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          padding: "0.25rem 0.15rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedPurchaseIds.includes(o.value)}
+                          onChange={() => togglePurchaseId(o.value)}
+                        />
+                        <span>{o.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+                <small style={{ color: "#cce8e5" }}>Use checkboxes to select multiple purchase numbers.</small>
               </div>
-              <div className="users-table-wrap" style={{ maxHeight: "14rem", overflowY: "auto" }}>
-                <table className="users-table">
+              <button
+                type="button"
+                className="crud-add-btn"
+                onClick={handleShowItems}
+                disabled={!selectedPurchaseIds.length || modalLoading}
+                style={{ height: 38 }}
+              >
+                {modalLoading ? "Loading..." : "Show Items"}
+              </button>
+            </div>
+            {selectedItemIds.length > 0 ? (
+              <p style={{ marginTop: "0.5rem", marginBottom: 0, color: "#7ee787", fontWeight: 600 }}>
+                {selectedItemIds.length} item(s) selected — save to persist LCE link.
+              </p>
+            ) : null}
+          </div>
+
+          {/* ── Linked items table ── */}
+          <div style={{ marginTop: "1.5rem" }}>
+            <h2 className="module-page__title" style={{ marginBottom: "0.5rem" }}>
+              Linked Purchase Items {linkedItems.length > 0 ? `(${linkedItems.length})` : ""}
+            </h2>
+            {linkedItems.length === 0 ? (
+              <p className="users-status">No purchase items linked yet. Use the section above to select items.</p>
+            ) : (
+              <div className="table-responsive">
+                <table className="users-table" style={{ width: "100%" }}>
                   <thead>
-                    <tr><th>Row</th><th>Status</th><th>Details</th></tr>
+                    <tr>
+                      <th>GRN No.</th>
+                      <th>Purchase No.</th>
+                      <th>Invoice No.</th>
+                      <th>Item Category</th>
+                      <th>Item Name</th>
+                      <th>Item Code</th>
+                      <th>Qty</th>
+                      <th>Total Price</th>
+                      <th>LCE COST (OMR)/Unit</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {importRowReports.map((r) => (
-                      <tr key={`${r.row}-${r.status}`}>
-                        <td>{r.row}</td><td>{r.status}</td><td>{r.message}</td>
-                      </tr>
-                    ))}
+                    {linkedItems.map((item) => {
+                       const lceCost = toFixed(toNumber(item.total_price) * toNumber(form.cost_factor));
+                       const perUnitLceCost = (toNumber(item.quantity) > 0)
+                         ? toFixed(toNumber(lceCost) / toNumber(item.quantity))
+                         : "-";
+                       return (
+                         <tr key={item.id}>
+                           <td>{item.grn_number}</td>
+                           <td>{item.purchase_number || "-"}</td>
+                           <td>{item.invoice_number || "-"}</td>
+                           <td>{item.item_category}</td>
+                           <td>{item.item_name}</td>
+                           <td>{item.item_code}</td>
+                           <td>{item.quantity}</td>
+                           <td>{item.total_price} {selectedForeignCurrencyCode}</td>
+                           <td><strong>{perUnitLceCost}</strong></td>
+                         </tr>
+                       );
+                    })}
                   </tbody>
                 </table>
               </div>
-            </>
-          ) : null}
-        </div>
-      )}
+            )}
+          </div>
+        </>
+      ) : null}
+
+       {modalOpen ? (
+         <PurchaseItemModal
+           items={modalItems}
+           initialSelected={selectedItemIds}
+           onConfirm={handleModalConfirm}
+           onClose={() => setModalOpen(false)}
+           currentLceId={lceId}
+           selectedForeignCurrencyCode={selectedForeignCurrencyCode}
+         />
+       ) : null}
     </section>
   );
 }

@@ -52,7 +52,7 @@ function HomeLayout({ currentUser }) {
       : []),
     { title: "Projects", stat: "Track active work", to: "/projects", icon: BsFolder2Open },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
-    { title: "Stock", stat: "Purchase and maintenance", to: "/stock-purchase", icon: BsBarChartFill },
+    { title: "Stocks:", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },
     ...(isAdmin || isCdcTeam
       ? [
           {

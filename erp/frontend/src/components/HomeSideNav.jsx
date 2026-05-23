@@ -1,18 +1,22 @@
-import { NavLink } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import {
+  BsBoxSeam,
   BsBoxes,
   BsBuildingFill,
   BsCashCoin,
   BsCartCheckFill,
+  BsChevronDown,
+  BsChevronRight,
   BsClipboardData,
   BsFileEarmarkTextFill,
   BsFolder2Open,
   BsHourglassSplit,
   BsKanbanFill,
   BsListTask,
+  BsPeopleFill,
   BsPersonCheck,
   BsPersonPlusFill,
-  BsPeopleFill,
   BsReceiptCutoff,
 } from "react-icons/bs";
 import { homeNavItems } from "../config/homeNavigation";
@@ -21,8 +25,10 @@ const iconMap = {
   users: BsPeopleFill,
   projects: BsFolder2Open,
   vendors: BsBuildingFill,
+  stocks: BsBoxes,
   stockPurchase: BsCartCheckFill,
   stockMaintenance: BsBoxes,
+  itemMaster: BsBoxSeam,
   cdcExpense: BsCashCoin,
   task: BsListTask,
   timesheet: BsHourglassSplit,
@@ -40,16 +46,47 @@ function NavIcon({ icon }) {
   return <IconComponent className={`home-sidenav__icon home-sidenav__icon--${icon}`} aria-hidden="true" />;
 }
 
+function pathMatches(targetPath, currentPathname) {
+  if (!targetPath) return false;
+  if (currentPathname === targetPath) return true;
+  return currentPathname.startsWith(`${targetPath}/`);
+}
+
 function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
-  const visibleItems = homeNavItems
-    .filter((item) => (!item.adminOnly || isAdmin) && (!item.cdcOnly || isAdmin || isCdcTeam))
-    .map((item) => ({
-      ...item,
-      disabled: !isAdmin && item.to === "/timesheet",
-      children: item.children?.filter(
-        (child) => (!child.adminOnly || isAdmin) && (!child.cdcOnly || isAdmin || isCdcTeam)
-      ),
-    }));
+  const location = useLocation();
+  const [expandedGroups, setExpandedGroups] = useState({});
+
+  const visibleItems = useMemo(
+    () =>
+      homeNavItems
+        .filter((item) => (!item.adminOnly || isAdmin) && (!item.cdcOnly || isAdmin || isCdcTeam))
+        .map((item) => ({
+          ...item,
+          disabled: !isAdmin && item.to === "/timesheet",
+          children: item.children?.filter(
+            (child) => (!child.adminOnly || isAdmin) && (!child.cdcOnly || isAdmin || isCdcTeam)
+          ),
+        })),
+    [isAdmin, isCdcTeam]
+  );
+
+  useEffect(() => {
+    setExpandedGroups((prev) => {
+      const next = { ...prev };
+      visibleItems.forEach((item) => {
+        if (!item.children?.length) return;
+        const hasActiveChild = item.children.some((child) => pathMatches(child.to, location.pathname));
+        if (hasActiveChild) {
+          next[item.label] = true;
+        }
+      });
+      return next;
+    });
+  }, [location.pathname, visibleItems]);
+
+  const toggleGroup = (label) => {
+    setExpandedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
 
   return (
     <aside className="home-sidenav" aria-label="Main navigation">
@@ -60,6 +97,8 @@ function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
           const itemBadge = item.badgeKey && badges[item.badgeKey] > 0
             ? badges[item.badgeKey]
             : null;
+          const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+          const isExpanded = !!expandedGroups[item.label];
 
           return (
             <div className="home-sidenav__group" key={item.label}>
@@ -76,6 +115,23 @@ function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
                     <span className="pending-badge pending-badge--nav">{itemBadge}</span>
                   ) : null}
                 </div>
+              ) : hasChildren && item.disableParentNavigation ? (
+                <button
+                  type="button"
+                  className={`home-sidenav__link home-sidenav__toggle${isExpanded ? " home-sidenav__toggle--expanded" : ""}`}
+                  onClick={() => toggleGroup(item.label)}
+                  aria-expanded={isExpanded}
+                  aria-controls={`nav-group-${item.icon || item.label}`}
+                >
+                  <NavIcon icon={item.icon} />
+                  <span className="home-sidenav__label">{item.label}</span>
+                  {itemBadge ? (
+                    <span className="pending-badge pending-badge--nav">{itemBadge}</span>
+                  ) : null}
+                  <span className="home-sidenav__toggle-icon" aria-hidden="true">
+                    {isExpanded ? <BsChevronDown /> : <BsChevronRight />}
+                  </span>
+                </button>
               ) : (
                 <NavLink
                   to={item.to}
@@ -91,8 +147,8 @@ function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
                 </NavLink>
               )}
 
-              {item.children ? (
-                <div className="home-sidenav__children">
+              {item.children && (!item.disableParentNavigation || isExpanded) ? (
+                <div className="home-sidenav__children" id={`nav-group-${item.icon || item.label}`}>
                   {item.children.map((subItem) => {
                     const subBadge = subItem.badgeKey && badges[subItem.badgeKey] > 0
                       ? badges[subItem.badgeKey]

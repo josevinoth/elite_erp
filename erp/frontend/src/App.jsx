@@ -3,17 +3,23 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import ProjectHeader from "./components/ProjectHeader";
 import ErrorBoundary from "./components/ErrorBoundary";
 import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
+import CutOptimiserListPage from "./pages/CutOptimiserListPage";
 import CostingPage from "./pages/CostingPage";
 import CutOptimiserPage from "./pages/CutOptimiserPage";
 import HomeLayout from "./pages/HomeLayout";
+import LceListPage from "./pages/LceListPage";
 import LoginPage from "./pages/LoginPage";
 import ModulePage from "./pages/ModulePage";
 import PendingApprovalsPage from "./pages/PendingApprovalsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import StockItemsPage from "./pages/StockItemsPage";
 import StockMaintenancePage from "./pages/StockMaintenancePage";
+import StockPurchaseAddPage from "./pages/StockPurchaseAddPage.jsx";
+import StockPurchaseItemTracePage from "./pages/StockPurchaseItemTracePage.jsx";
 import StockPurchasePage from "./pages/StockPurchasePage";
+import StocksListPage from "./pages/StocksListPage";
 import TaskPage from "./pages/TaskPage";
 import TimesheetPage from "./pages/TimesheetPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
@@ -119,10 +125,17 @@ function App() {
             <Route path="/users-management" element={adminRoute(<UsersManagementPage />)} />
             <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage />)} />
             <Route path="/projects" element={secureRoute(<ProjectsPage />)} />
-            <Route path="/projects/cut-optimiser" element={secureRoute(<CutOptimiserPage />)} />
+            <Route path="/projects/cut-optimiser" element={secureRoute(<CutOptimiserListPage />)} />
+            <Route path="/projects/cut-optimiser/add" element={secureRoute(<CutOptimiserPage />)} />
+            <Route path="/projects/cut-optimiser/record/:recordId" element={secureRoute(<CutOptimiserPage />)} />
             <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
             <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
+            <Route path="/stock-purchase/add" element={secureRoute(<StockPurchaseAddPage />)} />
+            <Route path="/stock-purchase/record/:purchaseId" element={secureRoute(<StockPurchaseAddPage />)} />
+            <Route path="/stock-purchase/item-trace/:itemId" element={secureRoute(<StockPurchaseItemTracePage />)} />
+            <Route path="/stocks" element={secureRoute(<StocksListPage />)} />
             <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage />)} />
+            <Route path="/stock-items" element={secureRoute(<StockItemsPage />)} />
             <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage />)} />
             <Route path="/task" element={secureRoute(<TaskPage onNotificationsChanged={triggerNotificationRefresh} />)} />
             <Route path="/timesheet" element={secureRoute(<TimesheetPage />)} />
@@ -162,6 +175,18 @@ function App() {
             />
             <Route
               path="/projects/costing"
+              element={
+                secureRoute(<LceListPage />)
+              }
+            />
+            <Route
+              path="/projects/costing/add"
+              element={
+                secureRoute(<CostingPage />)
+              }
+            />
+            <Route
+              path="/projects/costing/record/:lceId"
               element={
                 secureRoute(<CostingPage />)
               }
