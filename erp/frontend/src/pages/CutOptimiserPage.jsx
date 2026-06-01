@@ -3,12 +3,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
 import { listProjects } from "../services/crudApi";
 import {
+  checkCutOptimiserIdExists,
+  checkProjectRevisionExists,
   createCutOptimiserRecord,
   getCutOptimiserRecordById,
-  getNextCutOptimiserRevision,
+  getLatestCutOptimiserId,
   listCutOptimiserRecords,
   updateCutOptimiserRecord,
-} from "../services/cutOptimiserStore";
+} from "../services/crudApi";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import { downloadCutOptimiserPdf } from "../utils/cutOptimiserReport";
 import { buildPackedSheetsForScenario as buildPackedSheetsForScenarioV2, summarizeCutOrientations } from "../utils/cutPackingEngine";
@@ -454,48 +456,90 @@ function CutOptimiserPage() {
     }
   };
 
-  const onSaveRecord = ({ redirectToList = false } = {}) => {
+  // Replace onSaveRecord with async version that checks uniqueness
+  const onSaveRecord = async ({ redirectToList = false } = {}) => {
     if (!selectedProjectKey) {
       setDraftStatus("Select a project before saving the record.");
       return false;
     }
 
-    // Duplicate project check — add mode only
-    if (!isEditMode) {
-      const existing = listCutOptimiserRecords().filter(
-        (r) => String(r.selectedProjectKey) === String(selectedProjectKey)
-      );
-      if (existing.length > 0) {
-        const latest = existing[0];
-        const nextRev = Number(latest.revision) + 1;
-        const confirmed = window.confirm(
-          `A record for this project already exists!\n\n` +
-          `Project          : ${latest.projectLabel || selectedProject?.label || selectedProjectKey}\n` +
-          `Current Revision : R${latest.revision}\n\n` +
-          `Do you want to create a new revision (R${nextRev})?`
-        );
-        if (!confirmed) return false;
+    // Check for duplicate project+revision (async, robust)
+    let currentRevision = revision;
+    let duplicateFound = await checkProjectRevisionExists(selectedProjectKey, currentRevision);
+    let incrementCount = 0;
+    // In edit mode, exclude the current record from duplicate check
+    if (isEditMode && recordId) {
+      const res = await fetch(`/api/cut-optimiser/?project=${encodeURIComponent(selectedProjectKey)}&revision=${encodeURIComponent(currentRevision)}`, { credentials: "include" });
+      const data = await res.json();
+      if (data && data.results && data.results.length > 0) {
+        const other = data.results.find(r => String(r.id) !== String(recordId));
+        if (other) duplicateFound = true;
+        else duplicateFound = false;
       }
+    }
+    while (duplicateFound && incrementCount < 10) {
+      const nextRevision = String(Number(currentRevision) + 1).padStart(2, '0');
+      const msg = `A record already exists for this Project and Revision.\\n\\nClick OK to create a new revision '${nextRevision}', or Cancel to stay on this form.`;
+      const proceed = window.confirm(msg);
+      if (!proceed) {
+        setDraftStatus("Save cancelled by user due to duplicate revision.");
+        return false;
+      }
+      currentRevision = nextRevision;
+      duplicateFound = await checkProjectRevisionExists(selectedProjectKey, currentRevision);
+      if (isEditMode && recordId) {
+        const res = await fetch(`/api/cut-optimiser/?project=${encodeURIComponent(selectedProjectKey)}&revision=${encodeURIComponent(currentRevision)}`, { credentials: "include" });
+        const data = await res.json();
+        if (data && data.results && data.results.length > 0) {
+          const other = data.results.find(r => String(r.id) !== String(recordId));
+          if (other) duplicateFound = true;
+          else duplicateFound = false;
+        } else {
+          duplicateFound = false;
+        }
+      }
+      incrementCount++;
+    }
+    if (incrementCount >= 10) {
+      setDraftStatus("Could not find a unique revision after 10 attempts.");
+      return false;
+    }
+
+    // Generate a unique ID (if needed)
+    let newId = await getLatestCutOptimiserId();
+    newId = newId ? String(Number(newId) + 1) : "1";
+    let idExists = await checkCutOptimiserIdExists(newId);
+    let idTries = 0;
+    while (idExists && idTries < 10) {
+      newId = String(Number(newId) + 1);
+      idExists = await checkCutOptimiserIdExists(newId);
+      idTries++;
+    }
+    if (idTries >= 10) {
+      setDraftStatus("Could not find a unique ID after 10 attempts.");
+      return false;
     }
 
     try {
       const payload = {
+        cut_optimiser_id: newId,
         selectedProjectKey,
         projectLabel: selectedProject?.label || "",
         form,
         rawSheets,
         cutItems,
         result,
+        revision: currentRevision,
       };
-
-      const saved = isEditMode
-        ? updateCutOptimiserRecord(recordId, payload)
-        : createCutOptimiserRecord(payload);
-
-      setRevision(String(saved.revision || 1));
+      let saved;
+      if (isEditMode) {
+        saved = await updateCutOptimiserRecord(recordId, payload);
+      } else {
+        saved = await createCutOptimiserRecord(payload);
+      }
+      setRevision(String(saved.revision || currentRevision));
       setDraftStatus(isEditMode ? "Record updated." : "Record saved.");
       setIsDirty(false);
-
       if (redirectToList) {
         navigate("/projects/cut-optimiser");
       } else if (!isEditMode) {

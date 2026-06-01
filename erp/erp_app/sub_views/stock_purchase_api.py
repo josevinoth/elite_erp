@@ -73,6 +73,7 @@ def _serialize(obj):
 
     return {
         "id": obj.pk,
+        "purchase_id": getattr(obj, "purchase_id", obj.pk),
         "invoice_number": obj.invoice_number,
         "invoice_date": str(obj.invoice_date) if obj.invoice_date else "",
         "tax": str(obj.tax),

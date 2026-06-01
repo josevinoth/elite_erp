@@ -87,7 +87,23 @@ from .sub_views import (
     create_lab_furniture_item_category_api_view,
     create_lab_furniture_item_api_view,
     lab_furniture_item_detail_api_view,
+    list_cut_optimiser,
+    create_cut_optimiser,
+    cut_optimiser_detail,
+    list_stock_purchase_status_options_api_view,
+    list_cut_sizes,
+    cut_size_detail
 )
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .serializers import UOMSerializer
+from .sub_models.cut_optimiser import UOM
+
+@api_view(['GET'])
+def list_uoms_api_view(request):
+    uoms = UOM.objects.all()
+    serializer = UOMSerializer(uoms, many=True)
+    return Response(serializer.data)
 
 __all__ = [
     "BaseAuthFormView",
@@ -177,4 +193,11 @@ __all__ = [
     "list_lab_furniture_items_api_view",
     "create_lab_furniture_item_api_view",
     "lab_furniture_item_detail_api_view",
+    "list_uoms_api_view",
+    "list_cut_optimiser",
+    "create_cut_optimiser",
+    "cut_optimiser_detail",
+    "list_stock_purchase_status_options_api_view",
+    "list_cut_sizes",
+    "cut_size_detail"
 ]

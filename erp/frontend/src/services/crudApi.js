@@ -870,3 +870,92 @@ export async function deleteCommentAttachment(id) {
   return parseJson(res);
 }
 
+// ── Cut Optimiser ─────────────────────────────────────────────
+export async function listCutOptimiserRecords() {
+  const res = await fetch("/api/cut-optimiser/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getCutOptimiserRecordById(id) {
+  const res = await fetch(`/api/cut-optimiser/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createCutOptimiserRecord(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/cut-optimiser/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateCutOptimiserRecord(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/cut-optimiser/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteCutOptimiserRecord(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/cut-optimiser/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  if (!res.ok) throw new Error("Delete failed");
+}
+
+// Get the latest Cut Optimiser ID (for sequential ID generation)
+export async function getLatestCutOptimiserId() {
+  const res = await fetch("/api/cut-optimiser/?ordering=-id&limit=1", { credentials: "include" });
+  const data = await parseJson(res);
+  if (data && data.results && data.results.length > 0) {
+    return data.results[0].cut_optimiser_id;
+  }
+  // fallback: try direct array
+  if (Array.isArray(data) && data.length > 0) {
+    return data[0].cut_optimiser_id;
+  }
+  return null;
+}
+
+// Check if a Cut Optimiser ID already exists
+export async function checkCutOptimiserIdExists(id) {
+  const res = await fetch(`/api/cut-optimiser/?cut_optimiser_id=${encodeURIComponent(id)}`, { credentials: "include" });
+  const data = await parseJson(res);
+  if (data && data.results && data.results.length > 0) {
+    return true;
+  }
+  if (Array.isArray(data) && data.length > 0) {
+    return true;
+  }
+  return false;
+}
+
+// Check if a record exists for the same project and revision
+export async function checkProjectRevisionExists(projectId, revision) {
+  const res = await fetch(`/api/cut-optimiser/?project=${encodeURIComponent(projectId)}&revision=${encodeURIComponent(revision)}`, { credentials: "include" });
+  const data = await parseJson(res);
+  if (data && data.results && data.results.length > 0) {
+    return true;
+  }
+  if (Array.isArray(data) && data.length > 0) {
+    return true;
+  }
+  return false;
+}
+
+// ── Users ───────────────────────────────────────────────
+export async function listUsers() {
+  const res = await fetch("/api/users/", { credentials: "include" });
+  return parseJson(res);
+}

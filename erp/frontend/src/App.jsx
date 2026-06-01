@@ -27,6 +27,7 @@ import VendorsPage from "./pages/VendorsPage";
 import { logoutUser } from "./services/authApi";
 import { listHeaderNotifications } from "./services/crudApi";
 import { clearSessionUser, getSessionUser } from "./services/sessionUser";
+import CutSheetOptimiser from "./pages/CutSheetOptimiser";
 
 function App() {
   const navigate = useNavigate();
@@ -126,8 +127,8 @@ function App() {
             <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage />)} />
             <Route path="/projects" element={secureRoute(<ProjectsPage />)} />
             <Route path="/projects/cut-optimiser" element={secureRoute(<CutOptimiserListPage />)} />
-            <Route path="/projects/cut-optimiser/add" element={secureRoute(<CutOptimiserPage />)} />
-            <Route path="/projects/cut-optimiser/record/:recordId" element={secureRoute(<CutOptimiserPage />)} />
+            <Route path="/projects/cut-optimiser/add" element={secureRoute(<CutSheetOptimiser />)} />
+            <Route path="/projects/cut-optimiser/record/:recordId" element={secureRoute(<CutSheetOptimiser />)} />
             <Route path="/vendors" element={secureRoute(<VendorsPage />)} />
             <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage />)} />
             <Route path="/stock-purchase/add" element={secureRoute(<StockPurchaseAddPage />)} />
@@ -191,6 +192,8 @@ function App() {
                 secureRoute(<CostingPage />)
               }
             />
+            <Route path="/projects/cutsheet-optimiser" element={secureRoute(<CutSheetOptimiser />)} />
+            <Route path="/cut-sheet-optimiser" element={secureRoute(<CutSheetOptimiser />)} />
 
             <Route path="*" element={<Navigate to={homePath} replace />} />
           </Routes>

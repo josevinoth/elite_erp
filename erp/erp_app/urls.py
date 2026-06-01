@@ -85,10 +85,23 @@ from .views import (
     create_lab_furniture_item_category_api_view,
     create_lab_furniture_item_api_view,
     lab_furniture_item_detail_api_view,
+    list_uoms_api_view,
+    list_stock_purchase_status_options_api_view,
+    list_cut_optimiser,
+    create_cut_optimiser,
+    cut_optimiser_detail,
+    list_cut_sizes,
+    cut_size_detail
 )
-from .sub_views.stock_purchase_status_option_api import list_stock_purchase_status_options_api_view
 
 urlpatterns = [
+    # cut optimiser
+    path('api/cut-optimiser/',list_cut_optimiser,name='api-cut-optimiser-list'),
+    path('api/cut-optimiser/create/',create_cut_optimiser,name='api-cut-optimiser-create'),
+    path('api/cut-optimiser/<int:pk>/',cut_optimiser_detail,name='api-cut-optimiser-detail'),
+    path('api/cut-optimiser/<int:cut_optimiser_id>/cut-sizes/',list_cut_sizes,name='api-cut-sizes-list'),
+    path('api/cut-optimiser/<int:cut_optimiser_id>/cut-sizes/<int:cut_size_id>/',cut_size_detail,name='api-cut-size-detail'),
+
     # auth API
     path('api/auth/csrf/', csrf_token_view, name='api-csrf'),
     path('api/auth/register/meta/', register_meta_api_view, name='api-register-meta'),
@@ -188,4 +201,6 @@ urlpatterns = [
     path('api/lab-furniture-item-categories/create/', create_lab_furniture_item_category_api_view, name='api-lab-furniture-item-categories-create'),
     path('api/lab-furniture-items/create/', create_lab_furniture_item_api_view, name='api-lab-furniture-items-create'),
     path('api/lab-furniture-items/<int:pk>/', lab_furniture_item_detail_api_view, name='api-lab-furniture-items-detail'),
+    # uoms
+    path('api/uoms/', list_uoms_api_view, name='api-list-uoms'),
 ]

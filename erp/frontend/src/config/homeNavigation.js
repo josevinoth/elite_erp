@@ -63,4 +63,5 @@ export const homeNavItems = [
   },
   { label: "Task", to: "/task", icon: "task" },
   { label: "Timesheet", to: "/timesheet", icon: "timesheet" },
+  { label: "CutSheet Optimiser", to: "/cut-sheet-optimiser", icon: "cutSheet" },
 ];

@@ -30,10 +30,11 @@ function ProjectHeader({
         </Link>
       </div>
 
-      <strong className="project-header__title">
+      {/* Logo and title are disabled */}
+      {/* <strong className="project-header__title">
         <img className="project-header__logo" src={eliteLogo} alt="EliteOne logo" />
         <span>{title}</span>
-      </strong>
+      </strong> */}
 
       <div className="project-header__right">
         <div className="project-header__alerts">
