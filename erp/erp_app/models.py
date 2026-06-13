@@ -22,9 +22,10 @@ from .sub_models import (
 	UserProfile,
 	UserStatusOption,
 	Vendor,
+	CutOptimiserRecord,
+	CutSize,
+	UOM
 )
-from .sub_models.cut_optimiser import CutOptimiserRecord, CutSize
-
 __all__ = [
 	"Comment",
 	"CommentAttachment",
@@ -49,4 +50,5 @@ __all__ = [
 	"UserProfile",
 	"CutOptimiserRecord",
 	"CutSize",
+	"UOM",
 ]

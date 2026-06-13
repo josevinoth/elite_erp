@@ -23,6 +23,7 @@ from .user_profile import UserProfile
 from .user_status_option import UserStatusOption
 from .vendor import Vendor
 from .notification_read import TaskNotificationRead, CommentNotificationRead
+from .cut_optimiser import CutOptimiserRecord,CutSize,UOM
 
 __all__ = [
 	"Activity",
@@ -55,4 +56,8 @@ __all__ = [
 	"UserProfile",
 	"TaskNotificationRead",
 	"CommentNotificationRead",
+	"CutOptimiserRecord",
+	"CutSize",
+	"UOM",
+
 ]
