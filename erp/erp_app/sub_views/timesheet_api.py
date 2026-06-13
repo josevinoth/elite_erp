@@ -1,9 +1,8 @@
 import datetime
+import io
 import json
-import os
 import re
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.http import FileResponse, JsonResponse
@@ -42,6 +41,15 @@ def _to_decimal(value, default="0"):
     if value in (None, ""):
         return default
     return str(value).strip()
+
+
+def _to_decimal_value(value, default="0"):
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        return Decimal(_to_decimal(value, default=default))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal(str(default))
 
 
 def _excel_text(value):
@@ -167,8 +175,8 @@ def _serialize(obj):
     }
 
 
-def _duplicate_exists(employee_user, task_obj, billing_date, exclude_pk=None):
-    qs = TimeSheet.objects.filter(task=task_obj, billing_date=billing_date)
+def _duplicate_exists(employee_user, task_obj, billing_date, efforts, exclude_pk=None):
+    qs = TimeSheet.objects.filter(task=task_obj, billing_date=billing_date, efforts=efforts)
     qs = _employee_filter(qs, employee_user)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
@@ -272,6 +280,90 @@ def _matching_tasks(project_text, activity_text, lookup):
     )
 
 
+def _build_linked_choices(queryset, label_getter):
+    return [f"{obj.id}|{label_getter(obj)}" for obj in queryset]
+
+
+def _add_dropdown(ws, column_letter, max_row, lookup_sheet_name, lookup_column, list_length):
+    if list_length <= 0:
+        return
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    formula = f"='{lookup_sheet_name}'!${lookup_column}$1:${lookup_column}${list_length}"
+    dv = DataValidation(type="list", formula1=formula, allow_blank=True)
+    ws.add_data_validation(dv)
+    dv.add(f"{column_letter}2:{column_letter}{max_row}")
+
+
+def _create_timesheet_import_template_bytes():
+    try:
+        import openpyxl
+    except ImportError:
+        return None
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Timesheet Import"
+
+    headers = [
+        "S",
+        "Employee Name",
+        "Project",
+        "Activity",
+        "Billing Date",
+        "Efforts",
+        "Remarks",
+    ]
+    for col_idx, label in enumerate(headers, start=1):
+        ws.cell(row=1, column=col_idx, value=label)
+
+    ws.freeze_panes = "A2"
+
+    user_model = get_user_model()
+    user_choices = _build_linked_choices(
+        user_model.objects.filter(is_active=True).order_by("username"),
+        lambda u: u.username,
+    )
+    task_choices = _build_linked_choices(
+        Task.objects.select_related("project", "activity").all().order_by("project_id_name", "id"),
+        lambda t: t.project_id_name,
+    )
+    activity_names = sorted(
+        {
+            _task_activity_name(task)
+            for task in Task.objects.select_related("activity").filter(activity__isnull=False)
+            if _task_activity_name(task)
+        },
+        key=str.casefold,
+    )
+    activity_choices = [f"{idx}|{name}" for idx, name in enumerate(activity_names, start=1)]
+
+    lookup_sheet_name = "Lookup"
+    lookup = wb.create_sheet(title=lookup_sheet_name)
+    lookup["A1"] = "Employee"
+    lookup["B1"] = "Project"
+    lookup["C1"] = "Activity"
+
+    for row_idx, val in enumerate(user_choices, start=1):
+        lookup.cell(row=row_idx, column=1, value=val)
+    for row_idx, val in enumerate(task_choices, start=1):
+        lookup.cell(row=row_idx, column=2, value=val)
+    for row_idx, val in enumerate(activity_choices, start=1):
+        lookup.cell(row=row_idx, column=3, value=val)
+
+    max_input_rows = 5000
+    _add_dropdown(ws, "B", max_input_rows, lookup_sheet_name, "A", len(user_choices))
+    _add_dropdown(ws, "C", max_input_rows, lookup_sheet_name, "B", len(task_choices))
+    _add_dropdown(ws, "D", max_input_rows, lookup_sheet_name, "C", len(activity_choices))
+
+    lookup.sheet_state = "hidden"
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
 def _resolve_task(project_text, activity_text, lookup):
     candidates = _matching_tasks(project_text, activity_text, lookup)
     if not candidates:
@@ -280,13 +372,14 @@ def _resolve_task(project_text, activity_text, lookup):
     return candidates[0]
 
 
-def _import_duplicate_exists(employee_name, project_text, activity_text, billing_date, lookup):
+def _import_duplicate_exists(employee_name, project_text, activity_text, billing_date, efforts, lookup):
     matching_tasks = _matching_tasks(project_text, activity_text, lookup)
     if not matching_tasks:
         return False
 
     qs = TimeSheet.objects.filter(
         billing_date=billing_date,
+        efforts=efforts,
         task_id__in=[task.id for task in matching_tasks],
     )
     return _employee_filter(qs, employee_name).exists()
@@ -376,11 +469,11 @@ def create_timesheet_api_view(request):
     if not _task_assigned_to_user(task, request.user):
         return JsonResponse({"message": "You can only log timesheet for tasks assigned to you."}, status=403)
 
-    if _duplicate_exists(employee_user, task, billing_date):
+    if _duplicate_exists(employee_user, task, billing_date, efforts_val):
         return JsonResponse(
             {
                 "message": (
-                    "Duplicate entry: Employee Name + Task + Billing Date already exists. "
+                    "Duplicate entry: Employee Name + Task + Billing Date + Efforts already exists. "
                     "Please change any one value and try again."
                 )
             },
@@ -399,7 +492,7 @@ def create_timesheet_api_view(request):
         return JsonResponse(
             {
                 "message": (
-                    "Duplicate entry: Employee Name + Task + Billing Date already exists. "
+                    "Duplicate entry: Employee Name + Task + Billing Date + Efforts already exists. "
                     "Please change any one value and try again."
                 )
             },
@@ -445,11 +538,21 @@ def timesheet_detail_api_view(request, pk):
     if not billing_date:
         return JsonResponse({"message": "Billing date is required."}, status=400)
 
-    if _duplicate_exists(employee_user, row.task, billing_date, exclude_pk=row.id):
+    next_efforts = row.efforts
+    if "efforts" in payload:
+        from decimal import Decimal, InvalidOperation
+        try:
+            next_efforts = Decimal(str(payload.get("efforts") or "0").strip())
+        except InvalidOperation:
+            next_efforts = Decimal("0")
+        if next_efforts <= 0:
+            return JsonResponse({"message": "Efforts must be greater than 0."}, status=400)
+
+    if _duplicate_exists(employee_user, row.task, billing_date, next_efforts, exclude_pk=row.id):
         return JsonResponse(
             {
                 "message": (
-                    "Duplicate entry: Employee Name + Task + Billing Date already exists. "
+                    "Duplicate entry: Employee Name + Task + Billing Date + Efforts already exists. "
                     "Please change any one value and try again."
                 )
             },
@@ -458,15 +561,7 @@ def timesheet_detail_api_view(request, pk):
 
     row.employee_name = employee_user
     row.billing_date = billing_date
-    if "efforts" in payload:
-        from decimal import Decimal, InvalidOperation
-        try:
-            new_efforts = Decimal(str(payload.get("efforts") or "0").strip())
-        except InvalidOperation:
-            new_efforts = Decimal("0")
-        if new_efforts <= 0:
-            return JsonResponse({"message": "Efforts must be greater than 0."}, status=400)
-        row.efforts = new_efforts
+    row.efforts = next_efforts
     row.remarks = normalize_text(payload.get("remarks", row.remarks))
 
     try:
@@ -475,7 +570,7 @@ def timesheet_detail_api_view(request, pk):
         return JsonResponse(
             {
                 "message": (
-                    "Duplicate entry: Employee Name + Task + Billing Date already exists. "
+                    "Duplicate entry: Employee Name + Task + Billing Date + Efforts already exists. "
                     "Please change any one value and try again."
                 )
             },
@@ -526,11 +621,17 @@ def import_timesheets_excel_api_view(request):
         billing_date_raw = values[4]  # Column E
         efforts_raw = values[5]  # Column F
         remarks_raw = values[6]  # Column G
+        efforts_value = _to_decimal_value(efforts_raw, default="0")
+        _project_pk, project_label = _split_pk_link(project_text)
+        project_ref = normalize_text(project_label or project_text)
+        if not project_ref:
+            project_ref = "(project not provided)"
 
         report_row_payload = {
             "row": row_number,
             "employee_name_input": _excel_text(employee_name_raw),
             "project_input": _excel_text(project_text),
+            "project_id_name": project_ref,
             "activity_input": _excel_text(activity_raw),
             "billing_date_input": _excel_text(billing_date_raw),
             "efforts_input": _excel_text(efforts_raw),
@@ -589,18 +690,28 @@ def import_timesheets_excel_api_view(request):
                 {
                     **report_row_payload,
                     "status": "failed",
-                    "message": "Task not found for Project + Activity.",
+                    "message": (
+                        f"Task not found for Project + Activity ({project_ref} | "
+                        f"{_excel_text(activity_raw)})."
+                    ),
                 }
             )
             continue
 
-        if _import_duplicate_exists(employee_user, project_text, activity_name, billing_date, task_lookup):
+        if _import_duplicate_exists(
+            employee_user,
+            project_text,
+            activity_name,
+            billing_date,
+            efforts_value,
+            task_lookup,
+        ):
             duplicate_count += 1
             row_reports.append(
                 {
                     **report_row_payload,
                     "status": "duplicate",
-                    "message": "Skipped duplicate (Employee ID + Project + Activity + Billing Date).",
+                    "message": "Skipped duplicate (Employee + Project + Activity + Billing Date + Efforts).",
                 }
             )
             continue
@@ -610,7 +721,7 @@ def import_timesheets_excel_api_view(request):
                 task=task,
                 employee_name=employee_user,
                 billing_date=billing_date,
-                efforts=_to_decimal(efforts_raw, default="0"),
+                efforts=efforts_value,
                 remarks=normalize_text(remarks_raw),
             )
             created_count += 1
@@ -652,13 +763,9 @@ def download_timesheet_template_api_view(request):
     if not_allowed:
         return not_allowed
 
-    template_path = os.path.join(str(settings.BASE_DIR), "erp_app", "media", "time_sheet.xlsx")
-    if not os.path.exists(template_path):
-        return JsonResponse({"message": "Template file not found."}, status=404)
+    template_bytes = _create_timesheet_import_template_bytes()
+    if template_bytes is None:
+        return JsonResponse({"message": "Excel template dependency not installed."}, status=500)
 
-    return FileResponse(
-        open(template_path, "rb"),
-        as_attachment=True,
-        filename="timesheet_import_template.xlsx",
-    )
+    return FileResponse(template_bytes, as_attachment=True, filename="timesheet_import_template.xlsx")
 

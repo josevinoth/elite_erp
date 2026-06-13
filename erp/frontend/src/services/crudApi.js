@@ -806,6 +806,38 @@ export async function addExpenseSessionOption(name) {
   return parseJson(res);
 }
 
+export async function importCdcTeamExpencesExcel(file) {
+  await ensureCsrfCookie();
+  const token = getCookie("csrftoken");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/cdc-team-expence/import/", {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-CSRFToken": token },
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function downloadCdcTeamExpenceImportTemplate() {
+  const res = await fetch("/api/cdc-team-expence/template/", { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || `Request failed (${res.status}).`);
+  }
+  const blob = await res.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = "cdc_team_expense_import_template.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
 // ── Reusable Comments ───────────────────────────────────
 export async function listComments(moduleName, recordId) {
   const query = new URLSearchParams({

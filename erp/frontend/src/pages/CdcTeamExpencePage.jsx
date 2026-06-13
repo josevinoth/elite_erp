@@ -3,6 +3,7 @@ import CrudPage from "../components/CrudPage";
 import BulkUpdateModal from "../components/BulkUpdateModal";
 import ErrorBoundary from "../components/ErrorBoundary";
 import ExpenseBarChart from "../components/ExpenseBarChart";
+import { exportRowsToExcel } from "../utils/exportToExcel";
 import {
   addExpenseItemOption,
   addExpenseSessionOption,
@@ -10,6 +11,8 @@ import {
   bulkUpdateCdcTeamExpences,
   createCdcTeamExpence,
   deleteCdcTeamExpence,
+  downloadCdcTeamExpenceImportTemplate,
+  importCdcTeamExpencesExcel,
   listCdcTeamExpenceMeta,
   listCdcTeamExpences,
   updateCdcTeamExpence,
@@ -36,6 +39,23 @@ function toNonNegativeInteger(value) {
   return String(parsed);
 }
 
+const IMPORT_REPORT_COLUMNS = [
+  { key: "row", label: "Row" },
+  { key: "status", label: "Status" },
+  { key: "reference", label: "Reference" },
+  { key: "expense_date_input", label: "Expense Date" },
+  { key: "item_input", label: "Item" },
+  { key: "session_input", label: "Session" },
+  { key: "qty_input", label: "Qty" },
+  { key: "price_input", label: "Price" },
+  { key: "total_cost_input", label: "Total Cost" },
+  { key: "status_input", label: "Status Input" },
+  { key: "paid_by_input", label: "Paid By" },
+  { key: "settled_on_input", label: "Settled On" },
+  { key: "settled_by_input", label: "Settled By" },
+  { key: "message", label: "Message" },
+];
+
 function CdcTeamExpencePage() {
   const currentUser = useMemo(() => getSessionUser(), []);
   const isAdmin = useMemo(() => {
@@ -50,9 +70,14 @@ function CdcTeamExpencePage() {
   const [paidByOptions, setPaidByOptions] = useState([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [exportingImportReport, setExportingImportReport] = useState(false);
+  const [latestImportResult, setLatestImportResult] = useState(null);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [chartRows, setChartRows] = useState([]);
   const reloadRowsRef = useRef(null);
+  const importInputRef = useRef(null);
 
   const handleRowsChange = useCallback((rows) => setChartRows(rows), []);
 
@@ -231,6 +256,137 @@ function CdcTeamExpencePage() {
     setShowBulkModal(true);
   }, []);
 
+  const handleDownloadTemplate = useCallback(async () => {
+    setDownloadingTemplate(true);
+    try {
+      await downloadCdcTeamExpenceImportTemplate();
+    } catch (error) {
+      window.alert(error.message || "Failed to download import template.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }, []);
+
+  const handleImportClick = useCallback(() => {
+    importInputRef.current?.click();
+  }, []);
+
+  const handleImportFileChange = useCallback(
+    async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      setImporting(true);
+      try {
+        const result = await importCdcTeamExpencesExcel(file);
+        setLatestImportResult(result);
+        if (reloadRowsRef.current) reloadRowsRef.current();
+
+        const summary = result?.summary || {};
+        const issueRows = (result?.row_reports || []).filter(
+          (row) => row.status === "failed" || row.status === "duplicate"
+        );
+        const issuePreview = issueRows
+          .slice(0, 5)
+          .map((row) => `Row ${row.row} [${row.reference || "n/a"}]: ${row.message}`)
+          .join("\n");
+
+        window.alert(
+          [
+            result?.message || "CDC team expense import completed.",
+            `Created: ${summary.created || 0}`,
+            `Blank rows: ${summary.blank_rows || 0}`,
+            `Duplicates: ${summary.duplicates || 0}`,
+            `Failed: ${summary.failed || 0}`,
+            issuePreview ? "" : null,
+            issuePreview || null,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        );
+      } catch (error) {
+        window.alert(error.message || "Failed to import CDC team expenses.");
+      } finally {
+        setImporting(false);
+      }
+    },
+    []
+  );
+
+  const handleExportImportReport = useCallback(async () => {
+    const rows = latestImportResult?.row_reports || [];
+    if (!rows.length) {
+      window.alert("No import report available to export yet.");
+      return;
+    }
+
+    setExportingImportReport(true);
+    try {
+      await exportRowsToExcel({
+        fileName: "cdc_team_expense_import_report",
+        sheetName: "CDC Import Report",
+        columns: IMPORT_REPORT_COLUMNS,
+        rows,
+      });
+    } catch (error) {
+      window.alert(error.message || "Failed to export import report.");
+    } finally {
+      setExportingImportReport(false);
+    }
+  }, [latestImportResult]);
+
+  const renderHeaderActions = useCallback(
+    ({ reloadRows }) => {
+      reloadRowsRef.current = reloadRows;
+      return (
+        <>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xlsm,.xltx,.xltm"
+            onChange={handleImportFileChange}
+            style={{ display: "none" }}
+          />
+          <button
+            type="button"
+            className="crud-add-btn"
+            onClick={handleDownloadTemplate}
+            disabled={downloadingTemplate || importing}
+          >
+            <span>{downloadingTemplate ? "Downloading..." : "Download Template"}</span>
+          </button>
+          <button
+            type="button"
+            className="crud-add-btn"
+            onClick={handleImportClick}
+            disabled={importing || downloadingTemplate}
+          >
+            <span>{importing ? "Importing..." : "Import Excel"}</span>
+          </button>
+          <button
+            type="button"
+            className="crud-add-btn"
+            onClick={handleExportImportReport}
+            disabled={exportingImportReport || !(latestImportResult?.row_reports || []).length}
+          >
+            <span>{exportingImportReport ? "Exporting Report..." : "Export Import Report"}</span>
+          </button>
+        </>
+      );
+    },
+    [
+      downloadingTemplate,
+      exportingImportReport,
+      handleDownloadTemplate,
+      handleExportImportReport,
+      handleImportClick,
+      handleImportFileChange,
+      importing,
+      latestImportResult,
+    ]
+  );
+
   return (
     <ErrorBoundary>
       <CrudPage
@@ -254,8 +410,36 @@ function CdcTeamExpencePage() {
         enableBulkSelect={true}
         onBulkModalOpen={handleBulkModalOpen}
         onRowsChange={handleRowsChange}
+        renderHeaderActions={renderHeaderActions}
         renderFooter={() => <ExpenseBarChart rows={chartRows} />}
       />
+      {latestImportResult?.row_reports?.length ? (
+        <section className="module-page" style={{ marginTop: "1rem" }}>
+          <div className="crud-page__header">
+            <h2 className="module-page__title" style={{ fontSize: "1.1rem" }}>Import Report</h2>
+          </div>
+          <div className="users-table-wrap users-table-wrap--sticky" style={{ maxHeight: "40vh", overflowY: "auto" }}>
+            <table className="users-table">
+              <thead>
+                <tr>
+                  {IMPORT_REPORT_COLUMNS.map((column) => (
+                    <th key={column.key} className="users-table__sticky-head">{column.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {latestImportResult.row_reports.map((row, index) => (
+                  <tr key={`${row.row}-${row.status}-${index}`}>
+                    {IMPORT_REPORT_COLUMNS.map((column) => (
+                      <td key={column.key}>{row?.[column.key] ?? ""}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
       <BulkUpdateModal
         isOpen={showBulkModal}
         selectedCount={selectedRowIds.size}

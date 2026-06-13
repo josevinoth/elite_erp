@@ -24,8 +24,8 @@ class TimeSheet(models.Model):
         ordering = ["-billing_date", "-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["employee_name", "task", "billing_date"],
-                name="uniq_timesheet_emp_task_billing_date",
+                fields=["employee_name", "task", "billing_date", "efforts"],
+                name="uniq_timesheet_emp_task_bill_date_efforts",
             )
         ]
 

@@ -49,6 +49,7 @@ function CrudPage({
   onBulkModalOpen = null,  // (selectedIds, reloadRows) => void
   onRowsChange = null,     // (rows) => void – called whenever rows are updated
   renderFooter = null,     // () => ReactNode – rendered inside the section, below table
+  renderHeaderActions = null, // ({ rows, loading, reloadRows }) => ReactNode
   renderFormExtension = null, // ({ editRow, formValues, setFormValues }) => ReactNode
   onEditOpen = null, // (row) => void | Promise<void>
   editButtonTo = null, // string | (row) => string
@@ -453,6 +454,9 @@ function CrudPage({
       <div className="crud-page__header">
         <h1 className="module-page__title">{title}</h1>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {renderHeaderActions
+            ? renderHeaderActions({ rows, loading, reloadRows })
+            : null}
           {enableBulkSelect && selectedRowIds.size > 0 ? (
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <span style={{ color: "#cce8e5" }}>

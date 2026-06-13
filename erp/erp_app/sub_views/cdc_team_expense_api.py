@@ -1,9 +1,10 @@
 import datetime
+import io
 import json
 
 from django.contrib.auth.models import User
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -72,6 +73,23 @@ def _to_date(value):
         return None
 
 
+def _to_import_date(value):
+    parsed = _to_date(value)
+    if parsed:
+        return parsed
+
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y", "%Y/%m/%d"):
+        try:
+            return datetime.datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def _to_int(value, default=0):
     if value in (None, ""):
         return default
@@ -81,6 +99,16 @@ def _to_int(value, default=0):
         return default
 
 
+def _excel_text(value):
+    if value in (None, ""):
+        return ""
+    if isinstance(value, datetime.datetime):
+        return value.date().isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    return str(value).strip()
+
+
 def _resolve_fk(model_cls, raw_value, label):
     if raw_value in (None, ""):
         return None
@@ -88,6 +116,19 @@ def _resolve_fk(model_cls, raw_value, label):
         return model_cls.objects.get(id=int(raw_value))
     except (model_cls.DoesNotExist, TypeError, ValueError):
         raise ValueError(f"Invalid {label} selected.")
+
+
+def _split_pk_link(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ""
+    if "|" not in raw:
+        return None, raw
+    left, right = raw.split("|", 1)
+    left = left.strip()
+    if left.isdigit():
+        return int(left), right.strip()
+    return None, raw
 
 
 def _cdc_team_user_options():
@@ -110,6 +151,154 @@ def _cdc_team_usernames_lower_set():
         for option in _cdc_team_user_options()
         if option.get("label")
     }
+
+
+def _cdc_team_users_by_username():
+    return {
+        str(option["label"]).strip().lower(): User.objects.filter(id=int(option["value"])).first()
+        for option in _cdc_team_user_options()
+        if option.get("label") and str(option.get("value") or "").isdigit()
+    }
+
+
+def _resolve_cdc_user_from_import(value, users_by_username):
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ""
+
+    pk, label = _split_pk_link(raw)
+    if pk:
+        user_obj = User.objects.filter(id=pk).first()
+        if user_obj and user_obj.username.strip().lower() in users_by_username:
+            return user_obj, user_obj.username
+        return None, (label or raw)
+
+    return users_by_username.get(raw.lower()), raw
+
+
+def _resolve_named_option_for_import(model_cls, value, label, *, auto_create=False):
+    raw = to_title_case(value)
+    if not raw:
+        return None
+
+    pk, linked_label = _split_pk_link(raw)
+    if pk:
+        obj = model_cls.objects.filter(id=pk).first()
+        if obj:
+            return obj
+        raw = to_title_case(linked_label)
+
+    existing = model_cls.objects.filter(name__iexact=raw).first()
+    if existing:
+        return existing
+    if auto_create:
+        return model_cls.objects.create(name=raw)
+    raise ValueError(f"{label} '{raw}' not found.")
+
+
+def _cdc_import_duplicate_exists(expense_date, item, paid_by):
+    if not expense_date or not item or not normalize_text(paid_by):
+        return False
+    return CDCTeamExpense.objects.filter(
+        expense_date=expense_date,
+        item=item,
+        paid_by__iexact=normalize_text(paid_by),
+    ).exists()
+
+
+def _build_linked_choices(queryset, label_getter):
+    return [f"{obj.id}|{label_getter(obj)}" for obj in queryset]
+
+
+def _add_dropdown(ws, column_letter, max_row, lookup_sheet_name, lookup_column, list_length):
+    if list_length <= 0:
+        return
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    formula = f"='{lookup_sheet_name}'!${lookup_column}$1:${lookup_column}${list_length}"
+    dv = DataValidation(type="list", formula1=formula, allow_blank=True)
+    ws.add_data_validation(dv)
+    dv.add(f"{column_letter}2:{column_letter}{max_row}")
+
+
+def _create_cdc_team_expense_import_template_bytes():
+    try:
+        import openpyxl
+    except ImportError:
+        return None
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "CDC Expense Import"
+
+    headers = [
+        "Expense Date",
+        "Item",
+        "Session",
+        "Qty",
+        "Price",
+        "Total Cost",
+        "Status",
+        "Paid By",
+        "Settled On",
+        "Settled By",
+    ]
+    for col_idx, label in enumerate(headers, start=1):
+        ws.cell(row=1, column=col_idx, value=label)
+
+    sample_row = [
+        "30-04-2026",
+        "Tea",
+        "Evening",
+        5,
+        25,
+        125,
+        "Paid",
+        "Yogesh",
+        "05-02-2026",
+        "Jose",
+    ]
+    for col_idx, value in enumerate(sample_row, start=1):
+        ws.cell(row=2, column=col_idx, value=value)
+
+    ws.freeze_panes = "A2"
+
+    item_choices = _build_linked_choices(ExpenseItem.objects.order_by("name"), lambda obj: obj.name)
+    session_choices = _build_linked_choices(ExpenseSession.objects.order_by("name"), lambda obj: obj.name)
+    status_choices = _build_linked_choices(ExpenseStatusOption.objects.order_by("name"), lambda obj: obj.name)
+    cdc_user_choices = _build_linked_choices(
+        User.objects.filter(id__in=[int(opt["value"]) for opt in _cdc_team_user_options() if str(opt.get("value") or "").isdigit()]).order_by("username"),
+        lambda obj: obj.username,
+    )
+
+    lookup_sheet_name = "Lookup"
+    lookup = wb.create_sheet(title=lookup_sheet_name)
+    lookup["A1"] = "Item"
+    lookup["B1"] = "Session"
+    lookup["C1"] = "Status"
+    lookup["D1"] = "CDC User"
+
+    for row_idx, val in enumerate(item_choices, start=1):
+        lookup.cell(row=row_idx, column=1, value=val)
+    for row_idx, val in enumerate(session_choices, start=1):
+        lookup.cell(row=row_idx, column=2, value=val)
+    for row_idx, val in enumerate(status_choices, start=1):
+        lookup.cell(row=row_idx, column=3, value=val)
+    for row_idx, val in enumerate(cdc_user_choices, start=1):
+        lookup.cell(row=row_idx, column=4, value=val)
+
+    max_input_rows = 5000
+    _add_dropdown(ws, "B", max_input_rows, lookup_sheet_name, "A", len(item_choices))
+    _add_dropdown(ws, "C", max_input_rows, lookup_sheet_name, "B", len(session_choices))
+    _add_dropdown(ws, "G", max_input_rows, lookup_sheet_name, "C", len(status_choices))
+    _add_dropdown(ws, "H", max_input_rows, lookup_sheet_name, "D", len(cdc_user_choices))
+    _add_dropdown(ws, "J", max_input_rows, lookup_sheet_name, "D", len(cdc_user_choices))
+    lookup.sheet_state = "hidden"
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
 
 
 def _serialize(obj):
@@ -229,6 +418,249 @@ def list_cdc_team_expenses_api_view(request):
             Q(paid_by__iexact=username) | Q(settled_by__username__iexact=username)
         )
     return JsonResponse({"expenses": [_serialize(obj) for obj in queryset.order_by("-id")]})
+
+
+@require_POST
+@csrf_protect
+def import_cdc_team_expenses_excel_api_view(request):
+    not_allowed = _ensure_cdc_team_access(request)
+    if not_allowed:
+        return not_allowed
+
+    excel_file = request.FILES.get("file")
+    if not excel_file:
+        return JsonResponse({"message": "Excel file is required (form field: file)."}, status=400)
+
+    try:
+        import openpyxl
+    except ImportError:
+        return JsonResponse({"message": "Excel import dependency not installed."}, status=500)
+
+    try:
+        wb = openpyxl.load_workbook(excel_file, data_only=True)
+        ws = wb.active
+    except Exception:
+        return JsonResponse({"message": "Invalid or unreadable Excel file."}, status=400)
+
+    users_by_username = _cdc_team_users_by_username()
+    created_count = 0
+    blank_count = 0
+    duplicate_count = 0
+    failed_count = 0
+    row_reports = []
+
+    for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        values = list(row)
+        if len(values) < 10:
+            values.extend([None] * (10 - len(values)))
+
+        expense_date_raw = values[0]
+        item_raw = values[1]
+        session_raw = values[2]
+        qty_raw = values[3]
+        price_raw = values[4]
+        total_cost_raw = values[5]
+        status_raw = values[6]
+        paid_by_raw = values[7]
+        settled_on_raw = values[8]
+        settled_by_raw = values[9]
+
+        report_row_payload = {
+            "row": row_number,
+            "expense_date_input": _excel_text(expense_date_raw),
+            "item_input": _excel_text(item_raw),
+            "session_input": _excel_text(session_raw),
+            "qty_input": _excel_text(qty_raw),
+            "price_input": _excel_text(price_raw),
+            "total_cost_input": _excel_text(total_cost_raw),
+            "status_input": _excel_text(status_raw),
+            "paid_by_input": _excel_text(paid_by_raw),
+            "settled_on_input": _excel_text(settled_on_raw),
+            "settled_by_input": _excel_text(settled_by_raw),
+            "reference": " | ".join(
+                part
+                for part in [
+                    _excel_text(expense_date_raw),
+                    _excel_text(item_raw),
+                    _excel_text(paid_by_raw),
+                ]
+                if part
+            ) or f"Row {row_number}",
+        }
+
+        if not any(values[:10]):
+            blank_count += 1
+            continue
+
+        try:
+            item = _resolve_named_option_for_import(ExpenseItem, item_raw, "Item", auto_create=True)
+            session = _resolve_named_option_for_import(ExpenseSession, session_raw, "Session", auto_create=True)
+            status = None
+            if str(status_raw or "").strip():
+                status = _resolve_named_option_for_import(
+                    ExpenseStatusOption,
+                    status_raw,
+                    "Status",
+                    auto_create=True,
+                )
+            else:
+                status = ExpenseStatusOption.objects.filter(name__iexact="Unpaid").first()
+                if status is None:
+                    status = ExpenseStatusOption.objects.create(name="Unpaid")
+        except ValueError as exc:
+            failed_count += 1
+            row_reports.append({**report_row_payload, "status": "failed", "message": str(exc)})
+            continue
+
+        if not item:
+            failed_count += 1
+            row_reports.append({**report_row_payload, "status": "failed", "message": "Item is required."})
+            continue
+        if not session:
+            failed_count += 1
+            row_reports.append({**report_row_payload, "status": "failed", "message": "Session is required."})
+            continue
+
+        paid_by = normalize_text(paid_by_raw)
+        if not paid_by:
+            failed_count += 1
+            row_reports.append({**report_row_payload, "status": "failed", "message": "Paid By is required."})
+            continue
+        if paid_by.strip().lower() not in users_by_username:
+            failed_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "failed",
+                    "message": f"Paid By '{paid_by}' must belong to CDC Team.",
+                }
+            )
+            continue
+
+        settled_by, settled_by_label = _resolve_cdc_user_from_import(settled_by_raw, users_by_username)
+        if normalize_text(settled_by_raw) and not settled_by:
+            failed_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "failed",
+                    "message": f"Settled By '{settled_by_label or settled_by_raw}' must belong to CDC Team.",
+                }
+            )
+            continue
+
+        expense_date = _to_import_date(expense_date_raw)
+        if not normalize_text(expense_date_raw):
+            failed_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "failed",
+                    "message": "Expense Date is required.",
+                }
+            )
+            continue
+        if normalize_text(expense_date_raw) and not expense_date:
+            failed_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "failed",
+                    "message": "Expense Date is invalid. Use formats like YYYY-MM-DD or DD-MM-YYYY.",
+                }
+            )
+            continue
+
+        settled_on = _to_import_date(settled_on_raw)
+        if normalize_text(settled_on_raw) and not settled_on:
+            failed_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "failed",
+                    "message": "Settled On is invalid. Use formats like YYYY-MM-DD or DD-MM-YYYY.",
+                }
+            )
+            continue
+
+        if settled_by and not settled_on:
+            failed_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "failed",
+                    "message": "Settled On is required when Settled By is provided.",
+                }
+            )
+            continue
+
+        qty = _to_int(qty_raw)
+        price = _to_int(price_raw)
+
+        if _cdc_import_duplicate_exists(expense_date, item, paid_by):
+            duplicate_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "duplicate",
+                    "message": (
+                        "Skipped duplicate (Expense Date + Item + Paid By already exists)."
+                    ),
+                }
+            )
+            continue
+
+        try:
+            obj = CDCTeamExpense.objects.create(
+                expense_date=expense_date,
+                item=item,
+                session=session,
+                qty=qty,
+                price=price,
+                status=status,
+                paid_by=paid_by,
+                settled_on=settled_on,
+                settled_by=settled_by,
+                updated_by=normalize_text(request.user.username),
+            )
+            created_count += 1
+            row_reports.append(
+                {
+                    **report_row_payload,
+                    "status": "created",
+                    "message": f"Imported successfully ({obj.item.name} / {obj.session.name}).",
+                }
+            )
+        except Exception as exc:
+            failed_count += 1
+            row_reports.append({**report_row_payload, "status": "failed", "message": str(exc)})
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "CDC team expense import completed.",
+            "summary": {
+                "created": created_count,
+                "blank_rows": blank_count,
+                "duplicates": duplicate_count,
+                "failed": failed_count,
+            },
+            "row_reports": row_reports,
+        }
+    )
+
+
+@require_GET
+def download_cdc_team_expense_template_api_view(request):
+    not_allowed = _ensure_cdc_team_access(request)
+    if not_allowed:
+        return not_allowed
+
+    template_bytes = _create_cdc_team_expense_import_template_bytes()
+    if template_bytes is None:
+        return JsonResponse({"message": "Excel template dependency not installed."}, status=500)
+
+    return FileResponse(template_bytes, as_attachment=True, filename="cdc_team_expense_import_template.xlsx")
 
 
 @require_POST

@@ -44,10 +44,10 @@ _load_local_env()
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-z)m$9_v15g0%$cp070y8fsu4)l6u1&4zb@p%d9@1ie@tgg!=6e'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-z)m$9_v15g0%$cp070y8fsu4)l6u1&4zb@p%d9@1ie@tgg!=6e')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in {'1', 'true', 'yes', 'on'}
 
 def _discover_private_ipv4_hosts() -> list[str]:
     """Collect current LAN IPv4 addresses so host checks survive DHCP IP changes."""
@@ -92,6 +92,15 @@ if DEBUG:
 elif os.getenv("DJANGO_STRICT_HOST_CHECK", "0") != "1":
     ALLOWED_HOSTS = ["*"]
 
+# HTTPS hardening for reverse proxy / tunnel deployments.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "0").strip().lower() in {"1", "true", "yes", "on"}
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+
 _default_csrf_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
@@ -101,6 +110,7 @@ _default_csrf_origins = [
     "http://localhost:8010",
     "http://192.168.1.6:8000",
     "http://192.168.1.6:8010",
+    "https://erp.erpeliteone.com",
 ]
 _csrf_ports = {"8000", "8010"}
 _erp_port = os.getenv("ERP_PORT", "").strip()
@@ -170,10 +180,11 @@ WSGI_APPLICATION = 'erp.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'erp_002',
-        'USER': 'postgres',
-        'PASSWORD': '244613',
-        'HOST': 'localhost'
+        'NAME': os.getenv('DB_NAME', 'erp_005'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', '244613'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 

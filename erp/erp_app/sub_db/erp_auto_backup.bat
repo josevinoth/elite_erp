@@ -2,7 +2,7 @@
 setlocal ENABLEDELAYEDEXPANSION
 
 REM ================== CONFIGURE THESE ==================
-SET "DB_NAME=erp_002"
+SET "DB_NAME=erp_005"
 SET "DB_USER=postgres"
 SET "PG_BIN=C:\Program Files\PostgreSQL\18\bin"
 SET "BACKUP_DIR=C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\erp_app\sub_db"

@@ -16,6 +16,12 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 /erp/media/
+/erp/logs/
+/erp/staticfiles/
+
+# ── Local DB backups / dumps ────────────────────────────────────────
+/erp/erp_app/sub_db/*.backup
+/erp/erp_app/sub_db/*.sql
 
 # ── Virtual environment ──────────────────────────────────────────────
 .venv/

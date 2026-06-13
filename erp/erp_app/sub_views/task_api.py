@@ -554,12 +554,22 @@ def import_tasks_excel_api_view(request):
     row_reports = []
     activities_seen = set()  # track unique activities for Activity table population
 
+    def _compact_project_ref(project_id_name_value, project_no_value, project_name_value):
+        direct = normalize_text(str(project_id_name_value or ""))
+        if direct:
+            return direct
+        project_no_text = normalize_text(str(project_no_value or ""))
+        project_name_text = normalize_text(str(project_name_value or ""))
+        combined = f"{project_no_text}_{project_name_text}".strip("_")
+        return combined or "(project not provided)"
+
     for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         values = list(row)
         if len(values) < 20:
             values.extend([None] * (20 - len(values)))
 
         project_id_name = values[3]
+        project_ref = _compact_project_ref(project_id_name, values[1], values[2])
         proposal_date = _to_date(values[4])
         activity_raw = values[5]
         revision_raw = values[6]
@@ -589,9 +599,16 @@ def import_tasks_excel_api_view(request):
         if not project:
             failed_count += 1
             message = f"Project not found for '{project_id_name}'."
-            failures.append(f"Row {row_number}: {message}")
-            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            failures.append(f"Row {row_number} [{project_ref}]: {message}")
+            row_reports.append({
+                "row": row_number,
+                "project_id_name": project_ref,
+                "status": "failed",
+                "message": message,
+            })
             continue
+
+        project_ref = f"{project.project_id}_{project.project_name}".strip("_")
 
         if proposal_date and not project.proposal_date:
             project.proposal_date = proposal_date
@@ -608,8 +625,13 @@ def import_tasks_excel_api_view(request):
         if not activity_obj:
             failed_count += 1
             message = "Activity is required."
-            failures.append(f"Row {row_number}: {message}")
-            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            failures.append(f"Row {row_number} [{project_ref}]: {message}")
+            row_reports.append({
+                "row": row_number,
+                "project_id_name": project_ref,
+                "status": "failed",
+                "message": message,
+            })
             continue
 
         # Collect unique title-cased activity for Activity table
@@ -625,22 +647,37 @@ def import_tasks_excel_api_view(request):
         if not drawn_by_value:
             failed_count += 1
             message = "Drawn By user not found."
-            failures.append(f"Row {row_number}: {message}")
-            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            failures.append(f"Row {row_number} [{project_ref}]: {message}")
+            row_reports.append({
+                "row": row_number,
+                "project_id_name": project_ref,
+                "status": "failed",
+                "message": message,
+            })
             continue
 
         if normalize_text(approved_by) and not approved_by_value:
             failed_count += 1
             message = "Approved By user not found."
-            failures.append(f"Row {row_number}: {message}")
-            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            failures.append(f"Row {row_number} [{project_ref}]: {message}")
+            row_reports.append({
+                "row": row_number,
+                "project_id_name": project_ref,
+                "status": "failed",
+                "message": message,
+            })
             continue
 
         if not project_owner_value:
             failed_count += 1
             message = "Project Owner user not found."
-            failures.append(f"Row {row_number}: {message}")
-            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            failures.append(f"Row {row_number} [{project_ref}]: {message}")
+            row_reports.append({
+                "row": row_number,
+                "project_id_name": project_ref,
+                "status": "failed",
+                "message": message,
+            })
             continue
 
         original_revision = normalize_text(revision_raw or "01")
@@ -657,8 +694,13 @@ def import_tasks_excel_api_view(request):
         if row_date_error:
             failed_count += 1
             message = "; ".join(row_date_error["errors"].values())
-            failures.append(f"Row {row_number}: {message}")
-            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            failures.append(f"Row {row_number} [{project_ref}]: {message}")
+            row_reports.append({
+                "row": row_number,
+                "project_id_name": project_ref,
+                "status": "failed",
+                "message": message,
+            })
             continue
 
         try:
@@ -686,6 +728,7 @@ def import_tasks_excel_api_view(request):
                 row_reports.append(
                     {
                         "row": row_number,
+                        "project_id_name": project_ref,
                         "status": "adjusted",
                         "message": (
                             f"Imported successfully. Revision changed from '{original_revision}' to '{revision}'."
@@ -694,13 +737,23 @@ def import_tasks_excel_api_view(request):
                 )
             else:
                 row_reports.append(
-                    {"row": row_number, "status": "created", "message": "Imported successfully."}
+                    {
+                        "row": row_number,
+                        "project_id_name": project_ref,
+                        "status": "created",
+                        "message": "Imported successfully.",
+                    }
                 )
         except Exception as exc:
             failed_count += 1
             message = str(exc)
-            failures.append(f"Row {row_number}: {message}")
-            row_reports.append({"row": row_number, "status": "failed", "message": message})
+            failures.append(f"Row {row_number} [{project_ref}]: {message}")
+            row_reports.append({
+                "row": row_number,
+                "project_id_name": project_ref,
+                "status": "failed",
+                "message": message,
+            })
 
     # Populate Activity table with unique title-cased activities from this import
     activities_added = 0
