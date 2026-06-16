@@ -1,5 +1,6 @@
 from datetime import date as _date
 
+from django.contrib.auth.models import User
 from django.db import models
 
 from ..utils import normalize_text
@@ -20,19 +21,15 @@ class Project(models.Model):
     project_id = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     project_name = models.CharField(max_length=200, blank=True)
+    project_location = models.CharField(max_length=200, blank=True)
     proposal_date = models.DateField(null=True, blank=True)
-    updated_by = models.CharField(max_length=255, blank=True)
+    material_required_date = models.DateField(null=True, blank=True)
     order_value_omr = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
-    status = models.ForeignKey(
-        ProjectStatusOption,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="projects",
-    )
+    status = models.ForeignKey(ProjectStatusOption,null=True,blank=True,on_delete=models.SET_NULL,related_name="projects")
     expected_customer_need_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User,on_delete=models.PROTECT,related_name="updated_projects")
 
     class Meta:
         ordering = ['-created_at']
@@ -44,7 +41,6 @@ class Project(models.Model):
         self.project_id = normalize_text(self.project_id)
         self.description = normalize_text(self.description)
         self.project_name = normalize_text(self.project_name)
-        self.updated_by = normalize_text(self.updated_by)
         self.proposal_date = _coerce_date(self.proposal_date)
         self.expected_customer_need_date = _coerce_date(self.expected_customer_need_date)
 

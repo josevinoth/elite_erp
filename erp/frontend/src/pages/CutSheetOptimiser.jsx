@@ -5,6 +5,7 @@ import { BsPencilSquare, BsTrashFill, BsSave, BsX, BsPlusLg } from 'react-icons/
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import eliteLogo from '../assets/logos/elite_logo.png';
+import { buildPackedSheetsForScenario } from '../utils/cutPackingEngine';
 import {
   createCutOptimiserRecord,
   updateCutOptimiserRecord,
@@ -32,7 +33,7 @@ function isDuplicateRevisionError(err) {
   return message.includes('project and revision') && message.includes('already exists');
 }
 
-// ─── 2-D Bin Packing (Maximal Rectangles – Best Short Side Fit + rotation) ───
+// ─── Shared packing engine + palette ─────────────────────────────────────────
 
 const CUT_COLORS = [
   '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
@@ -40,189 +41,72 @@ const CUT_COLORS = [
   '#d4a5a5','#a8d8ea','#aa96da','#fcbad3','#c7f2a4',
 ];
 
-function _rectsIntersect(a, b) {
-  return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
-}
-
-function _splitFree(fr, p, out) {
-  if (p.x > fr.x)               out.push({ x: fr.x,       y: fr.y,       w: p.x - fr.x,                   h: fr.h });
-  if (p.x + p.w < fr.x + fr.w)  out.push({ x: p.x + p.w,  y: fr.y,       w: (fr.x + fr.w) - (p.x + p.w), h: fr.h });
-  if (p.y > fr.y)               out.push({ x: fr.x,       y: fr.y,       w: fr.w,                         h: p.y - fr.y });
-  if (p.y + p.h < fr.y + fr.h)  out.push({ x: fr.x,       y: p.y + p.h,  w: fr.w,                         h: (fr.y + fr.h) - (p.y + p.h) });
-}
-
-function _pruneContained(rects) {
-  return rects.filter((r, i) =>
-      !rects.some((o, j) => j !== i && o.x <= r.x && o.y <= r.y && o.x + o.w >= r.x + r.w && o.y + o.h >= r.y + r.h)
-  );
-}
-
-function _placeItem(bin, item) {
-  let best = null;
-
-  const sortedFreeRects = [...bin.freeRects].sort((a, b) => (a.y - b.y) || (a.x - b.x));
-
-  const considerCandidate = (fr, pw, ph, rotated) => {
-    const shortSide = Math.min(fr.w - pw, fr.h - ph);
-    const longSide = Math.max(fr.w - pw, fr.h - ph);
-    const areaWaste = (fr.w * fr.h) - (pw * ph);
-    const candidate = { fr, pw, ph, rotated, shortSide, longSide, areaWaste };
-
-    if (!best) {
-      best = candidate;
-      return;
-    }
-
-    // Fill from top-left first, then prefer tighter fit at same anchor.
-    if (fr.y < best.fr.y) { best = candidate; return; }
-    if (fr.y > best.fr.y) return;
-    if (fr.x < best.fr.x) { best = candidate; return; }
-    if (fr.x > best.fr.x) return;
-    if (shortSide < best.shortSide) { best = candidate; return; }
-    if (shortSide > best.shortSide) return;
-    if (longSide < best.longSide) { best = candidate; return; }
-    if (longSide > best.longSide) return;
-    if (areaWaste < best.areaWaste) best = candidate;
-  };
-
-  for (const fr of sortedFreeRects) {
-    if (item.w <= fr.w && item.h <= fr.h) {
-      considerCandidate(fr, item.w, item.h, false);
-    }
-    if (item.w !== item.h && item.h <= fr.w && item.w <= fr.h) {
-      considerCandidate(fr, item.h, item.w, true);
-    }
-  }
-
-  if (!best) return false;
-
-  const pw = best.pw;
-  const ph = best.ph;
-
-  // Store actual (display) dimensions separately — kerf padding is only for packing geometry.
-  // origW/origH are the real piece dimensions without kerf.
-  const displayW = best.rotated ? (item.origH ?? item.w) : (item.origW ?? item.w);
-  const displayH = best.rotated ? (item.origW ?? item.h) : (item.origH ?? item.h);
-
-  bin.placements.push({ ...item, x: best.fr.x, y: best.fr.y, placedW: pw, placedH: ph, displayW, displayH, rotated: best.rotated });
-  const next = [];
-  for (const fr of bin.freeRects) {
-    if (_rectsIntersect(fr, { x: best.fr.x, y: best.fr.y, w: pw, h: ph }))
-      _splitFree(fr, { x: best.fr.x, y: best.fr.y, w: pw, h: ph }, next);
-    else
-      next.push(fr);
-  }
-  bin.freeRects = _pruneContained(next);
-  return true;
-}
-
-function packBins(rawW, rawH, cutSizeList, kerf = 0) {
-   const colorMap = {};
-   cutSizeList.forEach((cs, idx) => { colorMap[cs.id] = CUT_COLORS[idx % CUT_COLORS.length]; });
-
-   let items = [];
-   let totalPanelArea = 0;
-   cutSizeList.forEach(cs => {
-     const qty = parseInt(cs.quantity, 10) || 1;
-     const csW = parseFloat(cs.width);
-     const csH = parseFloat(cs.length);
-     const panelArea = csW * csH;
-     totalPanelArea += panelArea * qty;
-     for (let i = 0; i < qty; i++)
-       // Pad item dimensions by kerf so the packing engine reserves blade-cut space.
-       // origW/origH store the actual piece dimensions for visual rendering.
-       items.push({
-         id: cs.id,
-         name: cs.name || `${cs.width}×${cs.length}`,
-         w: csW + kerf,
-         h: csH + kerf,
-         origW: csW,
-         origH: csH,
-         color: colorMap[cs.id]
-       });
-   });
-   items.sort((a, b) => b.w * b.h - a.w * a.h);
-
-   // Pad the bin by kerf as well — this allows the last piece in each row/column
-   // to also include its trailing blade cut without exceeding the sheet boundary.
-   const binW = rawW + kerf;
-   const binH = rawH + kerf;
-
-   const bins = [];
-   let remaining = [...items];
-   while (remaining.length > 0 && bins.length < 200) {
-     const bin = { freeRects: [{ x: 0, y: 0, w: binW, h: binH }], placements: [] };
-     const unplaced = [];
-     for (const item of remaining) {
-       if (!_placeItem(bin, item)) unplaced.push(item);
-     }
-     bins.push(bin);
-     if (unplaced.length === remaining.length) break;
-     remaining = unplaced;
-   }
-
-   const totalSheets = bins.length;
-   const rawSheetArea = rawW * rawH;
-   const totalSheetArea = rawSheetArea * totalSheets;
-   const totalWaste = totalSheetArea - totalPanelArea;
-   const yieldPercent = totalPanelArea > 0 ? ((totalPanelArea / totalSheetArea) * 100) : 0;
-
-   return {
-     bins,
-     colorMap,
-     totalSheets,
-     totalPanelArea,
-     totalSheetArea,
-     totalWaste,
-     yieldPercent,
-     kerf
-   };
-}
-
 // ─── SVG visualisation for one sheet ──────────────────────────────────────────
 const MAX_SVG_W = 560;
 const MAX_SVG_H = 400;
 
-function SheetSVG({ placements, rawW, rawH, sheetNum, unitLabel }) {
-  // Rotate visual canvas 90deg clockwise for easier landscape reading.
-  const rotRawW = rawH;
-  const rotRawH = rawW;
-  const scale = Math.min(MAX_SVG_W / rotRawW, MAX_SVG_H / rotRawH);
-  const dispW = rotRawW * scale;
-  const dispH = rotRawH * scale;
-  const usedArea = placements.reduce((s, p) => s + (p.displayW ?? p.placedW) * (p.displayH ?? p.placedH), 0);
+function getVisualSheetTransform(rawW, rawH) {
+  const width = parseFloat(rawW) || 0;
+  const height = parseFloat(rawH) || 0;
+  const rotate = height > width;
+
+  return {
+    width: rotate ? height : width,
+    height: rotate ? width : height,
+    rotate,
+  };
+}
+
+function mapPlacementForVisual(p, rawW, rawH, rotate) {
+  const dW = p.displayW ?? p.placedW;
+  const dH = p.displayH ?? p.placedH;
+
+  if (!rotate) {
+    return { x: p.x, y: p.y, w: dW, h: dH };
+  }
+
+  return {
+    x: rawH - (p.y + dH),
+    y: p.x,
+    w: dH,
+    h: dW,
+  };
+}
+
+function SheetSVG({ placements, rawW, rawH, sheetNum, unitLabel, kerfThickness = 0 }) {
+  const visual = getVisualSheetTransform(rawW, rawH);
+  const scale = Math.min(MAX_SVG_W / visual.width, MAX_SVG_H / visual.height);
+  const dispW = visual.width * scale;
+  const dispH = visual.height * scale;
+  const safePlacements = Array.isArray(placements) ? placements : [];
+  const usedArea = safePlacements.reduce((s, p) => s + (p.displayW ?? p.placedW) * (p.displayH ?? p.placedH), 0);
   const eff = ((usedArea / (rawW * rawH)) * 100).toFixed(1);
+  const bladeGapStroke = Math.max(2, (parseFloat(kerfThickness) || 0) * scale * 7);
 
   return (
       <div style={{ marginBottom: 28 }}>
         <div style={{ fontWeight: 600, marginBottom: 6, fontSize: '1rem' }}>
           Sheet {sheetNum} &nbsp;
           <span style={{ fontWeight: 400, fontSize: '0.85rem', color: '#555' }}>
-          {formatDimsLongFirst(rawW, rawH)}{unitLabel ? ` ${unitLabel}` : ''} &nbsp;|&nbsp; {placements.length} piece{placements.length !== 1 ? 's' : ''} &nbsp;|&nbsp; Efficiency: <b style={{ color: parseFloat(eff) >= 70 ? '#27ae60' : '#e67e22' }}>{eff}%</b>
+          {formatDimsLongFirst(rawW, rawH)}{unitLabel ? ` ${unitLabel}` : ''} &nbsp;|&nbsp; {safePlacements.length} piece{safePlacements.length !== 1 ? 's' : ''} &nbsp;|&nbsp; Efficiency: <b style={{ color: parseFloat(eff) >= 70 ? '#27ae60' : '#e67e22' }}>{eff}%</b>
         </span>
         </div>
         <svg
             width={dispW} height={dispH}
             style={{ border: '2px solid #555', background: '#e8e8e8', display: 'block', borderRadius: 4 }}
         >
-          {placements.map((p, i) => {
-            // Use actual piece dimensions (without kerf) for visual rendering.
-            const dW = p.displayW ?? p.placedW;
-            const dH = p.displayH ?? p.placedH;
-            const rotatedX = rawH - (p.y + dH);
-            const rotatedY = p.x;
-            const rotatedW = dH;
-            const rotatedH = dW;
-
-            const px = rotatedX * scale;
-            const py = rotatedY * scale;
-            const pw = rotatedW * scale;
-            const ph = rotatedH * scale;
+          {safePlacements.map((p, i) => {
+            const mapped = mapPlacementForVisual(p, rawW, rawH, visual.rotate);
+            const px = mapped.x * scale;
+            const py = mapped.y * scale;
+            const pw = mapped.w * scale;
+            const ph = mapped.h * scale;
             const fs = Math.max(7, Math.min(13, Math.min(pw, ph) / 4));
             const showText = pw > 22 && ph > 14;
             return (
                 <g key={i}>
-                  <rect x={px} y={py} width={pw} height={ph} fill={p.color} stroke="#222" strokeWidth={0.8} opacity={0.88} rx={1} />
+                  <rect x={px} y={py} width={pw} height={ph} fill={p.color} stroke="#e8e8e8" strokeWidth={bladeGapStroke} opacity={0.98} rx={1} />
+                  <rect x={px} y={py} width={pw} height={ph} fill="none" stroke="#222" strokeWidth={0.8} opacity={0.88} rx={1} />
                   {showText && (
                       <text x={px + pw / 2} y={py + ph / 2 - (p.rotated ? fs / 2 + 1 : 0)}
                             textAnchor="middle" dominantBaseline="middle"
@@ -289,6 +173,51 @@ function formatDimsLongFirst(a, b) {
   return `${longer} x ${shorter}`;
 }
 
+function formatDimsLengthWidth(lengthValue, widthValue) {
+  return `${toNumber(lengthValue)} x ${toNumber(widthValue)}`;
+}
+
+function convertMmToUnit(mmValue, unitSymbol) {
+  const mm = parseFloat(mmValue);
+  if (!Number.isFinite(mm) || mm <= 0) return 0;
+
+  const symbol = String(unitSymbol || '').toLowerCase().trim();
+  if (symbol === 'mm') return mm;
+  if (symbol === 'cm') return mm / 10;
+  if (symbol === 'm') return mm / 1000;
+  if (symbol === 'ft' || symbol === 'feet') return mm / 304.8;
+  if (symbol === 'in' || symbol === 'inch') return mm / 25.4;
+  return mm;
+}
+
+function convertUnitToMm(value, unitSymbol) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+
+  const symbol = String(unitSymbol || '').toLowerCase().trim();
+  if (symbol === 'mm') return n;
+  if (symbol === 'cm') return n * 10;
+  if (symbol === 'm') return n * 1000;
+  if (symbol === 'ft' || symbol === 'feet') return n * 304.8;
+  if (symbol === 'in' || symbol === 'inch') return n * 25.4;
+  return n;
+}
+
+function canFitInRawSheet(cutLength, cutWidth, rawLength, rawWidth) {
+  const l = parseFloat(cutLength);
+  const w = parseFloat(cutWidth);
+  const rl = parseFloat(rawLength);
+  const rw = parseFloat(rawWidth);
+
+  if (!Number.isFinite(l) || !Number.isFinite(w) || !Number.isFinite(rl) || !Number.isFinite(rw) || l <= 0 || w <= 0 || rl <= 0 || rw <= 0) {
+    return false;
+  }
+
+  const fitsNormal = l <= rl && w <= rw;
+  const fitsRotated = l <= rw && w <= rl;
+  return fitsNormal || fitsRotated;
+}
+
 async function imageUrlToDataUrl(url) {
   const response = await fetch(url);
   const blob = await response.blob();
@@ -323,19 +252,21 @@ function sanitizeFileName(value, fallback = 'cut_optimiser_report') {
 function buildCutReportRows(cutSizes, bins, rawW, rawH) {
   const byCut = new Map();
 
-  bins.forEach((bin, sheetIdx) => {
+  (Array.isArray(bins) ? bins : []).forEach((bin, sheetIdx) => {
     const seenOnSheet = new Set();
-    bin.placements.forEach((p) => {
-      if (!byCut.has(p.id)) {
-        byCut.set(p.id, { placed: 0, sheetSet: new Set(), rotated: 0, normal: 0 });
+    (Array.isArray(bin?.placements) ? bin.placements : []).forEach((p) => {
+      const cutKey = String(p.id ?? p.cutKey ?? '');
+      if (!cutKey) return;
+      if (!byCut.has(cutKey)) {
+        byCut.set(cutKey, { placed: 0, sheetSet: new Set(), rotated: 0, normal: 0 });
       }
-      const stat = byCut.get(p.id);
+      const stat = byCut.get(cutKey);
       stat.placed += 1;
       if (p.rotated) stat.rotated += 1;
       else stat.normal += 1;
-      if (!seenOnSheet.has(p.id)) {
+      if (!seenOnSheet.has(cutKey)) {
         stat.sheetSet.add(sheetIdx);
-        seenOnSheet.add(p.id);
+        seenOnSheet.add(cutKey);
       }
     });
   });
@@ -344,7 +275,7 @@ function buildCutReportRows(cutSizes, bins, rawW, rawH) {
 
   return cutSizes.map((cs, idx) => {
     const qty = parseInt(cs.quantity, 10) || 1;
-    const stat = byCut.get(cs.id) || { placed: 0, sheetSet: new Set(), rotated: 0, normal: 0 };
+    const stat = byCut.get(String(cs.id)) || { placed: 0, sheetSet: new Set(), rotated: 0, normal: 0 };
     const sheetsUsed = Math.max(1, stat.sheetSet.size || 1);
     const perSheet = Math.max(1, Math.ceil((stat.placed || qty) / sheetsUsed));
     const cutArea = (parseFloat(cs.width) || 0) * (parseFloat(cs.length) || 0);
@@ -356,7 +287,7 @@ function buildCutReportRows(cutSizes, bins, rawW, rawH) {
     return {
       no: idx + 1,
       name: cs.name || `Cut ${idx + 1}`,
-      size: formatDimsLongFirst(cs.length, cs.width),
+      size: formatDimsLengthWidth(cs.length, cs.width),
       qty,
       perSheet,
       sheets: sheetsUsed,
@@ -450,9 +381,15 @@ const CutSheetOptimiser = () => {
           if (!isEdit && options.length > 0) {
             const ftOption = options.find(opt => opt.symbol && opt.symbol.toLowerCase() === 'ft');
             if (ftOption) {
-              setSheets(sheets => sheets.map((s, i) => i === 0 ? { ...s, dimension_unit: ftOption.value } : s));
+              setSheets(prevSheets => {
+                const safeSheets = Array.isArray(prevSheets) ? prevSheets : [{ raw_sheet_name: 'Sheet 1', raw_sheet_length: 0, raw_sheet_width: 0, raw_sheet_blade_thk: 0, dimension_unit: '' }];
+                return safeSheets.map((s, i) => i === 0 ? { ...s, dimension_unit: ftOption.value } : s);
+              });
             } else {
-              setSheets(sheets => sheets.map((s, i) => i === 0 ? { ...s, dimension_unit: options[0].value } : s));
+              setSheets(prevSheets => {
+                const safeSheets = Array.isArray(prevSheets) ? prevSheets : [{ raw_sheet_name: 'Sheet 1', raw_sheet_length: 0, raw_sheet_width: 0, raw_sheet_blade_thk: 0, dimension_unit: '' }];
+                return safeSheets.map((s, i) => i === 0 ? { ...s, dimension_unit: options[0].value } : s);
+              });
             }
           }
         })
@@ -492,7 +429,8 @@ const CutSheetOptimiser = () => {
 
   // Handle sheet field changes
   const handleSheetChange = (idx, field, value) => {
-    const updated = sheets.map((sheet, i) =>
+    const safeSheets = Array.isArray(sheets) ? sheets : [];
+    const updated = safeSheets.map((sheet, i) =>
         i === idx ? { ...sheet, [field]: value } : sheet
     );
     setSheets(updated);
@@ -500,7 +438,8 @@ const CutSheetOptimiser = () => {
 
   // Remove sheet row
   const removeSheet = (idx) => {
-    setSheets(sheets.filter((_, i) => i !== idx));
+    const safeSheets = Array.isArray(sheets) ? sheets : [];
+    setSheets(safeSheets.filter((_, i) => i !== idx));
   };
 
   const saveRecord = async (revisionToSave = revision, existingId = cutOptimiserId) => {
@@ -553,6 +492,8 @@ const CutSheetOptimiser = () => {
       });
       const data = await res.json();
       setCutSizes(data.results || []);
+      // Keep one inline input row ready so users can add the next cut size immediately.
+      setIsAddingNew(true);
     } catch (err) {
       console.error('Failed to load cut sizes:', err);
       setCutSizes([]);
@@ -579,21 +520,94 @@ const CutSheetOptimiser = () => {
    const handleCalculate = () => {
      const rawW = parseFloat(sheets[0]?.raw_sheet_width);
      const rawH = parseFloat(sheets[0]?.raw_sheet_length);
-     const kerf = parseFloat(sheets[0]?.raw_sheet_blade_thk) || 0;
+     const kerfMm = parseFloat(sheets[0]?.raw_sheet_blade_thk) || 0;
+     const unitObj = unitOptions.find(u => u.value === sheets[0]?.dimension_unit);
+     const unitSymbol = unitObj?.symbol || '';
+     const kerf = convertMmToUnit(kerfMm, unitSymbol);
+     const calculableCutSizes = cutSizes.filter(cs => parseFloat(cs.width) > 0 && parseFloat(cs.length) > 0);
      if (!rawW || !rawH) {
        alert('Please set valid raw sheet dimensions (Length and Width) first.');
        return;
      }
-     if (cutSizes.length === 0) {
+     if (calculableCutSizes.length === 0) {
        alert('Please add at least one cut size first.');
        return;
      }
-     const bad = cutSizes.find(cs => !parseFloat(cs.width) || !parseFloat(cs.length));
-     if (bad) {
-       alert(`Cut size "${bad.name || 'unnamed'}" has invalid (zero) dimensions.`);
+     const oversizeCut = calculableCutSizes.find(cs => !canFitInRawSheet(cs.length, cs.width, rawH, rawW));
+     if (oversizeCut) {
+       alert(`Cut size "${oversizeCut.name || 'unnamed'}" (${oversizeCut.width} x ${oversizeCut.length}) is bigger than the raw sheet (${rawW} x ${rawH}). Please correct it.`);
        return;
      }
-      const result = packBins(rawW, rawH, cutSizes, kerf);
+
+      const rawSheetLengthMm = convertUnitToMm(rawH, unitSymbol);
+      const rawSheetWidthMm = convertUnitToMm(rawW, unitSymbol);
+      const mmPerUnit = convertUnitToMm(1, unitSymbol) || 1;
+      const perCut = calculableCutSizes.map((cs, index) => {
+        const cutLengthMm = convertUnitToMm(cs.length, unitSymbol);
+        const cutWidthMm = convertUnitToMm(cs.width, unitSymbol);
+        const cutKey = String(cs.id ?? index + 1);
+        return {
+          cutKey,
+          lineNo: index + 1,
+          name: cs.name || `Cut ${index + 1}`,
+          sizeLabel: `${cs.length} x ${cs.width} ${unitSymbol}`,
+          quantity: parseInt(cs.quantity, 10) || 1,
+          cutLengthMm,
+          cutWidthMm,
+          rotated: false,
+        };
+      });
+
+      const packedScenario = {
+        sheetLengthMm: rawSheetLengthMm,
+        sheetWidthMm: rawSheetWidthMm,
+        perCut,
+      };
+
+      const packed = buildPackedSheetsForScenario(packedScenario, kerfMm);
+      const binsInDisplayUnit = (Array.isArray(packed?.sheets) ? packed.sheets : []).map((sheet) => ({
+        ...sheet,
+        placements: (Array.isArray(sheet?.items) ? sheet.items : []).map((item) => {
+          const w = (item.w || 0) / mmPerUnit;
+          const h = (item.h || 0) / mmPerUnit;
+          return {
+            ...item,
+            id: item.cutKey,
+            x: (item.x || 0) / mmPerUnit,
+            y: (item.y || 0) / mmPerUnit,
+            w,
+            h,
+            placedW: w,
+            placedH: h,
+            displayW: w,
+            displayH: h,
+          };
+        })
+      }));
+
+      const totalSheets = binsInDisplayUnit.length;
+      const totalPanelArea = calculableCutSizes.reduce(
+        (sum, cs) => sum + (toNumber(cs.length) * toNumber(cs.width) * (parseInt(cs.quantity, 10) || 1)),
+        0
+      );
+      const totalSheetArea = rawW * rawH * totalSheets;
+      const result = {
+        bins: binsInDisplayUnit,
+        colorMap: Object.fromEntries(calculableCutSizes.map((cs, idx) => [cs.id, CUT_COLORS[idx % CUT_COLORS.length]])),
+        totalSheets,
+        totalPanelArea,
+        totalSheetArea,
+        totalWaste: 0,
+        yieldPercent: 0,
+        kerf: kerf,
+        kerfMm,
+        kerfInSheetUnit: kerf,
+        unplacedCount: packed?.feasible ? 0 : 1,
+      };
+
+      result.totalWaste = Math.max(result.totalSheetArea - result.totalPanelArea, 0);
+      result.yieldPercent = result.totalSheetArea > 0 ? ((result.totalPanelArea / result.totalSheetArea) * 100) : 0;
+
       setCalcResults(result);
       // Scroll to results
       setTimeout(() => {
@@ -607,7 +621,7 @@ const CutSheetOptimiser = () => {
         return;
       }
 
-      const doc = new jsPDF('p', 'mm', 'A4');
+      const doc = new jsPDF('l', 'mm', 'A4');
       const pageHeight = doc.internal.pageSize.getHeight();
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 10;
@@ -616,12 +630,14 @@ const CutSheetOptimiser = () => {
       const unitObj = unitOptions.find(u => u.value === sheets[0]?.dimension_unit);
       const unitSymbol = unitObj?.symbol || '';
       const sheetName = sheets[0]?.raw_sheet_name || 'Sheet A';
-      const rawW = parseFloat(sheets[0]?.raw_sheet_width) || 0;
-      const rawH = parseFloat(sheets[0]?.raw_sheet_length) || 0;
+      // Keep axes consistent with packed placements: x=sheet length, y=sheet width.
+      const rawW = parseFloat(sheets[0]?.raw_sheet_length) || 0;
+      const rawH = parseFloat(sheets[0]?.raw_sheet_width) || 0;
       const [panelAreaM2, panelAreaFt2] = convertAreaToStandard(calcResults.totalPanelArea, unitSymbol);
       const [sheetAreaM2, sheetAreaFt2] = convertAreaToStandard(calcResults.totalSheetArea, unitSymbol);
       const [wasteAreaM2, wasteAreaFt2] = convertAreaToStandard(calcResults.totalWaste, unitSymbol);
-      const cutReportRows = buildCutReportRows(cutSizes, calcResults.bins, rawW, rawH);
+      const safeBins = Array.isArray(calcResults?.bins) ? calcResults.bins : [];
+      const cutReportRows = buildCutReportRows(cutSizes, safeBins, rawW, rawH);
       const projectLabel = projectOptions.find(p => p.value === projectId)?.label || projectId;
       const rawSizeDisplay = `${formatDimsLongFirst(rawW, rawH)}${unitSymbol ? ` ${unitSymbol}` : ''}`;
 
@@ -652,7 +668,7 @@ const CutSheetOptimiser = () => {
       doc.setFontSize(9.5);
       doc.text(`Best Option: ${sheetName} (${rawSizeDisplay}) - ${calcResults.totalSheets} sheets`, margin, currentY);
       currentY += 5;
-      doc.text(`Dimension Unit: ${unitSymbol} | Kerf: ${calcResults.kerf} ${unitSymbol}`, margin, currentY);
+      doc.text(`Dimension Unit: ${unitSymbol} | Kerf: ${Number(calcResults.kerfMm || 0).toFixed(3)} mm (${Number(calcResults.kerfInSheetUnit || calcResults.kerf || 0).toFixed(4)} ${unitSymbol})`, margin, currentY);
       currentY += 5;
       doc.text(`Panel Area: ${panelAreaM2.toFixed(3)} m2 (${panelAreaFt2.toFixed(2)} ft2)`, margin, currentY);
       currentY += 5;
@@ -682,17 +698,14 @@ const CutSheetOptimiser = () => {
       doc.text(`Visual View (${sheetName})`, margin, currentY);
       currentY += 6;
 
-      calcResults.bins.forEach((bin, idx) => {
+      safeBins.forEach((bin, idx) => {
         const maxLayoutW = pageWidth - (margin * 2);
-        const maxLayoutH = 52;
-        // The visual rotates the sheet 90° clockwise (landscape-style), same as app UI.
-        const rotRawW = rawH;
-        const rotRawH = rawW;
-        // Scale to fit within both maxLayoutW and maxLayoutH — keep true aspect ratio.
-        const scale = Math.min(maxLayoutW / rotRawW, maxLayoutH / rotRawH);
-        // Draw the sheet at its true scaled dimensions (not stretched to full page width).
-        const layoutW = rotRawW * scale;
-        const layoutH = Math.max(24, rotRawH * scale);
+        const maxLayoutH = 80;
+        const visual = getVisualSheetTransform(rawW, rawH);
+        const scale = Math.min(maxLayoutW / visual.width, maxLayoutH / visual.height);
+        const layoutW = visual.width * scale;
+        const layoutH = Math.max(24, visual.height * scale);
+        const bladeGapStroke = Math.max(0.8, (calcResults.kerfMm || 0) * 0.75);
 
         if (currentY + layoutH + 18 > pageHeight - margin) {
           doc.addPage();
@@ -706,26 +719,18 @@ const CutSheetOptimiser = () => {
         const sheetY = currentY + 2;
         doc.setFillColor(11, 61, 68);
         doc.setDrawColor(37, 210, 195);
-        // Use layoutW (true scaled width) so sheet matches actual proportions.
         doc.rect(margin, sheetY, layoutW, layoutH, 'FD');
 
         doc.setTextColor(220, 249, 255);
         doc.setFontSize(8);
         doc.text(`Raw: ${rawSizeDisplay}`, margin + 2, sheetY + 4);
 
-        bin.placements.forEach((p) => {
-          // Use actual piece dimensions (without kerf) for visual rendering.
-          const dW = p.displayW ?? p.placedW;
-          const dH = p.displayH ?? p.placedH;
-          const rotatedX = rawH - (p.y + dH);
-          const rotatedY = p.x;
-          const rotatedW = dH;
-          const rotatedH = dW;
-
-          const px = margin + (rotatedX * scale);
-          const py = sheetY + (rotatedY * scale);
-          const pw = Math.max(0.9, rotatedW * scale);
-          const ph = Math.max(0.9, rotatedH * scale);
+        (Array.isArray(bin?.placements) ? bin.placements : []).forEach((p) => {
+          const mapped = mapPlacementForVisual(p, rawW, rawH, visual.rotate);
+          const px = margin + (mapped.x * scale);
+          const py = sheetY + (mapped.y * scale);
+          const pw = Math.max(0.9, mapped.w * scale);
+          const ph = Math.max(0.9, mapped.h * scale);
 
           const hex = (p.color || '#4e79a7').replace('#', '');
           const rgb = {
@@ -734,8 +739,12 @@ const CutSheetOptimiser = () => {
             b: parseInt(hex.substring(4, 6), 16) || 167,
           };
           doc.setFillColor(rgb.r, rgb.g, rgb.b);
-          doc.setDrawColor(20, 30, 40);
+          doc.setDrawColor(11, 61, 68);
+          doc.setLineWidth(bladeGapStroke);
           doc.rect(px, py, pw, ph, 'FD');
+          doc.setDrawColor(20, 30, 40);
+          doc.setLineWidth(0.25);
+          doc.rect(px, py, pw, ph);
 
           if (pw > 12 && ph > 7) {
             doc.setTextColor(255, 255, 255);
@@ -765,10 +774,11 @@ const CutSheetOptimiser = () => {
       const unitObj = unitOptions.find(u => u.value === sheets[0]?.dimension_unit);
       const unitSymbol = unitObj?.symbol || '';
       const projectLabel = projectOptions.find(p => p.value === projectId)?.label || projectId;
+      const safeBins = Array.isArray(calcResults?.bins) ? calcResults.bins : [];
       const rawSheetText = `${sheets[0]?.raw_sheet_name || 'Sheet A'} (${formatDimsLongFirst(sheets[0]?.raw_sheet_width, sheets[0]?.raw_sheet_length)} ${unitSymbol})`;
       const cutReportRows = buildCutReportRows(
         cutSizes,
-        calcResults.bins,
+        safeBins,
         parseFloat(sheets[0]?.raw_sheet_width),
         parseFloat(sheets[0]?.raw_sheet_length),
       );
@@ -814,9 +824,10 @@ const CutSheetOptimiser = () => {
         { header: 'Cuts On Sheet', key: 'cuts', width: 80 },
       ];
 
-      calcResults.bins.forEach((bin, idx) => {
+      safeBins.forEach((bin, idx) => {
         const grouped = {};
-        bin.placements.forEach((p) => {
+        const safePlacements = Array.isArray(bin?.placements) ? bin.placements : [];
+        safePlacements.forEach((p) => {
           const key = `${p.name} (${formatDimsLongFirst(p.placedW, p.placedH)}${unitSymbol ? ` ${unitSymbol}` : ''})`;
           grouped[key] = (grouped[key] || 0) + 1;
         });
@@ -826,7 +837,7 @@ const CutSheetOptimiser = () => {
 
         visualSheet.addRow({
           sheetNo: idx + 1,
-          pieces: bin.placements.length,
+          pieces: safePlacements.length,
           raw: `${formatDimsLongFirst(sheets[0]?.raw_sheet_width, sheets[0]?.raw_sheet_length)} ${unitSymbol}`,
           cuts: cutsLine,
         });
@@ -862,8 +873,8 @@ const CutSheetOptimiser = () => {
      const cutLength = parseFloat(newCutSizeForm.length);
      const cutWidth = parseFloat(newCutSizeForm.width);
 
-     if (cutLength > rawH || cutWidth > rawW) {
-       alert(`Cut size dimensions (${cutWidth} × ${cutLength}) exceed raw sheet size (${rawW} × ${rawH}). Please adjust the cut size or raw sheet dimensions.`);
+     if (!canFitInRawSheet(cutLength, cutWidth, rawH, rawW)) {
+       alert(`Cut size dimensions (${cutWidth} x ${cutLength}) are bigger than raw sheet size (${rawW} x ${rawH}), even after rotation. Please adjust the cut size or raw sheet dimensions.`);
        return;
      }
 
@@ -889,7 +900,8 @@ const CutSheetOptimiser = () => {
        }
 
        await loadCutSizes(recordId);
-       setIsAddingNew(false);
+       // Keep one fresh row available so users can add multiple cuts continuously.
+       setIsAddingNew(true);
        setNewCutSizeForm({ name: '', width: '', length: '', quantity: '1' });
      } catch (err) {
        alert('Error saving cut size: ' + err.message);
@@ -916,6 +928,13 @@ const CutSheetOptimiser = () => {
 
     if (!editCutSizeForm.width || !editCutSizeForm.length) {
       alert('Width and Length are required.');
+      return;
+    }
+
+    const rawW = parseFloat(sheets[0]?.raw_sheet_width || 0);
+    const rawH = parseFloat(sheets[0]?.raw_sheet_length || 0);
+    if (!canFitInRawSheet(editCutSizeForm.length, editCutSizeForm.width, rawH, rawW)) {
+      alert(`Cut size dimensions (${editCutSizeForm.width} x ${editCutSizeForm.length}) are bigger than raw sheet size (${rawW} x ${rawH}), even after rotation. Please adjust the cut size or raw sheet dimensions.`);
       return;
     }
 
@@ -1081,7 +1100,7 @@ const CutSheetOptimiser = () => {
                 <strong>Best Option:</strong> {sheets[0]?.raw_sheet_name || 'Raw Sheet'} ({formatDimsLongFirst(sheets[0]?.raw_sheet_width, sheets[0]?.raw_sheet_length)} {unitSymbol}) - {calcResults.totalSheets} sheet{calcResults.totalSheets !== 1 ? 's' : ''}
               </div>
               <div style={{ marginBottom: 8 }}>
-                <strong>Dimension Unit:</strong> {unitSymbol} | <strong>Kerf:</strong> {calcResults.kerf} {unitSymbol}
+                <strong>Dimension Unit:</strong> {unitSymbol} | <strong>Kerf:</strong> {Number(calcResults.kerfMm || 0).toFixed(3)} mm ({Number(calcResults.kerfInSheetUnit || calcResults.kerf || 0).toFixed(4)} {unitSymbol})
               </div>
               <div style={{ marginBottom: 8 }}>
                 <strong>Panel Area:</strong> {panelAreaM2.toFixed(3)} m² ({panelAreaFt2.toFixed(2)} ft²)
@@ -1121,8 +1140,8 @@ const CutSheetOptimiser = () => {
           const rows = buildCutReportRows(
             cutSizes,
             calcResults.bins,
-            parseFloat(sheets[0]?.raw_sheet_width),
             parseFloat(sheets[0]?.raw_sheet_length),
+            parseFloat(sheets[0]?.raw_sheet_width),
           );
           const unitObj = unitOptions.find(u => u.value === sheets[0]?.dimension_unit);
           const unitSymbol = unitObj?.symbol || '';
@@ -1179,9 +1198,10 @@ const CutSheetOptimiser = () => {
               key={idx}
               sheetNum={idx + 1}
               placements={bin.placements}
-              rawW={parseFloat(sheets[0]?.raw_sheet_width)}
-              rawH={parseFloat(sheets[0]?.raw_sheet_length)}
+              rawW={parseFloat(sheets[0]?.raw_sheet_length)}
+              rawH={parseFloat(sheets[0]?.raw_sheet_width)}
               unitLabel={unitObj?.symbol || ''}
+              kerfThickness={calcResults.kerfInSheetUnit || calcResults.kerf || 0}
             />
           );
         })}

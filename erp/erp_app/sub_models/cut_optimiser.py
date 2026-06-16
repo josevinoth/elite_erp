@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.db import models
 from django.conf import settings
 
@@ -16,7 +17,7 @@ class CutOptimiserRecord(models.Model):
     project = models.ForeignKey('Project', on_delete=models.CASCADE)
     revision = models.CharField(max_length=10, default='1')
     cut_optimiser_id = models.CharField(max_length=20, unique=True, blank=True)
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name='cut_optimiser_records')
+    updated_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='cut_optimiser_records')
     # Fields moved from RawSheet
     raw_sheet_name = models.CharField(max_length=100, blank=True, null=True)
     raw_sheet_length = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True,default=0)

@@ -1,5 +1,7 @@
 import json
 import datetime
+
+from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -40,7 +42,7 @@ def _serialize(project):
         'description': project.description,
         'project_name': project.project_name,
         'proposal_date': str(project.proposal_date) if project.proposal_date else '',
-        'updated_by': project.updated_by,
+        'updated_by': project.updated_by.id if project.updated_by else None,
         'order_value_omr': '' if project.order_value_omr is None else str(project.order_value_omr),
         'status': project.status.name if project.status else '',
         'expected_customer_need_date': str(project.expected_customer_need_date) if project.expected_customer_need_date else '',
@@ -104,13 +106,13 @@ def create_project_api_view(request):
     status_obj = None
     if status_name:
         status_obj, _ = ProjectStatusOption.objects.get_or_create(name=status_name)
-
+    user_id = payload.get('updated_by')
     project = Project.objects.create(
         project_id=project_id,
         description=normalize_text(payload.get('description', '')),
         project_name=project_name,
         proposal_date=_to_date(payload.get('proposal_date')),
-        updated_by=normalize_text(payload.get('updated_by') or request.user.username),
+        updated_by=User.objects.get(id=user_id) if user_id else request.user,
         order_value_omr=_to_decimal_or_none(payload.get('order_value_omr')),
         status=status_obj,
         expected_customer_need_date=_to_date(payload.get('expected_customer_need_date')),
@@ -132,6 +134,7 @@ def project_detail_api_view(request, project_id):
     payload = _read_json(request)
     project_id = normalize_text(payload.get('project_id', project.project_id))
     project_name = normalize_text(payload.get('project_name', project.project_name))
+    user_id = payload.get('updated_by')
     if not project_id:
         return JsonResponse({'message': 'Project ID is required.'}, status=400)
     if _project_exists_case_insensitive(project_id, project_name, exclude_id=project.id):
@@ -140,7 +143,10 @@ def project_detail_api_view(request, project_id):
     project.description = normalize_text(payload.get('description', project.description))
     project.project_name = project_name
     project.proposal_date = _to_date(payload.get('proposal_date', project.proposal_date))
-    project.updated_by = normalize_text(payload.get('updated_by', project.updated_by))
+    if user_id:
+        project.updated_by = User.objects.get(id=user_id)
+    else:
+        project.updated_by = request.user
     if 'order_value_omr' in payload:
         project.order_value_omr = _to_decimal_or_none(payload.get('order_value_omr'))
     status_name = to_title_case(payload.get('status', project.status.name if project.status else ''))

@@ -27,6 +27,7 @@ export const homeNavItems = [
   },
   { label: "LCE", to: "/projects/costing", icon: "costing" },
   { label: "Vendors", to: "/vendors", icon: "vendors" },
+  { label: "Orders", to: "/orders", icon: "orders" },
   {
     label: "Stocks:",
     to: "/stocks",

@@ -217,7 +217,8 @@ export function buildPackedSheetsForScenario(scenario, kerfMm) {
   const paddedSheetW = sheetWidthMm + kerfMm;
   const pieces = [];
 
-  scenario.perCut.forEach((cut, ci) => {
+  const perCut = Array.isArray(scenario?.perCut) ? scenario.perCut : [];
+  perCut.forEach((cut, ci) => {
     const quantity = Number(cut?.quantity || 0);
     if (!Number.isInteger(quantity) || quantity <= 0) return;
 
@@ -269,7 +270,7 @@ export function buildPackedSheetsForScenario(scenario, kerfMm) {
 export function summarizeCutOrientations(sheets) {
   const usage = {};
 
-  sheets.forEach((sheet) => {
+  (Array.isArray(sheets) ? sheets : []).forEach((sheet) => {
     sheet.items.forEach((item) => {
       const key = String(item.cutKey || "");
       if (!key) return;
