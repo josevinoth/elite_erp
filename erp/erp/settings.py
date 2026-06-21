@@ -139,8 +139,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'erp_app'
+    'erp_app',
+    'rest_framework'
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',   # works with Django login sessions
+        'rest_framework.authentication.BasicAuthentication',     # optional, for testing
+        # 'rest_framework.authentication.TokenAuthentication',   # if you want token-based auth
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',            # default: require login
+    ],
+}
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -180,7 +193,7 @@ WSGI_APPLICATION = 'erp.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'erp_005'),
+        'NAME': os.getenv('DB_NAME', 'erp_002'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', '244613'),
         'HOST': os.getenv('DB_HOST', 'localhost'),

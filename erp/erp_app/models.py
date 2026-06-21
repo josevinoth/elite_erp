@@ -1,5 +1,3 @@
-from django.db import models
-
 from .sub_models import (
 	Comment,
 	CommentAttachment,
@@ -24,8 +22,10 @@ from .sub_models import (
 	Vendor,
 	CutOptimiserRecord,
 	CutSize,
-	UOM
+	UOM,
+	yes_no_mod,
 )
+
 __all__ = [
 	"Comment",
 	"CommentAttachment",
@@ -51,4 +51,5 @@ __all__ = [
 	"CutOptimiserRecord",
 	"CutSize",
 	"UOM",
+	"yes_no_mod",
 ]

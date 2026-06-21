@@ -134,81 +134,36 @@ function SearchableSelect({ value, onChange, options, placeholder, disabled = fa
   }, []);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", width: "100%" }}>
+    <div ref={containerRef} className="costing-select">
       <div
-        className="auth-input"
-        style={{
-          background: disabled ? "#e5e7eb" : "#ffffff",
-          color: disabled ? "#9ca3af" : "#111827",
-          cursor: disabled ? "not-allowed" : "pointer",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "0.5rem 0.75rem",
-          minHeight: 40,
-          borderRadius: 4,
-          opacity: disabled ? 0.6 : 1,
-        }}
+        className={`auth-input costing-select__trigger${disabled ? " costing-select__trigger--disabled" : ""}`}
         onClick={() => !disabled && setOpen((p) => !p)}
       >
         <span>{selected?.label || placeholder}</span>
         <span>▼</span>
       </div>
       {open && !disabled && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            marginTop: 4,
-            background: "#ffffff",
-            border: "1px solid #d1d5db",
-            borderRadius: 4,
-            zIndex: 10,
-            boxShadow: "0 10px 15px rgba(0,0,0,0.1)",
-          }}
-        >
+        <div className="costing-select__menu">
           <input
             type="search"
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.5rem 0.75rem",
-              border: "none",
-              borderBottom: "1px solid #e5e7eb",
-              outline: "none",
-              fontSize: "0.875rem",
-            }}
+            className="auth-input costing-select__search"
             onClick={(e) => e.stopPropagation()}
           />
-          <div style={{ maxHeight: 200, overflowY: "auto" }}>
+          <div className="costing-select__list">
             {filtered.length === 0 ? (
-              <div style={{ padding: "0.75rem", color: "#6b7280", textAlign: "center" }}>No options found</div>
+              <div className="costing-select__empty">No options found</div>
             ) : (
               filtered.map((opt) => (
                 <div
                   key={opt.value}
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    cursor: "pointer",
-                    background: value === opt.value ? "#d1fae5" : "transparent",
-                    color: value === opt.value ? "#065f46" : "#111827",
-                    fontWeight: value === opt.value ? 600 : 400,
-                    fontSize: "0.875rem",
-                  }}
+                  className={`costing-select__option${value === opt.value ? " costing-select__option--selected" : ""}`}
                   onClick={() => {
                     onChange(opt.value);
                     setOpen(false);
                     setSearch("");
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = "#f3f4f6";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = value === opt.value ? "#d1fae5" : "transparent";
                   }}
                 >
                   {opt.label}
@@ -311,31 +266,19 @@ function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, current
     setChecked((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   };
 
-  const thStyle = {
-    background: "#0f5860",
-    color: "#e9fffd",
-    borderBottom: "2px solid #28a9a0",
-    fontWeight: 700,
-    letterSpacing: "0.03em",
-    position: "sticky",
-    top: 0,
-    zIndex: 2,
-    whiteSpace: "nowrap",
-  };
-
   return (
-    <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#0a3a40", color: "#f0fffe", borderRadius: 10, border: "1px solid #1a6f77", padding: "1.25rem 1.5rem", maxWidth: 1200, width: "95%", maxHeight: "85vh", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+    <div className="modal-overlay">
+      <div className="costing-modal-card">
 
         {/* ── Header bar ── */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.65rem 0.85rem", borderRadius: 6, background: "#08464d", border: "1px solid #1d737b" }}>
-          <h3 style={{ margin: 0, fontSize: "1.05rem", letterSpacing: "0.02em" }}>Select Purchase Items</h3>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div className="costing-modal-card__header">
+          <h3 className="costing-modal-card__title">Select Purchase Items</h3>
+          <div className="costing-inline-actions">
             <button type="button" className="crud-add-btn"
               onClick={() => setChecked((prev) => { const n = new Set(prev); selectableIds.forEach((id) => n.add(id)); return n; })}>
               Select All
             </button>
-            <button type="button" className="crud-add-btn" style={{ background: "#6c757d" }}
+            <button type="button" className="crud-add-btn crud-add-btn--neutral"
               onClick={() => setChecked(new Set())}>
               Clear
             </button>
@@ -345,19 +288,18 @@ function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, current
         {/* ── Search bar ── */}
         <input
           type="search"
-          className="auth-input"
+          className="auth-input costing-modal-card__search"
           placeholder="Search by GRN, item name, code, category, purchase or invoice…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ background: "#062f34", border: "1px solid #1e666d", color: "#f0fffe" }}
         />
 
         {/* ── Table ── */}
-        <div className="users-table-wrap" style={{ overflowY: "auto", flex: 1 }}>
-          <table className="users-table" style={{ width: "100%" }}>
+        <div className="users-table-wrap users-table-wrap--sticky costing-modal-card__table-wrap">
+          <table className="users-table">
             <thead>
               <tr>
-                <th style={{ ...thStyle, width: 36, textAlign: "center" }}>
+                <th className="users-table__sticky-head costing-modal-card__th costing-modal-card__th--checkbox">
                   <input type="checkbox" checked={allSelected}
                     onChange={() => {
                       setChecked((prev) => {
@@ -369,35 +311,32 @@ function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, current
                     }}
                   />
                 </th>
-                <th style={thStyle}>GRN No.</th>
-                <th style={thStyle}>Purchase No.</th>
-                <th style={thStyle}>Invoice No.</th>
-                <th style={thStyle}>Item Category</th>
-                <th style={thStyle}>Item Name</th>
-                <th style={thStyle}>Item Code</th>
-                <th style={thStyle}>Qty</th>
-                <th style={thStyle}>Unit Price</th>
-                <th style={thStyle}>Total Price</th>
-                <th style={thStyle}>LCE</th>
+                <th className="users-table__sticky-head costing-modal-card__th">GRN No.</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Purchase No.</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Invoice No.</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Item Category</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Item Name</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Item Code</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Qty</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Unit Price</th>
+                <th className="users-table__sticky-head costing-modal-card__th">Total Price</th>
+                <th className="users-table__sticky-head costing-modal-card__th">LCE</th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.length === 0 ? (
-                <tr><td colSpan={11} style={{ textAlign: "center", padding: "1rem", color: "#8ab8b6" }}>No items match your search.</td></tr>
+                <tr><td colSpan={11} className="costing-modal-card__empty">No items match your search.</td></tr>
               ) : filteredItems.map((item) => {
                 const taken = isTaken(item);
                 const lceTag = item.lce_estimate_id ? `LCE_${String(item.lce_estimate_id).padStart(3, "0")}` : "—";
+                const rowClassName = `costing-modal-card__row${taken ? " costing-modal-card__row--taken" : ""}${checked.has(item.id) && !taken ? " costing-modal-card__row--selected" : ""}`;
                 return (
                   <tr
                     key={item.id}
                     title={taken ? `Already linked to ${lceTag}. Delink it first to reassign.` : ""}
-                    style={{
-                      opacity: taken ? 0.45 : 1,
-                      background: taken ? "rgba(255,80,80,0.07)" : checked.has(item.id) ? "rgba(22,178,165,0.18)" : undefined,
-                      cursor: taken ? "not-allowed" : "default",
-                    }}
+                    className={rowClassName}
                   >
-                    <td style={{ textAlign: "center" }}>
+                    <td className="costing-modal-card__cell--checkbox">
                       <input type="checkbox" checked={checked.has(item.id)} disabled={taken}
                         onChange={() => !taken && toggle(item.id)} />
                     </td>
@@ -410,7 +349,7 @@ function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, current
                     <td>{item.quantity}</td>
                     <td>{item.unit_price} {selectedForeignCurrencyCode}</td>
                     <td>{item.total_price} {selectedForeignCurrencyCode}</td>
-                    <td style={taken ? { color: "#f87171", fontWeight: 600 } : {}}>{lceTag}</td>
+                    <td className={taken ? "costing-modal-card__lce--taken" : ""}>{lceTag}</td>
                   </tr>
                 );
               })}
@@ -419,13 +358,13 @@ function PurchaseItemModal({ items, initialSelected, onConfirm, onClose, current
         </div>
 
         {/* ── Footer ── */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
-          <span style={{ fontSize: "0.82rem", color: "#8ab8b6" }}>
+        <div className="costing-modal-card__footer">
+          <span className="costing-help-text">
             {filteredItems.filter((i) => isTaken(i)).length > 0 &&
               `${filteredItems.filter((i) => isTaken(i)).length} item(s) already linked to another LCE (shown in red, disabled).`}
           </span>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="button" className="crud-add-btn" style={{ background: "#6c757d" }} onClick={onClose}>Cancel</button>
+          <div className="costing-inline-actions">
+            <button type="button" className="crud-add-btn crud-add-btn--neutral" onClick={onClose}>Cancel</button>
             <button type="button" className="crud-add-btn" onClick={() => onConfirm([...checked])}>
               Confirm Selection ({checked.size})
             </button>
@@ -755,13 +694,13 @@ function CostingPage() {
 
   return (
     <section className="module-page">
-      <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
+      <div className="crud-page__header costing-page__header">
         <div>
-          <h1 className="module-page__title" style={{ margin: 0 }}>
+          <h1 className="module-page__title costing-page__title">
             {isAddMode ? "LCE Add" : `LCE Form — ${lceLabel}`}
           </h1>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div className="costing-inline-actions">
           <button type="button" className="crud-add-btn" onClick={() => navigate("/projects/costing")}>Back to LCE List</button>
           <button type="button" className="crud-add-btn" onClick={handleSave} disabled={saving || loading}>
             {saving ? "Saving..." : "Save LCE Details"}
@@ -797,7 +736,7 @@ function CostingPage() {
                 return (
                   <label key={key} className="lce-form-card">
                     <span className="lce-form-card__label">
-                      <strong>{withForeignCurrencyLabel(key, label)}</strong> <small style={{ color: "#cce8e5", fontWeight: 400 }}>(calculated from linked items)</small>
+                      <strong>{withForeignCurrencyLabel(key, label)}</strong> <small className="costing-inline-note">(calculated from linked items)</small>
                     </span>
                     <input
                       type="number"
@@ -819,8 +758,7 @@ function CostingPage() {
                       <div className="lce-charge-split-col">
                         <div className="lce-charge-type-row">
                           <select
-                            className="auth-input lce-form-card__input"
-                            style={{ background: "#ffffff", color: "#111827", minWidth: 0 }}
+                            className="auth-input lce-form-card__input costing-min-width-reset"
                             value={form[typeKey] || ""}
                             onChange={(e) => handleChange(typeKey, e.target.value)}
                           >
@@ -842,7 +780,6 @@ function CostingPage() {
                         <input
                           type="number"
                           className="auth-input lce-form-card__input"
-                          style={{ textAlign: "right" }}
                           step="any"
                           value={form[key]}
                           disabled={!form[typeKey]}
@@ -858,7 +795,7 @@ function CostingPage() {
                  return [
                    <label key={key} className="lce-form-card">
                      <span className="lce-form-card__label">
-                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small style={{ color: "#cce8e5", fontWeight: 400 }}>(sum of Payment Amount (OMR) in Payment History)</small>
+                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small className="costing-inline-note">(sum of Payment Amount (OMR) in Payment History)</small>
                      </span>
                      <input
                        type="number"
@@ -890,7 +827,7 @@ function CostingPage() {
                  return (
                    <label key={key} className="lce-form-card">
                      <span className="lce-form-card__label">
-                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small style={{ color: "#cce8e5", fontWeight: 400 }}>(sum of Amount (OMR) in Payment History)</small>
+                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small className="costing-inline-note">(sum of Amount (OMR) in Payment History)</small>
                      </span>
                      <input
                        type="number"
@@ -922,25 +859,17 @@ function CostingPage() {
             })}
           </div>
 
-          <div
-            style={{
-              marginTop: "1.25rem",
-              padding: "1rem",
-              border: "1px solid #1a6f77",
-              borderRadius: 8,
-              background: "#0a3a40",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-              <h3 style={{ margin: 0 }}>Payment History</h3>
+          <div className="costing-section-card costing-section-card--spaced">
+            <div className="costing-section-card__head">
+              <h3 className="costing-section-card__title">Payment History</h3>
               <button type="button" className="crud-add-btn" onClick={addSettlementRow}>+ Add Settlement</button>
             </div>
-             <p style={{ margin: "0.5rem 0 0.8rem", color: "#cce8e5", fontSize: "0.86rem" }}>
+             <p className="costing-help-text costing-help-text--mt">
                Final Value (OMR) = Factor x Amount.
              </p>
 
-                    <div className="table-responsive">
-                      <table className="users-table" style={{ width: "100%" }}>
+                    <div className="users-table-wrap">
+                      <table className="users-table">
                         <thead>
                           <tr>
                             <th>Payment Date</th>
@@ -948,7 +877,7 @@ function CostingPage() {
                               <th>{`Payment Amount (${selectedForeignCurrencyCode})`}</th>
                             <th>BANK EXCHANGE RATE (MUSCAT)</th>
                               <th>Payment Amount (OMR)</th>
-                            <th style={{ width: 90 }}>Action</th>
+                            <th className="costing-col-action">Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -994,8 +923,7 @@ function CostingPage() {
                               <td>
                                 <button
                                   type="button"
-                                  className="crud-add-btn"
-                                  style={{ background: "#6c757d", width: "100%" }}
+                                  className="crud-add-btn crud-add-btn--neutral costing-btn--full"
                                   onClick={() => removeSettlementRow(row.rowId)}
                                   disabled={settlementRowsWithValue.length <= 1}
                                 >
@@ -1008,71 +936,37 @@ function CostingPage() {
                       </table>
                     </div>
 
-            <div style={{ display: "flex", gap: "1rem", marginTop: "0.85rem", flexWrap: "wrap" }}>
+            <div className="costing-inline-actions costing-inline-actions--summary">
               {/* Settled Total display removed as per request */}
               {/* Pending field removed as per request */}
             </div>
           </div>
 
           {/* ── Purchase invoice selector (top) ── */}
-          <div
-            style={{
-              marginTop: "1.5rem",
-              padding: "1rem",
-              border: "1px solid #1a6f77",
-              borderRadius: 6,
-              background: "#0a3a40",
-              color: "#f0fffe",
-            }}
-          >
-            <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Link Purchase Invoice Items</h3>
-            <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div style={{ flex: "1 1 300px" }}>
-                <label style={{ display: "block", marginBottom: 4, fontWeight: 600, fontSize: "0.85rem" }}>Purchase / Invoice</label>
-                <details style={{ width: "100%" }}>
+          <div className="costing-section-card costing-section-card--lg-gap">
+            <h3 className="costing-section-card__title costing-section-card__title--spaced">Link Purchase Invoice Items</h3>
+            <div className="costing-selector-row">
+              <div className="costing-selector-main">
+                <label className="costing-selector-label">Purchase / Invoice</label>
+                <details className="costing-selector-details">
                   <summary
-                    className="auth-input"
-                    style={{
-                      listStyle: "none",
-                      cursor: "pointer",
-                      userSelect: "none",
-                      display: "flex",
-                      alignItems: "center",
-                      minHeight: 40,
-                      background: "#0a3338",
-                    }}
+                    className="auth-input costing-selector-summary"
                   >
                     {selectedPurchaseLabel}
                   </summary>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      border: "1px solid #1e666d",
-                      borderRadius: 6,
-                      maxHeight: 180,
-                      overflowY: "auto",
-                      background: "#062f34",
-                      padding: "0.4rem 0.5rem",
-                    }}
-                  >
-                    <div style={{ display: "flex", gap: "0.5rem", marginBottom: 8 }}>
+                  <div className="costing-selector-menu">
+                    <div className="costing-inline-actions costing-inline-actions--compact">
                       <button type="button" className="crud-add-btn" onClick={() => setSelectedPurchaseIds(stockPurchaseOptions.map((o) => o.value))}>
                         Select All
                       </button>
-                      <button type="button" className="crud-add-btn" style={{ background: "#6c757d" }} onClick={() => setSelectedPurchaseIds([])}>
+                      <button type="button" className="crud-add-btn crud-add-btn--neutral" onClick={() => setSelectedPurchaseIds([])}>
                         Clear
                       </button>
                     </div>
                     {stockPurchaseOptions.map((o) => (
                       <label
                         key={o.value}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          padding: "0.25rem 0.15rem",
-                          cursor: "pointer",
-                        }}
+                        className="costing-selector-option"
                       >
                         <input
                           type="checkbox"
@@ -1084,35 +978,34 @@ function CostingPage() {
                     ))}
                   </div>
                 </details>
-                <small style={{ color: "#cce8e5" }}>Use checkboxes to select multiple purchase numbers.</small>
+                <small className="costing-inline-note">Use checkboxes to select multiple purchase numbers.</small>
               </div>
               <button
                 type="button"
-                className="crud-add-btn"
+                className="crud-add-btn costing-btn-show-items"
                 onClick={handleShowItems}
                 disabled={!selectedPurchaseIds.length || modalLoading}
-                style={{ height: 38 }}
               >
                 {modalLoading ? "Loading..." : "Show Items"}
               </button>
             </div>
             {selectedItemIds.length > 0 ? (
-              <p style={{ marginTop: "0.5rem", marginBottom: 0, color: "#7ee787", fontWeight: 600 }}>
+              <p className="costing-status-text costing-status-text--success">
                 {selectedItemIds.length} item(s) selected — save to persist LCE link.
               </p>
             ) : null}
           </div>
 
           {/* ── Linked items table ── */}
-          <div style={{ marginTop: "1.5rem" }}>
-            <h2 className="module-page__title" style={{ marginBottom: "0.5rem" }}>
+          <div className="costing-linked-section">
+            <h2 className="module-page__title costing-linked-section__title">
               Linked Purchase Items {linkedItems.length > 0 ? `(${linkedItems.length})` : ""}
             </h2>
             {linkedItems.length === 0 ? (
               <p className="users-status">No purchase items linked yet. Use the section above to select items.</p>
             ) : (
-              <div className="table-responsive">
-                <table className="users-table" style={{ width: "100%" }}>
+              <div className="users-table-wrap">
+                <table className="users-table">
                   <thead>
                     <tr>
                       <th>GRN No.</th>
