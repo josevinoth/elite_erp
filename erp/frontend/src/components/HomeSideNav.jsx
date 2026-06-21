@@ -90,8 +90,6 @@ function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
 
   return (
     <aside className="home-sidenav" aria-label="Main navigation">
-      <h2 className="home-sidenav__title">Modules</h2>
-
       <nav className="home-sidenav__nav">
         {visibleItems.map((item) => {
           const itemBadge = item.badgeKey && badges[item.badgeKey] > 0

@@ -46,10 +46,10 @@ export function ChartTooltip({ active, payload, valueLabel = "Count", valueKey =
   const d = payload[0].payload;
   return (
     <div style={{
-      background: "#0b3a40", border: "1px solid #1e666d",
-      borderRadius: 8, padding: "10px 14px", color: "#f0fffe", fontSize: "0.82rem",
+      background: "#ffffff", border: "1px solid #d9dce8",
+      borderRadius: 8, padding: "10px 14px", color: "#495057", fontSize: "0.82rem",
     }}>
-      <p style={{ margin: 0, fontWeight: 600, color: "#25d2c3" }}>{d.name}</p>
+      <p style={{ margin: 0, fontWeight: 600, color: "#334155" }}>{d.name}</p>
       <p style={{ margin: "4px 0 0" }}>
         {valueLabel}: <strong>{formatValue ? formatAmount(d[valueKey]) : d[valueKey]?.toLocaleString()}</strong>
       </p>
@@ -168,19 +168,19 @@ export function CoreBarChart({ data, valueKey = "count", formatVal = false, tool
         margin={{ top: 24, right: 16, left: 8, bottom: angleLabels ? 80 : 40 }}
         barCategoryGap="30%"
       >
-        <CartesianGrid strokeDasharray="3 3" stroke="#1e666d" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e6e9f2" vertical={false} />
         <XAxis
           dataKey="name"
-          tick={{ fill: "#cce8e5", fontSize: 11 }}
+          tick={{ fill: "#6b7280", fontSize: 11 }}
           angle={angleLabels ? -35 : 0}
           textAnchor={angleLabels ? "end" : "middle"}
           interval={0}
           tickLine={false}
-          axisLine={{ stroke: "#1e666d" }}
+          axisLine={{ stroke: "#d9dce8" }}
         />
         <YAxis
           tickFormatter={formatVal ? formatAmount : undefined}
-          tick={{ fill: "#cce8e5", fontSize: 11 }}
+          tick={{ fill: "#6b7280", fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           width={52}
@@ -194,7 +194,7 @@ export function CoreBarChart({ data, valueKey = "count", formatVal = false, tool
               formatValue={formatVal}
             />
           }
-          cursor={{ fill: "rgba(22,178,165,0.08)" }}
+          cursor={{ fill: "rgba(85,110,230,0.08)" }}
         />
         <Bar dataKey={valueKey} radius={[6, 6, 0, 0]} maxBarSize={64}>
           {data.map((entry, i) => (
@@ -204,7 +204,7 @@ export function CoreBarChart({ data, valueKey = "count", formatVal = false, tool
             dataKey={valueKey}
             position="top"
             formatter={formatVal ? formatAmount : undefined}
-            style={{ fill: "#cce8e5", fontSize: 10, fontWeight: 600 }}
+            style={{ fill: "#334155", fontSize: 10, fontWeight: 600 }}
           />
         </Bar>
       </BarChart>
@@ -270,7 +270,7 @@ export function BarChartCard({
 
       {/* Chart or empty state */}
       {chartData.length === 0 ? (
-        <p style={{ textAlign: "center", color: "#cce8e5", padding: "2rem 0" }}>
+        <p style={{ textAlign: "center", color: "#6b7280", padding: "2rem 0" }}>
           {emptyMessage}
         </p>
       ) : (

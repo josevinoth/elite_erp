@@ -206,24 +206,29 @@ function CrudPage({
 
   const selectStyles = useMemo(
     () => ({
-      control: (base, state) => ({
+      control: (base, state) => {
+        return {
         ...base,
         minHeight: 40,
-        backgroundColor: "#1a1a1a",
-        borderColor: state.isFocused ? "#7f7f7f" : "#4a4a4a",
-        boxShadow: state.isFocused ? "0 0 0 3px rgba(90,90,90,0.22)" : "none",
-        ":hover": { borderColor: "#9a9a9a" },
-      }),
-      singleValue: (base) => ({ ...base, color: "#e6e6e6" }),
-      input: (base) => ({ ...base, color: "#e6e6e6" }),
-      placeholder: (base) => ({ ...base, color: "#b3b3b3" }),
-      menu: (base) => ({ ...base, backgroundColor: "#1f1f1f", zIndex: 2000 }),
+        backgroundColor: "#ffffff",
+        borderColor: state.isFocused ? "#556ee6" : "#d9dce8",
+        boxShadow: state.isFocused ? "0 0 0 2px rgba(85,110,230,0.2)" : "none",
+        ":hover": { borderColor: "#556ee6" },
+        };
+      },
+      singleValue: (base) => ({ ...base, color: "#495057", fontWeight: 400 }),
+      input: (base) => ({ ...base, color: "#495057" }),
+      placeholder: (base) => ({ ...base, color: "#74788d" }),
+      menu: (base) => ({ ...base, backgroundColor: "#ffffff", zIndex: 2000, border: "1px solid #d9dce8" }),
       menuPortal: (base) => ({ ...base, zIndex: 3000 }),
-      option: (base, state) => ({
+      option: (base, state) => {
+        return {
         ...base,
-        backgroundColor: state.isSelected ? "#8f8f8f" : state.isFocused ? "#343434" : "#1f1f1f",
-        color: state.isSelected ? "#111111" : "#e6e6e6",
-      }),
+        backgroundColor: state.isSelected ? "#556ee6" : state.isFocused ? "#f1f3ff" : "#ffffff",
+        color: state.isSelected ? "#ffffff" : "#495057",
+        fontWeight: state.isSelected ? 500 : 400,
+        };
+      },
     }),
     []
   );
