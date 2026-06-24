@@ -1,8 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap");
 
 :root {
-  --bg: #f8f8fb;              /* app background */
-  --bg-soft: #f1f3f9;         /* softer surface */
+  --bg: #f1f3f7;              /* app background */
+  --bg-soft: #eceff5;         /* softer surface */
   --card-bg: #ffffff;         /* card background */
   --card-bg-elev: #ffffff;    /* elevated card background */
   --text: #495057;            /* body text */
@@ -15,6 +15,9 @@
   --header-border: #e9edf4;   /* header border */
   --header-text: #495057;     /* header text */
   --header-muted: #74788d;    /* muted header text */
+  --list-header-bg: #3a4461;  /* list table header (slightly lighter than top bar) */
+  --list-header-bg-2: #f5f7fc;
+  --list-separator: #dde3ef;
 }
 
 
@@ -47,12 +50,16 @@ textarea {
 
 .app-shell {
   min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-content {
   flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .project-header {
@@ -67,6 +74,9 @@ textarea {
   box-shadow: 0 1px 4px rgba(15, 34, 58, 0.2);
 
   color: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 1200;
 }
 
 .project-header__left,
@@ -771,11 +781,11 @@ select.auth-input option {
 
 .app-content > .module-page {
   margin: 0.85rem;
-  background: #ffffff;
-  border: 1px solid #eff2f7;
+  background: var(--card-bg-elev);
+  border: 1px solid #e3e8f2;
   border-radius: 12px;
   padding: 1rem;
-  box-shadow: 0 1px 2px rgba(15, 34, 58, 0.04);
+  box-shadow: 0 2px 6px rgba(15, 34, 58, 0.06);
 }
 
 .module-page__title {
@@ -795,6 +805,7 @@ select.auth-input option {
 
 .users-table-wrap--sticky {
   overflow-y: auto;
+  max-height: 60vh;
 }
 
 .users-status {
@@ -820,6 +831,20 @@ select.auth-input option {
   overflow: hidden;
 }
 
+.users-table thead th {
+  position: sticky;
+}
+
+.users-table thead tr:first-child th {
+  top: 0;
+  z-index: 6;
+}
+
+.users-table thead tr:nth-child(2) th {
+  top: 41px;
+  z-index: 5;
+}
+
 .users-table th,
 .users-table td {
   padding: 0.65rem 0.7rem;
@@ -829,9 +854,35 @@ select.auth-input option {
 }
 
 .users-table th {
-  background: #f8f9fc;
-  color: #495057;
+  background: var(--list-header-bg);
+  color: #f7f9ff;
   font-weight: 600;
+}
+
+.users-table thead tr:first-child th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.users-table thead tr:nth-child(2) th {
+  background: var(--list-header-bg-2);
+  color: #495057;
+}
+
+.users-table__sort-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.users-table__sort-icon {
+  color: inherit;
+  opacity: 0.9;
 }
 
 .projects-table--no-header-bg .users-table th,
@@ -840,9 +891,11 @@ select.auth-input option {
 }
 
 .users-table__sticky-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  z-index: 5;
+}
+
+.users-table__sticky-filter {
+  z-index: 4;
 }
 
 .users-table tbody tr:hover {
@@ -1536,6 +1589,8 @@ select.auth-input option {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.2rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--list-separator);
 }
 
 .crud-add-btn {
@@ -1673,6 +1728,28 @@ select.auth-input option {
   gap: 0.5rem;
   justify-content: flex-end;
   padding-top: 0.4rem;
+}
+
+.projects-detail-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.projects-detail-form__full-row,
+.projects-detail-form__actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .projects-detail-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .projects-detail-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .stock-purchase-add-form {

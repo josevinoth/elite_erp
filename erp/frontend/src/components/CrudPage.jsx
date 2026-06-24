@@ -4,6 +4,95 @@ import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } 
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 
+const AUDIT_COLUMN_KEYS = ["updated_by", "updated_on"];
+
+function normalizeUpdatedBy(row) {
+  const labelValue =
+    row?.updated_by_label ??
+    row?.updatedByLabel ??
+    row?.updated_by_username ??
+    row?.updatedByUsername ??
+    row?.modified_by_label ??
+    row?.modifiedByLabel ??
+    row?.created_by_label ??
+    row?.createdByLabel ??
+    "";
+
+  if (labelValue != null && String(labelValue).trim()) {
+    return String(labelValue).trim();
+  }
+
+  const value =
+    row?.updated_by ??
+    row?.updatedBy ??
+    row?.modified_by ??
+    row?.modifiedBy ??
+    row?.created_by ??
+    row?.createdBy ??
+    "";
+
+  if (value && typeof value === "object") {
+    return String(value.username || value.name || value.label || value.email || value.id || "");
+  }
+  return value == null ? "" : String(value);
+}
+
+function normalizeUpdatedOn(row) {
+  const raw =
+    row?.updated_on ??
+    row?.updatedOn ??
+    row?.updated_at ??
+    row?.updatedAt ??
+    row?.modified_at ??
+    row?.modifiedAt ??
+    row?.last_updated ??
+    row?.lastUpdated ??
+    "";
+
+  const text = raw == null ? "" : String(raw).trim();
+  if (!text) {
+    return "";
+  }
+  if (text.includes("T")) {
+    return text.replace("T", " ").replace("Z", "").slice(0, 19);
+  }
+  return text;
+}
+
+function formatDateTimeForTable(value) {
+  if (value == null) {
+    return "";
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return "";
+  }
+
+  const isoLikePattern = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/;
+  const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (isoLikePattern.test(text)) {
+    const normalized = text.replace("T", " ");
+    const main = normalized.split("+")[0].split("Z")[0].split(".")[0].trim();
+    return main.slice(0, 19);
+  }
+
+  if (dateOnlyPattern.test(text)) {
+    return text;
+  }
+
+  return text;
+}
+
+function withAuditFields(row) {
+  return {
+    ...row,
+    updated_by: normalizeUpdatedBy(row),
+    updated_on: normalizeUpdatedOn(row),
+  };
+}
+
 /**
  * Reusable CRUD page with list table + add/edit modal.
  *
@@ -27,7 +116,7 @@ function CrudPage({
   deleteFn,
   rowKey = "id",
   tableMaxHeight = null,
-  stickyHeader = false,
+  stickyHeader = true,
   tableWrapClassName = "",
   showAddButton = true,
   showExportButton = true,
@@ -53,6 +142,7 @@ function CrudPage({
   renderFormExtension = null, // ({ editRow, formValues, setFormValues }) => ReactNode
   onEditOpen = null, // (row) => void | Promise<void>
   editButtonTo = null, // string | (row) => string
+  includeAuditColumns = true,
 }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
@@ -71,6 +161,22 @@ function CrudPage({
   const autoEditOpenedRef = useRef(false);
 
   const reloadRows = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const tableColumns = useMemo(() => {
+    if (!includeAuditColumns) {
+      return columns;
+    }
+    const updatedByLabel = columns.find((c) => c.key === "updated_by")?.label || "Updated By";
+    const updatedOnLabel = columns.find((c) => c.key === "updated_on")?.label || "Updated On";
+    const baseColumns = columns.filter((c) => !AUDIT_COLUMN_KEYS.includes(c.key));
+    return [
+      ...baseColumns,
+      { key: "updated_by", label: updatedByLabel },
+      { key: "updated_on", label: updatedOnLabel },
+    ];
+  }, [columns, includeAuditColumns]);
+
+  const normalizedRows = useMemo(() => rows.map((row) => withAuditFields(row)), [rows]);
 
   const emptyForm = () =>
     Object.fromEntries(fields.map((f) => [f.key, f.default ?? ""]));
@@ -367,14 +473,14 @@ function CrudPage({
     );
 
     const filtered = normalizedFilters.length
-      ? rows.filter((row) =>
+      ? normalizedRows.filter((row) =>
           normalizedFilters.every(([key, value]) =>
             String(row[key] ?? "")
               .toLowerCase()
               .includes(String(value).trim().toLowerCase())
           )
         )
-      : rows;
+      : normalizedRows;
 
     if (!sortConfig.key) {
       return filtered;
@@ -402,7 +508,7 @@ function CrudPage({
       }
       return sortConfig.direction === "asc" ? cmp : -cmp;
     });
-  }, [rows, filters, sortConfig]);
+  }, [normalizedRows, filters, sortConfig]);
 
   const handleRowSelection = (id) => {
     setSelectedRowIds((prev) => {
@@ -438,7 +544,7 @@ function CrudPage({
       await exportRowsToExcel({
         fileName: exportFileName || title,
         sheetName: title,
-        columns,
+        columns: tableColumns,
         rows: displayedRows,
       });
     } catch (err) {
@@ -453,6 +559,8 @@ function CrudPage({
     typeof saveDisabledPredicate === "function"
       ? saveDisabledPredicate(editRow, formValues)
       : false;
+
+  const effectiveTableMaxHeight = tableMaxHeight || (stickyHeader ? "60vh" : null);
 
   return (
     <section className="module-page crud-page">
@@ -499,7 +607,7 @@ function CrudPage({
 
       <div
         className={`users-table-wrap${stickyHeader ? " users-table-wrap--sticky" : ""}${tableWrapClassName ? ` ${tableWrapClassName}` : ""}`}
-        style={tableMaxHeight ? { maxHeight: tableMaxHeight, overflowY: "auto" } : undefined}
+        style={effectiveTableMaxHeight ? { maxHeight: effectiveTableMaxHeight, overflowY: "auto" } : undefined}
       >
         <table className="users-table">
           <thead>
@@ -517,7 +625,7 @@ function CrudPage({
                   />
                 </th>
               ) : null}
-              {columns.map((col) => (
+                {tableColumns.map((col) => (
                 <th
                   key={col.key}
                   className={stickyHeader ? "users-table__sticky-head" : undefined}
@@ -541,9 +649,9 @@ function CrudPage({
               <th className={stickyHeader ? "users-table__sticky-head" : undefined}>Actions</th>
             </tr>
             <tr>
-              {enableBulkSelect ? <th /> : null}
-              {columns.map((col) => (
-                <th key={`filter-${col.key}`}>
+              {enableBulkSelect ? <th className={stickyHeader ? "users-table__sticky-filter" : undefined} /> : null}
+              {tableColumns.map((col) => (
+                <th key={`filter-${col.key}`} className={stickyHeader ? "users-table__sticky-filter" : undefined}>
                   <input
                     className="users-table__filter-input"
                     type="text"
@@ -553,13 +661,13 @@ function CrudPage({
                   />
                 </th>
               ))}
-              <th />
+              <th className={stickyHeader ? "users-table__sticky-filter" : undefined} />
             </tr>
           </thead>
           <tbody>
             {!loading && displayedRows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (enableBulkSelect ? 2 : 1)}>No records found.</td>
+                <td colSpan={tableColumns.length + (enableBulkSelect ? 2 : 1)}>No records found.</td>
               </tr>
             ) : null}
             {displayedRows.map((row) => (
@@ -574,8 +682,8 @@ function CrudPage({
                     />
                   </td>
                 ) : null}
-                {columns.map((col) => (
-                  <td key={col.key}>{row[col.key]}</td>
+                {tableColumns.map((col) => (
+                  <td key={col.key}>{formatDateTimeForTable(row[col.key])}</td>
                 ))}
                 <td>
                   <div className="users-actions">

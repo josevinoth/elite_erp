@@ -96,9 +96,10 @@ function ProjectsPage() {
       createFn={createFn}
       updateFn={updateFn}
       deleteFn={deleteProject}
+      addButtonTo="/projects/add"
+      editButtonTo={(row) => `/projects/record/${row.id}`}
       tableMaxHeight="55vh"
       stickyHeader
-      tableWrapClassName="projects-table--no-header-bg"
     />
   );
 }

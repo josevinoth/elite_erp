@@ -154,6 +154,7 @@ def login_api_view(request):
             "success": True,
             "message": "Logged in successfully.",
             "user": {
+                "id": user.id,
                 "username": user.username,
                 "email": user.email,
                 "role": _resolve_user_role(user),

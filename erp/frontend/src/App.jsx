@@ -11,6 +11,7 @@ import LceListPage from "./pages/LceListPage";
 import LoginPage from "./pages/LoginPage";
 import ModulePage from "./pages/ModulePage";
 import PendingApprovalsPage from "./pages/PendingApprovalsPage";
+import ProjectsAddPage from "./pages/ProjectsAddPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -126,6 +127,8 @@ function App() {
                         <Route path="/users-management" element={adminRoute(<UsersManagementPage/>)}/>
                         <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage/>)}/>
                         <Route path="/projects" element={secureRoute(<ProjectsPage/>)}/>
+                        <Route path="/projects/add" element={secureRoute(<ProjectsAddPage/>)}/>
+                        <Route path="/projects/record/:projectId" element={secureRoute(<ProjectsAddPage/>)}/>
                         <Route path="/projects/cut-optimiser" element={secureRoute(<CutOptimiserListPage/>)}/>
                         <Route path="/projects/cut-optimiser/add" element={secureRoute(<CutSheetOptimiser/>)}/>
                         <Route path="/projects/cut-optimiser/record/:recordId"

@@ -1,6 +1,5 @@
 import datetime
 
-from django.contrib.auth.models import User
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -8,6 +7,7 @@ from rest_framework import status
 
 from ..serializers import ProjectSerializer
 from ..sub_models import Project, ProjectStatusOption
+from ..sub_models.yes_no_mod import yesno_info
 from ..utils import normalize_text, to_title_case
 
 
@@ -23,9 +23,18 @@ def _to_date(value):
     if isinstance(value, datetime.date):
         return value
     try:
-        return datetime.date.fromisoformat(str(value).split(' ')[0])
+        return datetime.date.fromisoformat(str(value).split(' ')[0].split('T')[0])
     except (TypeError, ValueError, AttributeError):
         return None
+
+
+def _resolve_yesno_option(value):
+    if value in (None, ''):
+        return None
+    try:
+        return yesno_info.objects.get(id=int(value))
+    except (TypeError, ValueError, yesno_info.DoesNotExist):
+        raise ValueError('Invalid yes/no option.')
 
 
 def _serialize(project):
@@ -34,7 +43,22 @@ def _serialize(project):
         'project_id': project.project_id,
         'description': project.description,
         'project_name': project.project_name,
+        'project_location': project.project_location,
         'proposal_date': str(project.proposal_date) if project.proposal_date else '',
+        'material_required_date': str(project.material_required_date) if project.material_required_date else '',
+        'project_completion_date': str(project.project_completion_date) if project.project_completion_date else '',
+        'mas_approved': project.mas_approved_id,
+        'advance_payment_received': project.advance_payment_received_id,
+        'prod_dwg_issued': project.prod_dwg_issued_id,
+        'prod_dwg_issued_justification': project.prod_dwg_issued_justification,
+        'prod_dwg_release_date': str(project.prod_dwg_release_date) if project.prod_dwg_release_date else '',
+        'prod_dwg_issued_sf': project.prod_dwg_issued_sf_id,
+        'prod_dwg_issued_sf_justification': project.prod_dwg_issued_sf_justification,
+        'prod_dwg_release_date_sf': str(project.prod_dwg_release_date_sf) if project.prod_dwg_release_date_sf else '',
+        'mas_justification': project.mas_justification,
+        'drawing_approved': project.drawing_approved_id,
+        'drawing_justification': project.drawing_justification,
+        'prev_proj_replica': project.prev_proj_replica_id,
         'updated_by': project.updated_by.id if project.updated_by else None,
         'order_value_omr': '' if project.order_value_omr is None else str(project.order_value_omr),
         'status': project.status.name if project.status else '',
@@ -57,7 +81,11 @@ def _project_exists_case_insensitive(project_id, project_name, exclude_id=None):
 @permission_classes([IsAuthenticated])
 def list_project_lifecycle_meta_api_view(request):
     statuses = list(ProjectStatusOption.objects.order_by("name").values_list("name", flat=True))
-    return Response({"statuses": statuses}, status=status.HTTP_200_OK)
+    yes_no_options = [
+        {"value": str(option.id), "label": option.yn_value}
+        for option in yesno_info.objects.order_by("-yn_value")
+    ]
+    return Response({"statuses": statuses, "yes_no_options": yes_no_options}, status=status.HTTP_200_OK)
 
 
 
@@ -95,24 +123,52 @@ def create_project_api_view(request):
     status_obj = None
     if status_name:
         status_obj, _ = ProjectStatusOption.objects.get_or_create(name=status_name)
-    user_id = payload.get('updated_by')
-    if user_id:
-        try:
-            updated_by_user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response({'message': 'Invalid updated_by user.'}, status=status.HTTP_400_BAD_REQUEST)
-    else:
-        updated_by_user = request.user
+
+    try:
+        mas_approved = _resolve_yesno_option(payload.get('mas_approved'))
+        advance_payment_received = _resolve_yesno_option(payload.get('advance_payment_received'))
+        prod_dwg_issued = _resolve_yesno_option(payload.get('prod_dwg_issued'))
+        prod_dwg_issued_sf = _resolve_yesno_option(payload.get('prod_dwg_issued_sf'))
+        drawing_approved = _resolve_yesno_option(payload.get('drawing_approved'))
+        prev_proj_replica = _resolve_yesno_option(payload.get('prev_proj_replica'))
+    except ValueError as exc:
+        return Response({'message': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    create_kwargs = {
+        'project_id': project_id,
+        'description': normalize_text(payload.get('description', '')),
+        'project_name': project_name,
+        'project_location': normalize_text(payload.get('project_location', '')),
+        'proposal_date': _to_date(payload.get('proposal_date')),
+        'material_required_date': _to_date(payload.get('material_required_date')),
+        'project_completion_date': _to_date(payload.get('project_completion_date')),
+        'prod_dwg_issued_justification': normalize_text(payload.get('prod_dwg_issued_justification', '')),
+        'prod_dwg_release_date': _to_date(payload.get('prod_dwg_release_date')),
+        'prod_dwg_issued_sf_justification': normalize_text(payload.get('prod_dwg_issued_sf_justification', '')),
+        'prod_dwg_release_date_sf': _to_date(payload.get('prod_dwg_release_date_sf')),
+        'mas_justification': normalize_text(payload.get('mas_justification', '')),
+        'drawing_justification': normalize_text(payload.get('drawing_justification', '')),
+        'updated_by': request.user,
+        'order_value_omr': _to_decimal_or_none(payload.get('order_value_omr')),
+        'status': status_obj,
+        'expected_customer_need_date': _to_date(payload.get('expected_customer_need_date')),
+    }
+
+    if mas_approved is not None:
+        create_kwargs['mas_approved'] = mas_approved
+    if advance_payment_received is not None:
+        create_kwargs['advance_payment_received'] = advance_payment_received
+    if prod_dwg_issued is not None:
+        create_kwargs['prod_dwg_issued'] = prod_dwg_issued
+    if prod_dwg_issued_sf is not None:
+        create_kwargs['prod_dwg_issued_sf'] = prod_dwg_issued_sf
+    if drawing_approved is not None:
+        create_kwargs['drawing_approved'] = drawing_approved
+    if prev_proj_replica is not None:
+        create_kwargs['prev_proj_replica'] = prev_proj_replica
 
     project = Project.objects.create(
-        project_id=project_id,
-        description=normalize_text(payload.get('description', '')),
-        project_name=project_name,
-        proposal_date=_to_date(payload.get('proposal_date')),
-        updated_by=updated_by_user,
-        order_value_omr=_to_decimal_or_none(payload.get('order_value_omr')),
-        status=status_obj,
-        expected_customer_need_date=_to_date(payload.get('expected_customer_need_date')),
+        **create_kwargs,
     )
     return Response({'success': True, 'project': _serialize(project)}, status=status.HTTP_201_CREATED)
 
@@ -131,7 +187,6 @@ def project_detail_api_view(request, project_id):
     payload = request.data or {}
     project_id = normalize_text(payload.get('project_id', project.project_id))
     project_name = normalize_text(payload.get('project_name', project.project_name))
-    user_id = payload.get('updated_by')
     if not project_id:
         return Response({'message': 'Project ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
     if _project_exists_case_insensitive(project_id, project_name, exclude_id=project.id):
@@ -139,14 +194,37 @@ def project_detail_api_view(request, project_id):
     project.project_id = project_id
     project.description = normalize_text(payload.get('description', project.description))
     project.project_name = project_name
+    project.project_location = normalize_text(payload.get('project_location', project.project_location))
     project.proposal_date = _to_date(payload.get('proposal_date', project.proposal_date))
-    if user_id:
-        try:
-            project.updated_by = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response({'message': 'Invalid updated_by user.'}, status=status.HTTP_400_BAD_REQUEST)
-    else:
-        project.updated_by = request.user
+    project.material_required_date = _to_date(payload.get('material_required_date', project.material_required_date))
+    project.project_completion_date = _to_date(payload.get('project_completion_date', project.project_completion_date))
+    project.prod_dwg_issued_justification = normalize_text(
+        payload.get('prod_dwg_issued_justification', project.prod_dwg_issued_justification)
+    )
+    project.prod_dwg_release_date = _to_date(payload.get('prod_dwg_release_date', project.prod_dwg_release_date))
+    project.prod_dwg_issued_sf_justification = normalize_text(
+        payload.get('prod_dwg_issued_sf_justification', project.prod_dwg_issued_sf_justification)
+    )
+    project.prod_dwg_release_date_sf = _to_date(payload.get('prod_dwg_release_date_sf', project.prod_dwg_release_date_sf))
+    project.mas_justification = normalize_text(payload.get('mas_justification', project.mas_justification))
+    project.drawing_justification = normalize_text(payload.get('drawing_justification', project.drawing_justification))
+    project.updated_by = request.user
+
+    yesno_fields = [
+        'mas_approved',
+        'advance_payment_received',
+        'prod_dwg_issued',
+        'prod_dwg_issued_sf',
+        'drawing_approved',
+        'prev_proj_replica',
+    ]
+    for field_name in yesno_fields:
+        if field_name in payload and payload.get(field_name) not in (None, ''):
+            try:
+                setattr(project, field_name, _resolve_yesno_option(payload.get(field_name)))
+            except ValueError as exc:
+                return Response({'message': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
     if 'order_value_omr' in payload:
         project.order_value_omr = _to_decimal_or_none(payload.get('order_value_omr'))
     status_name = to_title_case(payload.get('status', project.status.name if project.status else ''))
