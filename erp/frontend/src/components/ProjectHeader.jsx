@@ -10,6 +10,7 @@ function ProjectHeader({
                            onLogout,
                            taskAlerts = {count: 0, items: []},
                            messageAlerts = {count: 0, items: []},
+                           layoutDrawingAlerts = {count: 0, items: []},
                        }) {
     const navigate = useNavigate();
 
@@ -19,6 +20,10 @@ function ProjectHeader({
 
     const openMessageAlertList = () => {
         navigate("/task?alert=messages");
+    };
+
+    const openLayoutDrawingAlertList = () => {
+        navigate("/projects/layout-drawing-approval");
     };
 
     return (
@@ -47,6 +52,19 @@ function ProjectHeader({
                         <BellIcon className="app-icon"/>
                         {taskAlerts.count > 0 ?
                             <span className="project-header__alert-badge">{taskAlerts.count}</span> : null}
+                    </button>
+                </div>
+
+                <div className="project-header__alerts">
+                    <button
+                        type="button"
+                        className="project-header__alert-btn"
+                        onClick={openLayoutDrawingAlertList}
+                        title="View pending layout drawing approvals"
+                    >
+                        <BellIcon className="app-icon"/>
+                        {layoutDrawingAlerts.count > 0 ?
+                            <span className="project-header__alert-badge">{layoutDrawingAlerts.count}</span> : null}
                     </button>
                 </div>
 

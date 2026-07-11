@@ -1,4 +1,6 @@
 from django.urls import path
+
+from .sub_views.project_layout_drawing_view import list_project_layout_drawings, upload_project_layout_drawing
 from .views import (
     csrf_token_view,
     approve_registration_api_view,
@@ -8,6 +10,7 @@ from .views import (
     list_users_api_view,
     list_pending_registrations_api_view,
     list_projects_api_view,
+    list_layout_drawing_approvals_api_view,
     list_project_lifecycle_meta_api_view,
     list_vendors_api_view,
     login_api_view,
@@ -87,6 +90,11 @@ from .views import (
     create_lab_furniture_item_category_api_view,
     create_lab_furniture_item_api_view,
     lab_furniture_item_detail_api_view,
+    list_item_costing_api_view,
+    item_costing_meta_api_view,
+    item_costing_cost_preview_api_view,
+    create_item_costing_api_view,
+    item_costing_detail_api_view,
     list_uoms_api_view,
     list_stock_purchase_status_options_api_view,
     list_cut_optimiser,
@@ -95,6 +103,7 @@ from .views import (
     list_cut_sizes,
     cut_size_detail
 )
+from .sub_views import list_project_layout_drawings_api_view, save_project_layout_drawings_api_view
 
 urlpatterns = [
     # cut optimiser
@@ -123,9 +132,12 @@ urlpatterns = [
     path('api/vendors/<int:vendor_id>/', vendor_detail_api_view, name='api-vendors-detail'),
     # projects
     path('api/projects/', list_projects_api_view, name='api-projects-list'),
+    path('api/projects/layout-drawing-approvals/', list_layout_drawing_approvals_api_view, name='api-project-layout-drawing-approvals'),
     path('api/projects/meta/', list_project_lifecycle_meta_api_view, name='api-projects-meta'),
     path('api/projects/create/', create_project_api_view, name='api-projects-create'),
     path('api/projects/<int:project_id>/', project_detail_api_view, name='api-projects-detail'),
+    path('api/projects/<int:project_id>/layout-drawings/', list_project_layout_drawings_api_view, name='api-project-layout-drawings-list'),
+    path('api/projects/<int:project_id>/layout-drawings/save/', save_project_layout_drawings_api_view, name='api-project-layout-drawings-save'),
     path('api/projects/status-options/add/', create_project_lifecycle_status_option_api_view, name='api-projects-status-add'),
     # stock purchase
     path('api/stock-purchases/', list_stock_purchases_api_view, name='api-stock-purchases-list'),
@@ -205,6 +217,15 @@ urlpatterns = [
     path('api/lab-furniture-item-categories/create/', create_lab_furniture_item_category_api_view, name='api-lab-furniture-item-categories-create'),
     path('api/lab-furniture-items/create/', create_lab_furniture_item_api_view, name='api-lab-furniture-items-create'),
     path('api/lab-furniture-items/<int:pk>/', lab_furniture_item_detail_api_view, name='api-lab-furniture-items-detail'),
+    # item costing
+    path('api/itemcosting/', list_item_costing_api_view, name='api-item-costing-list'),
+    path('api/itemcosting/meta/', item_costing_meta_api_view, name='api-item-costing-meta'),
+    path('api/itemcosting/cost-preview/', item_costing_cost_preview_api_view, name='api-item-costing-cost-preview'),
+    path('api/itemcosting/create/', create_item_costing_api_view, name='api-item-costing-create'),
+    path('api/itemcosting/<int:pk>/', item_costing_detail_api_view, name='api-item-costing-detail'),
     # uoms
     path('api/uoms/', list_uoms_api_view, name='api-list-uoms'),
+    # project layout
+    path("api/projects/<int:project_id>/layout-drawings/",list_project_layout_drawings,name="list_project_layout_drawings"),
+    path("api/projects/<int:project_id>/layout-drawings/upload/",upload_project_layout_drawing,name="upload_project_layout_drawing"),
 ]

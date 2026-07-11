@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BsBarChartFill,
+  BsBoxSeam,
   BsBuildingFill,
   BsCashCoin,
+  BsFileEarmarkTextFill,
   BsFolder2Open,
   BsHourglassSplit,
   BsKanbanFill,
@@ -13,13 +15,25 @@ import {
 } from "react-icons/bs";
 import HomeSideNav from "../components/HomeSideNav";
 import { listPendingRegistrations } from "../services/authApi";
+import { listLayoutDrawingApprovals } from "../services/crudApi";
 
 function HomeLayout({ currentUser }) {
   const [pendingCount, setPendingCount] = useState(0);
+  const [layoutApprovalCount, setLayoutApprovalCount] = useState(0);
   const roleName = String(currentUser?.role || "").toLowerCase();
   const teamName = String(currentUser?.team || "").toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
   const isCdcTeam = teamName === "cdc team";
+
+  useEffect(() => {
+    listLayoutDrawingApprovals()
+      .then((data) => {
+        setLayoutApprovalCount(Array.isArray(data.records) ? data.records.length : 0);
+      })
+      .catch(() => {
+        setLayoutApprovalCount(0);
+      });
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -51,6 +65,19 @@ function HomeLayout({ currentUser }) {
         ]
       : []),
     { title: "Projects", stat: "Track active work", to: "/projects", icon: BsFolder2Open },
+    {
+      title: "Layout Drawing Approval",
+      stat: layoutApprovalCount > 0 ? `${layoutApprovalCount} awaiting your action` : "No pending approvals",
+      to: "/projects/layout-drawing-approval",
+      icon: BsFileEarmarkTextFill,
+      badge: layoutApprovalCount,
+    },
+    {
+      title: "Item Costing",
+      stat: "Costing records and totals",
+      to: "/item-costing",
+      icon: BsBoxSeam,
+    },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
     { title: "Orders:", stat: "Project Orders", to: "/stocks", icon: BsBarChartFill },
     { title: "Stocks:", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },

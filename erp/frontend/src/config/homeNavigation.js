@@ -24,6 +24,24 @@ export const homeNavItems = [
     label: "Projects",
     to: "/projects",
     icon: "projects",
+    disableParentNavigation: true,
+    children: [
+      {
+        label: "Projects List",
+        to: "/projects",
+        icon: "projects",
+      },
+      {
+        label: "Layout Drawing Approval",
+        to: "/projects/layout-drawing-approval",
+        icon: "layoutDrawingApproval",
+      },
+      {
+        label: "Item Costing",
+        to: "/item-costing",
+        icon: "itemMaster",
+      },
+    ],
   },
   { label: "LCE", to: "/projects/costing", icon: "costing" },
   { label: "Vendors", to: "/vendors", icon: "vendors" },

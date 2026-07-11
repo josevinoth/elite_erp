@@ -142,6 +142,17 @@ function CdcTeamExpencePage() {
     return data.id;
   };
 
+  const appendPaidBy = async (name) => {
+    // For Paid By, we add it to the options directly
+    // The validation will occur in the backend
+    setPaidByOptions((prev) => {
+      const newOption = { value: name, label: name };
+      const exists = prev.some((opt) => opt.value === name);
+      return exists ? prev : [...prev, newOption];
+    });
+    return name;
+  };
+
   const computeValues = useCallback((changedKey, changedValue, allValues) => {
     if (changedKey === "qty" || changedKey === "price") {
       const qty = Number.parseInt(changedKey === "qty" ? changedValue : allValues.qty, 10);
@@ -191,7 +202,7 @@ function CdcTeamExpencePage() {
         required: true,
         default: unpaidStatusId,
       },
-      { key: "paid_by", label: "Paid By", options: paidByOptions, required: true },
+      { key: "paid_by", label: "Paid By", options: paidByOptions, onAppend: appendPaidBy, required: true },
       { key: "settled_on", label: "Settled On", type: "date" },
       {
         key: "settled_by",

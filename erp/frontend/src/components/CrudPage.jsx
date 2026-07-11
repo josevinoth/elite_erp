@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
+import PaginationControls from "./PaginationControls";
 
 const AUDIT_COLUMN_KEYS = ["updated_by", "updated_on"];
 
@@ -49,14 +50,15 @@ function normalizeUpdatedOn(row) {
     row?.lastUpdated ??
     "";
 
-  const text = raw == null ? "" : String(raw).trim();
-  if (!text) {
-    return "";
-  }
-  if (text.includes("T")) {
-    return text.replace("T", " ").replace("Z", "").slice(0, 19);
-  }
-  return text;
+  return raw == null ? "" : String(raw).trim();
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toLocalDateTimeText(dateObj) {
+  return `${dateObj.getFullYear()}-${pad2(dateObj.getMonth() + 1)}-${pad2(dateObj.getDate())} ${pad2(dateObj.getHours())}:${pad2(dateObj.getMinutes())}:${pad2(dateObj.getSeconds())}`;
 }
 
 function formatDateTimeForTable(value) {
@@ -71,11 +73,24 @@ function formatDateTimeForTable(value) {
 
   const isoLikePattern = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/;
   const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+  const hasTimezonePattern = /(Z|[+-]\d{2}:?\d{2})$/;
 
   if (isoLikePattern.test(text)) {
-    const normalized = text.replace("T", " ");
-    const main = normalized.split("+")[0].split("Z")[0].split(".")[0].trim();
-    return main.slice(0, 19);
+    const normalizedIso = text.includes("T") ? text : text.replace(" ", "T");
+
+    if (hasTimezonePattern.test(normalizedIso)) {
+      const parsed = new Date(normalizedIso);
+      if (!Number.isNaN(parsed.getTime())) {
+        return toLocalDateTimeText(parsed);
+      }
+    }
+
+    const cleaned = normalizedIso
+      .replace("T", " ")
+      .replace(/([+-]\d{2}:?\d{2}|Z)$/i, "")
+      .split(".")[0]
+      .trim();
+    return cleaned.slice(0, 19);
   }
 
   if (dateOnlyPattern.test(text)) {
@@ -143,6 +158,11 @@ function CrudPage({
   onEditOpen = null, // (row) => void | Promise<void>
   editButtonTo = null, // string | (row) => string
   includeAuditColumns = true,
+  defaultPageSize = 20,
+  pageSizeOptions = [10, 20, 50, 100],
+  enablePagination = true,
+  showEditButton = true,
+  showDeleteButton = true,
 }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
@@ -157,6 +177,8 @@ function CrudPage({
   const [filters, setFilters] = useState({});
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
   const autoOpenedRef = useRef(false);
   const autoEditOpenedRef = useRef(false);
 
@@ -510,6 +532,29 @@ function CrudPage({
     });
   }, [normalizedRows, filters, sortConfig]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [filters, sortConfig]);
+
+  const totalCount = displayedRows.length;
+  useEffect(() => {
+    if (!enablePagination) return;
+    const safePageSize = Math.max(Number(pageSize || 1), 1);
+    const totalPages = Math.max(1, Math.ceil(totalCount / safePageSize));
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [enablePagination, page, pageSize, totalCount]);
+
+  const pagedRows = useMemo(() => {
+    if (!enablePagination) {
+      return displayedRows;
+    }
+    const safePageSize = Math.max(Number(pageSize || 1), 1);
+    const start = (page - 1) * safePageSize;
+    return displayedRows.slice(start, start + safePageSize);
+  }, [displayedRows, enablePagination, page, pageSize]);
+
   const handleRowSelection = (id) => {
     setSelectedRowIds((prev) => {
       const next = new Set(prev);
@@ -524,18 +569,18 @@ function CrudPage({
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
-      setSelectedRowIds(new Set(displayedRows.map((row) => row[rowKey])));
+      setSelectedRowIds(new Set(pagedRows.map((row) => row[rowKey])));
     } else {
       setSelectedRowIds(new Set());
     }
   };
 
   const allDisplayedSelected =
-    displayedRows.length > 0 &&
-    displayedRows.every((row) => selectedRowIds.has(row[rowKey]));
+    pagedRows.length > 0 &&
+    pagedRows.every((row) => selectedRowIds.has(row[rowKey]));
   const someDisplayedSelected =
-    displayedRows.length > 0 &&
-    displayedRows.some((row) => selectedRowIds.has(row[rowKey]));
+    pagedRows.length > 0 &&
+    pagedRows.some((row) => selectedRowIds.has(row[rowKey]));
 
   const handleExport = async () => {
     setError("");
@@ -545,7 +590,7 @@ function CrudPage({
         fileName: exportFileName || title,
         sheetName: title,
         columns: tableColumns,
-        rows: displayedRows,
+        rows: pagedRows,
       });
     } catch (err) {
       setError(err.message || "Export failed.");
@@ -607,7 +652,7 @@ function CrudPage({
 
       <div
         className={`users-table-wrap${stickyHeader ? " users-table-wrap--sticky" : ""}${tableWrapClassName ? ` ${tableWrapClassName}` : ""}`}
-        style={effectiveTableMaxHeight ? { maxHeight: effectiveTableMaxHeight, overflowY: "auto" } : undefined}
+        style={effectiveTableMaxHeight ? { maxHeight: effectiveTableMaxHeight, overflow: "auto" } : { overflow: "auto" }}
       >
         <table className="users-table">
           <thead>
@@ -665,12 +710,12 @@ function CrudPage({
             </tr>
           </thead>
           <tbody>
-            {!loading && displayedRows.length === 0 ? (
+            {!loading && pagedRows.length === 0 ? (
               <tr>
                 <td colSpan={tableColumns.length + (enableBulkSelect ? 2 : 1)}>No records found.</td>
               </tr>
             ) : null}
-            {displayedRows.map((row) => (
+            {pagedRows.map((row) => (
               <tr key={row[rowKey]}>
                 {enableBulkSelect ? (
                   <td>
@@ -711,7 +756,7 @@ function CrudPage({
                         </button>
                       );
                     })}
-                    {(() => {
+                    {showEditButton ? (() => {
                       const editDisabled =
                         typeof editDisabledPredicate === "function"
                           ? editDisabledPredicate(row)
@@ -728,8 +773,8 @@ function CrudPage({
                           <BsPencilSquare aria-hidden="true" />
                         </button>
                       );
-                    })()}
-                    {(() => {
+                    })() : null}
+                    {showDeleteButton ? (() => {
                       const deleteDisabled =
                         typeof deleteDisabledPredicate === "function"
                           ? deleteDisabledPredicate(row)
@@ -746,7 +791,7 @@ function CrudPage({
                           <BsTrashFill aria-hidden="true" />
                         </button>
                       );
-                    })()}
+                    })() : null}
                   </div>
                 </td>
               </tr>
@@ -754,6 +799,20 @@ function CrudPage({
           </tbody>
         </table>
       </div>
+
+      {enablePagination ? (
+        <PaginationControls
+          page={page}
+          setPage={setPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          pageSizeOptions={pageSizeOptions}
+        />
+      ) : null}
 
       {showModal ? (
         <div className="modal-overlay" onClick={closeModal}>

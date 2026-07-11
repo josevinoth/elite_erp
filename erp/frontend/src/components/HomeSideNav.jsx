@@ -37,6 +37,7 @@ const iconMap = {
   customerPo: BsReceiptCutoff,
   costing: BsCashCoin,
   cutOptimiser: BsKanbanFill,
+  layoutDrawingApproval: BsFileEarmarkTextFill,
   pendingApprovals: BsPersonCheck,
   userRegistration: BsPersonPlusFill,
 };

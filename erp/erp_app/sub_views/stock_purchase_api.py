@@ -73,6 +73,12 @@ def _serialize(obj):
 
     return {
         "id": obj.pk,
+        "purchase_number": obj.purchase_id,
+        "vendor_detail": vendor_detail,
+        "notes": obj.notes or "",
+        "status_id": obj.status_id,
+        "items": [_serialize_item(item) for item in items] if items else [],
+        # Legacy/compatibility fields for lists view
         "purchase_id": getattr(obj, "purchase_id", obj.pk),
         "invoice_number": obj.invoice_number,
         "invoice_date": str(obj.invoice_date) if obj.invoice_date else "",
@@ -80,19 +86,17 @@ def _serialize(obj):
         "total_value": str(obj.total_value),
         "vendor_id": obj.vendor.pk if obj.vendor else None,
         "vendor_name": obj.vendor.name if obj.vendor else None,
-        "items": [_serialize_item(item) for item in items] if items else [],
         "items_count": len(items),
         "lce_linked_count": sum(1 for item in items if getattr(item, 'lce_estimate_id', None)),
         "purchase_total": str(sum((getattr(item, 'total_price', 0) for item in items), Decimal("0"))),
-        # legacy keys for UI compatibility
+        # legacy keys for UI compatibility in list view
         "item_name": first_item.item_name if first_item else "",
         "category": first_item.item_category if first_item else "",
         "vendor": obj.vendor.name if obj.vendor else "",
         "quantity": str(first_item.quantity) if first_item else "0",
         "unit_price": str(first_item.unit_price) if first_item else "0",
         "total_price": str(first_item.total_price) if first_item else "0",
-        "status": None,  # No status field in vendor detail
-        "status_id": None,
+        "status": None,
     }
 
 
@@ -315,6 +319,8 @@ def create_stock_purchase_api_view(request):
         invoice_date=p.get("invoice_date") or None,
         tax=_to_decimal(p.get("tax"), "0"),
         total_value=_to_decimal(p.get("total_value"), "0"),
+        notes=p.get("notes", ""),
+        status_id=p.get("status_id"),
     )
 
     items_payload = p.get("items") or []
@@ -357,6 +363,8 @@ def stock_purchase_detail_api_view(request, pk):
     obj.invoice_date = p.get("invoice_date", obj.invoice_date)
     obj.tax = _to_decimal(p.get("tax", obj.tax))
     obj.total_value = _to_decimal(p.get("total_value", obj.total_value))
+    obj.notes = p.get("notes", obj.notes)
+    obj.status_id = p.get("status_id", obj.status_id)
     obj.save()
 
     # Update items if provided

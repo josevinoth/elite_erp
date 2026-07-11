@@ -10,6 +10,8 @@ class StockPurchaseVendorDetail(models.Model):
     invoice_date = models.DateField(null=True, blank=True)
     tax = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_value = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    notes = models.TextField(blank=True, null=True)
+    status_id = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     purchase_id = models.CharField(max_length=10, unique=True, blank=True, null=True, db_index=True)

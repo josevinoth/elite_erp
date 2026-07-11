@@ -8,6 +8,9 @@ import CostingPage from "./pages/CostingPage";
 import CutOptimiserPage from "./pages/CutOptimiserPage";
 import HomeLayout from "./pages/HomeLayout";
 import LceListPage from "./pages/LceListPage";
+import LayoutDrawingApprovalPage from "./pages/LayoutDrawingApprovalPage";
+import ItemCostingFormPage from "./pages/ItemCostingFormPage";
+import ItemCostingListPage from "./pages/ItemCostingListPage";
 import LoginPage from "./pages/LoginPage";
 import ModulePage from "./pages/ModulePage";
 import PendingApprovalsPage from "./pages/PendingApprovalsPage";
@@ -43,6 +46,7 @@ function App() {
 
     const [taskAlerts, setTaskAlerts] = useState({count: 0, items: []});
     const [messageAlerts, setMessageAlerts] = useState({count: 0, items: []});
+    const [layoutDrawingAlerts, setLayoutDrawingAlerts] = useState({count: 0, items: []});
     const [notificationRefreshToken, setNotificationRefreshToken] = useState(0);
 
     const triggerNotificationRefresh = useCallback(() => {
@@ -53,6 +57,7 @@ function App() {
         if (!currentUser) {
             setTaskAlerts({count: 0, items: []});
             setMessageAlerts({count: 0, items: []});
+            setLayoutDrawingAlerts({count: 0, items: []});
             return;
         }
 
@@ -63,10 +68,12 @@ function App() {
                 if (!alive) return;
                 setTaskAlerts(data.task_alerts || {count: 0, items: []});
                 setMessageAlerts(data.message_alerts || {count: 0, items: []});
+                setLayoutDrawingAlerts(data.layout_drawing_alerts || {count: 0, items: []});
             } catch (_error) {
                 if (!alive) return;
                 setTaskAlerts({count: 0, items: []});
                 setMessageAlerts({count: 0, items: []});
+                setLayoutDrawingAlerts({count: 0, items: []});
             }
         };
 
@@ -109,6 +116,7 @@ function App() {
                 onLogout={handleLogout}
                 taskAlerts={taskAlerts}
                 messageAlerts={messageAlerts}
+                layoutDrawingAlerts={layoutDrawingAlerts}
             />
 
             <div className="app-content">
@@ -123,12 +131,15 @@ function App() {
                         />
 
                         <Route path="/home" element={secureRoute(<HomeLayout currentUser={currentUser}/>)}/>
-
                         <Route path="/users-management" element={adminRoute(<UsersManagementPage/>)}/>
                         <Route path="/pending-approvals" element={adminRoute(<PendingApprovalsPage/>)}/>
                         <Route path="/projects" element={secureRoute(<ProjectsPage/>)}/>
                         <Route path="/projects/add" element={secureRoute(<ProjectsAddPage/>)}/>
                         <Route path="/projects/record/:projectId" element={secureRoute(<ProjectsAddPage/>)}/>
+                        <Route path="/projects/layout-drawing-approval" element={secureRoute(<LayoutDrawingApprovalPage/>)}/>
+                        <Route path="/item-costing" element={secureRoute(<ItemCostingListPage/>)}/>
+                        <Route path="/item-costing/add" element={secureRoute(<ItemCostingFormPage/>)}/>
+                        <Route path="/item-costing/:id" element={secureRoute(<ItemCostingFormPage/>)}/>
                         <Route path="/projects/cut-optimiser" element={secureRoute(<CutOptimiserListPage/>)}/>
                         <Route path="/projects/cut-optimiser/add" element={secureRoute(<CutSheetOptimiser/>)}/>
                         <Route path="/projects/cut-optimiser/record/:recordId"

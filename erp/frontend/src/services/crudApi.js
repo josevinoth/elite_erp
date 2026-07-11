@@ -119,6 +119,52 @@ export async function addProjectLifecycleStatusOption(name) {
   return parseJson(res);
 }
 
+export async function listProjectLayoutDrawings(projectId) {
+  const res = await fetch(`/api/projects/${projectId}/layout-drawings/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listLayoutDrawingApprovals() {
+  const res = await fetch("/api/projects/layout-drawing-approvals/?awaiting_only=1", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function saveProjectLayoutDrawings(projectId, rows = []) {
+  await ensureCsrfCookie();
+  const token = getCookie("csrftoken");
+  const formData = new FormData();
+
+  const payloadRows = (Array.isArray(rows) ? rows : []).map((row, index) => {
+    const tempId = String(row?.tempId || row?.id || `row_${index}`);
+    const file = row?.newFile instanceof File ? row.newFile : null;
+
+    if (file) {
+      formData.append(`files_${tempId}`, file);
+    }
+
+    return {
+      id: row?.id || null,
+      temp_id: tempId,
+      drawing_name: row?.drawing_name || "",
+      level_one_approver: row?.level_one_approver ? String(row.level_one_approver).trim() : null,
+      level_one_status: row?.level_one_status ? String(row.level_one_status).trim() : null,
+      level_one_message: row?.level_one_message || "",
+      new_file_count: file ? 1 : 0,
+      clear_file: !file && Boolean(row?.clear_file),
+    };
+  });
+
+  formData.append("rows", JSON.stringify(payloadRows));
+
+  const res = await fetch(`/api/projects/${projectId}/layout-drawings/save/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-CSRFToken": token },
+    body: formData,
+  });
+  return parseJson(res);
+}
+
 // -- LCE Costing -------------------------------------------
 export async function listLceCostDetailsByProject(projectId) {
   const res = await fetch(`/api/lce-costing/by-project/${projectId}/`, { credentials: "include" });

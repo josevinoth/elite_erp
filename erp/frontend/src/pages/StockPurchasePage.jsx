@@ -1,39 +1,23 @@
 import { useCallback } from "react";
-import CrudPage from "../components/CrudPage";
+import StandardListPage from "../components/StandardListPage";
 import {
-  createStockPurchase,
   deleteStockPurchase,
   listStockPurchases,
-  updateStockPurchase,
 } from "../services/crudApi";
 
 const COLUMNS = [
   { key: "purchase_id", label: "Purchase ID" },
   { key: "vendor", label: "Vendor" },
   { key: "invoice_number", label: "Invoice #" },
-  { key: "purchase_date", label: "Invoice Date" },
+  { key: "invoice_date", label: "Invoice Date" },
   { key: "items_count", label: "Items" },
   { key: "purchase_total", label: "Purchase Total" },
 ];
 
 function StockPurchasePage() {
-  const fields = [
-    { key: "notes", label: "Notes", type: "textarea" },
-  ];
-
-  const fetchFn = useCallback(async () => {
+  const fetchRows = useCallback(async () => {
     const data = await listStockPurchases();
     return data.stock_purchases || [];
-  }, []);
-
-  const createFn = useCallback(async (payload) => {
-    const data = await createStockPurchase(payload);
-    return data.stock_purchase;
-  }, []);
-
-  const updateFn = useCallback(async (id, payload) => {
-    const data = await updateStockPurchase(id, payload);
-    return data.stock_purchase;
   }, []);
 
   const deleteDisabledPredicate = useCallback((row) => {
@@ -49,18 +33,19 @@ function StockPurchasePage() {
   }, []);
 
   return (
-    <CrudPage
+    <StandardListPage
       title="Stock Purchase"
       columns={COLUMNS}
-      fields={fields}
-      fetchFn={fetchFn}
-      createFn={createFn}
-      updateFn={updateFn}
+      fetchRows={fetchRows}
       deleteFn={deleteStockPurchase}
       deleteDisabledPredicate={deleteDisabledPredicate}
       deleteDisabledTitle={deleteDisabledTitle}
+      showAddButton
       addButtonTo="/stock-purchase/add"
       editButtonTo={(row) => `/stock-purchase/record/${row.id}`}
+      showDefaultEdit
+      showDefaultDelete
+      includeAuditColumns={false}
     />
   );
 }
