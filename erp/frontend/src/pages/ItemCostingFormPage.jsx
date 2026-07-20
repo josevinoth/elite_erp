@@ -14,10 +14,14 @@ const EMPTY_FORM = {
   item_description: "",
   item_code: "",
   qty: "",
+  purchase_qty: "0",
+  purchase_uom: "",
+  purchase_length: "0",
+  purchase_width: "0",
+  purchase_height: "0",
   cost_max: "0",
   cost_min: "0",
   cost: "0",
-  uom_id: "",
   total_price: "0",
 };
 
@@ -27,10 +31,11 @@ function ItemCostingFormPage() {
   const isEditMode = Boolean(id);
 
   const [form, setForm] = useState(EMPTY_FORM);
-  const [meta, setMeta] = useState({ project_refs: [], item_categories: [], lab_items: [], uoms: [] });
+  const [meta, setMeta] = useState({ project_refs: [], item_categories: [], lab_items: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [warning, setWarning] = useState("");
   const [isManualCost, setIsManualCost] = useState(false);
 
   useEffect(() => {
@@ -51,7 +56,6 @@ function ItemCostingFormPage() {
           project_refs: Array.isArray(metaData?.project_refs) ? metaData.project_refs : [],
           item_categories: Array.isArray(metaData?.item_categories) ? metaData.item_categories : [],
           lab_items: Array.isArray(metaData?.lab_items) ? metaData.lab_items : [],
-          uoms: Array.isArray(metaData?.uoms) ? metaData.uoms : [],
         });
 
         if (detailData?.item) {
@@ -61,10 +65,14 @@ function ItemCostingFormPage() {
             item_description: detailData.item.item_description || "",
             item_code: detailData.item.item_code || "",
             qty: String(detailData.item.qty ?? ""),
+            purchase_qty: String(detailData.item.purchase_qty ?? 0),
+            purchase_uom: detailData.item.purchase_uom || detailData.item.uom || "",
+            purchase_length: String(detailData.item.purchase_length ?? 0),
+            purchase_width: String(detailData.item.purchase_width ?? 0),
+            purchase_height: String(detailData.item.purchase_height ?? 0),
             cost_max: String(detailData.item.cost_max ?? 0),
             cost_min: String(detailData.item.cost_min ?? 0),
             cost: String(detailData.item.cost ?? 0),
-            uom_id: String(detailData.item.uom_id || ""),
             total_price: String(detailData.item.total_price ?? 0),
           });
         }
@@ -81,6 +89,16 @@ function ItemCostingFormPage() {
       alive = false;
     };
   }, [id, isEditMode]);
+
+  useEffect(() => {
+    const requestedQty = Number(form.qty || 0);
+    const purchaseQty = Number(form.purchase_qty || 0);
+    if (requestedQty > 0 && purchaseQty > 0 && requestedQty > purchaseQty) {
+      setWarning("Requested quantity cannot exceed Purchase quantity.");
+    } else {
+      setWarning("");
+    }
+  }, [form.qty, form.purchase_qty]);
 
   const pageTitle = useMemo(() => (isEditMode ? "Edit Item Costing" : "Add Item Costing"), [isEditMode]);
 
@@ -108,7 +126,18 @@ function ItemCostingFormPage() {
 
   const refreshCostPreview = async (itemCode, qtyValue) => {
     if (!itemCode) {
-      setForm((prev) => ({ ...prev, cost_max: "0", cost_min: "0", cost: "0", total_price: "0" }));
+      setForm((prev) => ({
+        ...prev,
+        purchase_qty: "0",
+        purchase_uom: "",
+        purchase_length: "0",
+        purchase_width: "0",
+        purchase_height: "0",
+        cost_max: "0",
+        cost_min: "0",
+        cost: "0",
+        total_price: "0",
+      }));
       setIsManualCost(false);
       return;
     }
@@ -118,6 +147,11 @@ function ItemCostingFormPage() {
       if (!isManualCost) {
         setForm((prev) => ({
           ...prev,
+          purchase_qty: String(data.purchase_qty ?? 0),
+          purchase_uom: data.purchase_uom || data.uom || "",
+          purchase_length: String(data.purchase_length ?? 0),
+          purchase_width: String(data.purchase_width ?? 0),
+          purchase_height: String(data.purchase_height ?? 0),
           cost_max: String(data.cost_max ?? 0),
           cost_min: String(data.cost_min ?? 0),
           cost: String(data.cost ?? 0),
@@ -129,6 +163,11 @@ function ItemCostingFormPage() {
         const newTotalPrice = manualCost * (parseFloat(qtyValue) || 0);
         setForm((prev) => ({
           ...prev,
+          purchase_qty: String(data.purchase_qty ?? 0),
+          purchase_uom: data.purchase_uom || data.uom || "",
+          purchase_length: String(data.purchase_length ?? 0),
+          purchase_width: String(data.purchase_width ?? 0),
+          purchase_height: String(data.purchase_height ?? 0),
           cost_max: String(data.cost_max ?? 0),
           cost_min: String(data.cost_min ?? 0),
           total_price: String(newTotalPrice),
@@ -136,7 +175,18 @@ function ItemCostingFormPage() {
       }
     } catch (error) {
       setStatus(error.message || "Unable to calculate costs.");
-      setForm((prev) => ({ ...prev, cost_max: "0", cost_min: "0", cost: "0", total_price: "0" }));
+      setForm((prev) => ({
+        ...prev,
+        purchase_qty: "0",
+        purchase_uom: "",
+        purchase_length: "0",
+        purchase_width: "0",
+        purchase_height: "0",
+        cost_max: "0",
+        cost_min: "0",
+        cost: "0",
+        total_price: "0",
+      }));
     }
   };
 
@@ -149,6 +199,11 @@ function ItemCostingFormPage() {
         item_category_id: value,
         item_description: "",
         item_code: "",
+        purchase_qty: "0",
+        purchase_uom: "",
+        purchase_length: "0",
+        purchase_width: "0",
+        purchase_height: "0",
         cost_max: "0",
         cost_min: "0",
         cost: "0",
@@ -163,6 +218,11 @@ function ItemCostingFormPage() {
         ...prev,
         item_description: value,
         item_code: "",
+        purchase_qty: "0",
+        purchase_uom: "",
+        purchase_length: "0",
+        purchase_width: "0",
+        purchase_height: "0",
         cost_max: "0",
         cost_min: "0",
         cost: "0",
@@ -210,8 +270,17 @@ function ItemCostingFormPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setSaving(true);
     setStatus("");
+
+    const requestedQty = Number(form.qty || 0);
+    const purchaseQty = Number(form.purchase_qty || 0);
+    if (requestedQty > 0 && purchaseQty > 0 && requestedQty > purchaseQty) {
+      setWarning("Requested quantity cannot exceed Purchase quantity.");
+      return;
+    }
+
+    setWarning("");
+    setSaving(true);
     try {
       const payload = {
         project_ref_id: form.project_ref_id,
@@ -219,7 +288,6 @@ function ItemCostingFormPage() {
         item_description: form.item_description,
         item_code: form.item_code,
         qty: form.qty,
-        uom_id: form.uom_id || null,
         ic_cost: parseFloat(form.cost) || 0,
         ic_total_price: parseFloat(form.total_price) || 0,
       };
@@ -245,6 +313,7 @@ function ItemCostingFormPage() {
       </div>
 
       {status ? <p className="users-status users-status--error">{status}</p> : null}
+      {warning ? <p className="users-status users-status--warning">{warning}</p> : null}
       {loading ? <p className="users-status">Loading...</p> : null}
 
       {!loading ? (
@@ -321,7 +390,7 @@ function ItemCostingFormPage() {
           </div>
 
           <div className="modal-form__row">
-            <label className="modal-form__label" htmlFor="qty">Qty *</label>
+            <label className="modal-form__label" htmlFor="qty">Requested Qty *</label>
             <input
               id="qty"
               name="qty"
@@ -335,19 +404,68 @@ function ItemCostingFormPage() {
           </div>
 
           <div className="modal-form__row">
-            <label className="modal-form__label" htmlFor="uom_id">UOM</label>
-            <select
-              id="uom_id"
-              name="uom_id"
-              className="auth-input"
-              value={form.uom_id}
-              onChange={handleChange}
-            >
-              <option value="">Select UOM</option>
-              {meta.uoms.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
+            <label className="modal-form__label" htmlFor="purchase_uom">Purchase UOM</label>
+            <input
+              id="purchase_uom"
+              name="purchase_uom"
+              type="text"
+              className="auth-input auth-input--readonly"
+              value={form.purchase_uom}
+              disabled
+              readOnly
+            />
+          </div>
+
+          <div className="modal-form__row">
+            <label className="modal-form__label" htmlFor="purchase_qty">Purchase Qty</label>
+            <input
+              id="purchase_qty"
+              name="purchase_qty"
+              type="number"
+              className="auth-input auth-input--readonly"
+              value={form.purchase_qty}
+              disabled
+              readOnly
+            />
+          </div>
+
+          <div className="modal-form__row">
+            <label className="modal-form__label" htmlFor="purchase_length">Length</label>
+            <input
+              id="purchase_length"
+              name="purchase_length"
+              type="number"
+              className="auth-input auth-input--readonly"
+              value={form.purchase_length}
+              disabled
+              readOnly
+            />
+          </div>
+
+          <div className="modal-form__row">
+            <label className="modal-form__label" htmlFor="purchase_width">Width</label>
+            <input
+              id="purchase_width"
+              name="purchase_width"
+              type="number"
+              className="auth-input auth-input--readonly"
+              value={form.purchase_width}
+              disabled
+              readOnly
+            />
+          </div>
+
+          <div className="modal-form__row">
+            <label className="modal-form__label" htmlFor="purchase_height">Height</label>
+            <input
+              id="purchase_height"
+              name="purchase_height"
+              type="number"
+              className="auth-input auth-input--readonly"
+              value={form.purchase_height}
+              disabled
+              readOnly
+            />
           </div>
 
           <div className="modal-form__row">

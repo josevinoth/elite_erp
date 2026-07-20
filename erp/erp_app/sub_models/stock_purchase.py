@@ -2,6 +2,7 @@ from django.db import models
 
 from ..utils import normalize_text
 from .vendor import Vendor
+from .cut_optimiser import UOM
 
 
 class StockPurchaseVendorDetail(models.Model):
@@ -55,6 +56,11 @@ class StockPurchaseItem(models.Model):
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     lce_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_purchase_items")
+    length = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    width = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    height = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    volume = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -69,6 +75,7 @@ class StockPurchaseItem(models.Model):
         self.item_name = normalize_text(self.item_name)
         self.item_code = normalize_text(self.item_code)
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
+        self.volume = (self.length or 0) * (self.width or 0) * (self.height or 0)
 
         # Normalize legacy GRN values (e.g. 0000001) to prefixed format (GRN0001).
         if self.grn_number and not str(self.grn_number).upper().startswith("GRN"):

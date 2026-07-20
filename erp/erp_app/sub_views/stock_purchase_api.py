@@ -62,6 +62,11 @@ def _serialize_item(item):
         "total_price": str(item.total_price),
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
+        "uom_id": item.uom_id,
+        "length": str(item.length),
+        "width": str(item.width),
+        "height": str(item.height),
+        "volume": str(item.volume),
     }
 
 
@@ -332,8 +337,13 @@ def create_stock_purchase_api_view(request):
             item_code=normalize_text(row.get("item_code", "")),
             quantity=_to_decimal(row.get("quantity"), "0"),
             unit_price=_to_decimal(row.get("unit_price"), "0"),
+            uom_id=row.get("uom_id") or None,
+            length=_to_decimal(row.get("length"), "0"),
+            width=_to_decimal(row.get("width"), "0"),
+            height=_to_decimal(row.get("height"), "0"),
         )
         item.total_price = item.quantity * item.unit_price
+        item.volume = item.length * item.width * item.height
         item.save()
 
     return JsonResponse({"success": True, "stock_purchase": _serialize(obj)}, status=201)
@@ -389,6 +399,11 @@ def stock_purchase_detail_api_view(request, pk):
             item.quantity = _to_decimal(row.get("quantity"), "0")
             item.unit_price = _to_decimal(row.get("unit_price"), "0")
             item.total_price = item.quantity * item.unit_price
+            item.uom_id = row.get("uom_id") or None
+            item.length = _to_decimal(row.get("length"), "0")
+            item.width = _to_decimal(row.get("width"), "0")
+            item.height = _to_decimal(row.get("height"), "0")
+            item.volume = item.length * item.width * item.height
             item.save()
 
     return JsonResponse({'success': True, 'stock_purchase': _serialize(obj)})

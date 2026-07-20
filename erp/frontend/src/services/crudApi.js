@@ -25,6 +25,12 @@ async function csrfHeaders() {
   return { "Content-Type": "application/json", "X-CSRFToken": token };
 }
 
+// ── UOMs ──────────────────────────────────────────────────
+export async function listUoms() {
+  const res = await fetch("/api/uoms/", { credentials: "include" });
+  return parseJson(res);
+}
+
 // ── Vendors ───────────────────────────────────────────────
 export async function listVendors() {
   const res = await fetch("/api/vendors/", { credentials: "include" });

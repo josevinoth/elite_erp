@@ -1,13 +1,14 @@
 from rest_framework import serializers
 
 from ..sub_models.item_costing_mod import ItemCostingInfo
+from ..sub_models.stock_purchase import StockPurchaseItem
 
 class ItemCostingSerializer(serializers.ModelSerializer):
     project_ref = serializers.SerializerMethodField()
     item_category = serializers.CharField(source="ic_item_category.name", read_only=True)
-    tem_code = serializers.CharField(source="ic_item_code", read_only=True)
+    item_code = serializers.CharField(source="ic_item_code", read_only=True)
     item_description = serializers.CharField(source="ic_item_description", read_only=True)
-    uom = serializers.CharField(source="ic_uom.symbol", read_only=True)
+    uom = serializers.SerializerMethodField()
     qty = serializers.IntegerField(source="ic_qty")
     cost_max = serializers.DecimalField(source="ic_cost_max", max_digits=14, decimal_places=3, read_only=True)
     cost_min = serializers.DecimalField(source="ic_cost_min", max_digits=14, decimal_places=3, read_only=True)
@@ -24,6 +25,20 @@ class ItemCostingSerializer(serializers.ModelSerializer):
             return f"{project_id} - {project_name}"
         return project_id or project_name
 
+    def get_uom(self, obj):
+        purchase_item = (
+            StockPurchaseItem.objects.select_related("uom")
+            .filter(item_code__iexact=getattr(obj, "ic_item_code", ""))
+            .order_by("-updated_at", "-id")
+            .first()
+        )
+        purchase_uom = getattr(purchase_item, "uom", None) if purchase_item else None
+        if not purchase_item or not purchase_uom:
+            return ""
+        if purchase_uom.name and purchase_uom.symbol:
+            return f"{purchase_uom.name} ({purchase_uom.symbol})"
+        return purchase_uom.symbol or purchase_uom.name or ""
+
     class Meta:
         model = ItemCostingInfo
         fields = [
@@ -36,7 +51,6 @@ class ItemCostingSerializer(serializers.ModelSerializer):
             "ic_cost_max",
             "ic_cost_min",
             "ic_cost",
-            "ic_uom",
             "ic_total_price",
             "ic_updated_by",
             "ic_created_at",

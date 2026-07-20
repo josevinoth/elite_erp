@@ -179,6 +179,7 @@ function CrudPage({
   const [refreshKey, setRefreshKey] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [globalSearch, setGlobalSearch] = useState("");
   const autoOpenedRef = useRef(false);
   const autoEditOpenedRef = useRef(false);
 
@@ -490,19 +491,28 @@ function CrudPage({
   };
 
   const displayedRows = useMemo(() => {
+    const searchText = String(globalSearch || "").trim().toLowerCase();
+    const searchedRows = searchText
+      ? normalizedRows.filter((row) =>
+          tableColumns.some((col) =>
+            String(row[col.key] ?? "").toLowerCase().includes(searchText)
+          )
+        )
+      : normalizedRows;
+
     const normalizedFilters = Object.entries(filters).filter(([, value]) =>
       String(value || "").trim()
     );
 
     const filtered = normalizedFilters.length
-      ? normalizedRows.filter((row) =>
+      ? searchedRows.filter((row) =>
           normalizedFilters.every(([key, value]) =>
             String(row[key] ?? "")
               .toLowerCase()
               .includes(String(value).trim().toLowerCase())
           )
         )
-      : normalizedRows;
+      : searchedRows;
 
     if (!sortConfig.key) {
       return filtered;
@@ -530,7 +540,7 @@ function CrudPage({
       }
       return sortConfig.direction === "asc" ? cmp : -cmp;
     });
-  }, [normalizedRows, filters, sortConfig]);
+  }, [normalizedRows, filters, globalSearch, sortConfig, tableColumns]);
 
   useEffect(() => {
     setPage(1);
@@ -611,7 +621,18 @@ function CrudPage({
     <section className="module-page crud-page">
       <div className="crud-page__header">
         <h1 className="module-page__title">{title}</h1>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <div className="crud-page__header-tools">
+          <input
+            type="search"
+            className="crud-page__search-input"
+            placeholder="Search all columns"
+            value={globalSearch}
+            onChange={(e) => {
+              setGlobalSearch(e.target.value);
+              setPage(1);
+            }}
+            aria-label="Search all columns"
+          />
           {renderHeaderActions
             ? renderHeaderActions({ rows, loading, reloadRows })
             : null}
@@ -691,7 +712,11 @@ function CrudPage({
                   </button>
                 </th>
               ))}
-              <th className={stickyHeader ? "users-table__sticky-head" : undefined}>Actions</th>
+              <th
+                className={`${stickyHeader ? "users-table__sticky-head " : ""}users-table__actions-col`}
+              >
+                Actions
+              </th>
             </tr>
             <tr>
               {enableBulkSelect ? <th className={stickyHeader ? "users-table__sticky-filter" : undefined} /> : null}
@@ -730,7 +755,7 @@ function CrudPage({
                 {tableColumns.map((col) => (
                   <td key={col.key}>{formatDateTimeForTable(row[col.key])}</td>
                 ))}
-                <td>
+                <td className="users-table__actions-col">
                   <div className="users-actions">
                     {rowActions.map((action) => {
                       const Icon = action.icon;

@@ -825,6 +825,14 @@ select.auth-input option {
   color: #9a9a9a;
 }
 
+.users-status--warning {
+  color: #b26a00;
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.35);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+}
+
 .users-table {
   width: 100%;
   border-collapse: collapse;
@@ -832,6 +840,12 @@ select.auth-input option {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+}
+
+.crud-page .users-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
 }
 
 .users-table thead th {
@@ -856,10 +870,51 @@ select.auth-input option {
   border-bottom: 1px solid #f3f3f7;
 }
 
+.crud-page .users-table th,
+.crud-page .users-table td {
+  width: 50px;
+  min-width: 40px;
+  max-width: 50px;
+  padding: 0.42rem 0.35rem;
+  font-size: 0.78rem;
+  overflow: hidden;
+  vertical-align: top;
+}
+
+.crud-page .users-table td,
+.crud-page .users-table th {
+  vertical-align: middle;
+}
+
+.crud-page .users-table .users-table__actions-col {
+  width: 74px;
+  min-width: 74px;
+  max-width: 74px;
+  text-align: center;
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+.crud-page .users-table td.users-table__actions-col {
+  overflow: visible;
+}
+
 .users-table th {
   background: var(--list-header-bg);
   color: #f7f9ff;
   font-weight: 600;
+}
+
+.crud-page .users-table th {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.crud-page .users-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-overflow: ellipsis;
 }
 
 .users-table thead tr:first-child th {
@@ -883,9 +938,69 @@ select.auth-input option {
   cursor: pointer;
 }
 
+.crud-page .users-table__sort-btn {
+  width: 100%;
+  max-width: 100%;
+  justify-content: space-between;
+  gap: 0.18rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.crud-page .users-table__sort-btn span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .users-table__sort-icon {
   color: inherit;
   opacity: 0.9;
+}
+
+.crud-page .users-table__sort-icon {
+  flex: 0 0 auto;
+}
+
+.crud-page .users-table__filter-input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.28rem 0.3rem;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crud-page .users-table td .auth-input,
+.crud-page .users-table td select,
+.crud-page .users-table td input,
+.crud-page .users-table td textarea,
+.crud-page .users-table td button,
+.crud-page .users-table td a {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.crud-page .users-actions {
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+
+.crud-page .users-table .users-actions .users-action {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  flex: 0 0 auto;
 }
 
 .projects-table--no-header-bg .users-table th,
@@ -1595,6 +1710,51 @@ select.auth-input option {
   margin-bottom: 0.2rem;
   padding-bottom: 0.45rem;
   border-bottom: 1px solid var(--list-separator);
+}
+
+.crud-page__header-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.crud-page__search-input {
+  width: min(100%, 320px);
+  min-width: 180px;
+  max-width: 100%;
+  background: #ffffff;
+  border: 1px solid #d9dce8;
+  border-radius: 8px;
+  color: #495057;
+  font-size: 0.88rem;
+  padding: 0.45rem 0.7rem;
+  box-sizing: border-box;
+}
+
+.crud-page__search-input:focus {
+  outline: none;
+  border-color: #556ee6;
+  box-shadow: 0 0 0 2px rgba(85, 110, 230, 0.2);
+}
+
+@media (max-width: 768px) {
+  .crud-page__header {
+    align-items: stretch;
+  }
+
+  .crud-page__header-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .crud-page__search-input {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .crud-add-btn {

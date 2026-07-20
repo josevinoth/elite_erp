@@ -3,7 +3,6 @@ from django.db import models
 
 from .project import Project
 from .item_category import ItemCategory
-from .cut_optimiser import UOM
 
 
 class ItemCostingInfo(models.Model):
@@ -15,7 +14,6 @@ class ItemCostingInfo(models.Model):
     ic_cost_max = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     ic_cost_min = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     ic_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
-    ic_uom=models.ForeignKey(UOM,on_delete=models.PROTECT,null=True,blank=True,related_name="ic_uom")
     ic_total_price = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     ic_created_at = models.DateTimeField(auto_now_add=True)
     ic_updated_at = models.DateTimeField(auto_now=True)

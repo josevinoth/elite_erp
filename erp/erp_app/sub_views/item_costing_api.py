@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import ItemCategory, ItemCostingInfo, LabFurnitureItem, Project, StockPurchaseItem, UOM
+from ..sub_models import ItemCategory, ItemCostingInfo, LabFurnitureItem, Project, StockPurchaseItem
 from ..utils import normalize_text
 
 
@@ -72,20 +72,6 @@ def _resolve_item_category(value):
     return ItemCategory.objects.filter(name__iexact=text).first()
 
 
-def _resolve_uom(value):
-    if value in (None, ""):
-        return None
-
-    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
-        return UOM.objects.filter(pk=int(value)).first()
-
-    text = normalize_text(value)
-    if not text:
-        return None
-
-    return UOM.objects.filter(name__iexact=text).first() or UOM.objects.filter(symbol__iexact=text).first()
-
-
 def _resolve_lab_item(item_category, item_description, item_code):
     if not item_category:
         return None
@@ -125,6 +111,50 @@ def _compute_costs(item_code, qty):
     }
 
 
+def _empty_purchase_reference():
+    return {
+        "purchase_qty": "0",
+        "purchase_uom": "",
+        "purchase_uom_id": None,
+        "purchase_length": "0",
+        "purchase_width": "0",
+        "purchase_height": "0",
+    }
+
+
+def _get_purchase_reference(item_code):
+    normalized_code = normalize_text(item_code).upper()
+    if not normalized_code:
+        return _empty_purchase_reference()
+
+    purchase_item = (
+        StockPurchaseItem.objects.select_related("uom")
+        .filter(item_code__iexact=normalized_code)
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if not purchase_item:
+        return _empty_purchase_reference()
+
+    purchase_uom = getattr(purchase_item, "uom", None)
+    purchase_uom_id = getattr(purchase_uom, "pk", None)
+    uom_label = ""
+    if purchase_uom_id and purchase_uom:
+        if purchase_uom.name and purchase_uom.symbol:
+            uom_label = f"{purchase_uom.name} ({purchase_uom.symbol})"
+        else:
+            uom_label = purchase_uom.symbol or purchase_uom.name or ""
+
+    return {
+        "purchase_qty": str(purchase_item.quantity),
+        "purchase_uom": uom_label,
+        "purchase_uom_id": purchase_uom_id,
+        "purchase_length": str(purchase_item.length),
+        "purchase_width": str(purchase_item.width),
+        "purchase_height": str(purchase_item.height),
+    }
+
+
 def _project_ref_label(project):
     if not project:
         return ""
@@ -136,22 +166,31 @@ def _project_ref_label(project):
 
 
 def _serialize(row):
+    purchase_reference = _get_purchase_reference(row.ic_item_code)
+    project_ref_id = getattr(row, "ic_project_ref_id", None)
+    item_category_id = getattr(row, "ic_item_category_id", None)
+    updated_by_id = getattr(row, "ic_updated_by_id", None)
     return {
         "id": row.pk,
-        "project_ref": _project_ref_label(row.ic_project_ref) if row.ic_project_ref_id else "",
-        "project_ref_id": row.ic_project_ref_id,
-        "item_category": row.ic_item_category.name if row.ic_item_category_id else "",
-        "item_category_id": row.ic_item_category_id,
+        "project_ref": _project_ref_label(row.ic_project_ref) if project_ref_id else "",
+        "project_ref_id": project_ref_id,
+        "item_category": row.ic_item_category.name if item_category_id else "",
+        "item_category_id": item_category_id,
         "item_code": row.ic_item_code,
         "item_description": row.ic_item_description,
         "qty": row.ic_qty,
         "cost_max": str(row.ic_cost_max),
         "cost_min": str(row.ic_cost_min),
         "cost": str(row.ic_cost),
-        "uom": row.ic_uom.symbol if row.ic_uom_id else "",
-        "uom_id": row.ic_uom_id,
+        "uom": purchase_reference["purchase_uom"],
+        "uom_id": purchase_reference["purchase_uom_id"],
+        "purchase_qty": purchase_reference["purchase_qty"],
+        "purchase_uom": purchase_reference["purchase_uom"],
+        "purchase_length": purchase_reference["purchase_length"],
+        "purchase_width": purchase_reference["purchase_width"],
+        "purchase_height": purchase_reference["purchase_height"],
         "total_price": str(row.ic_total_price),
-        "updated_by": row.ic_updated_by.username if row.ic_updated_by_id else "",
+        "updated_by": row.ic_updated_by.username if updated_by_id else "",
         "updated_on": row.ic_updated_at.isoformat() if row.ic_updated_at else "",
     }
 
@@ -163,7 +202,6 @@ def _validate_and_prepare(payload, request, existing=None):
          payload.get("item_description", payload.get("ic_item_description", existing.ic_item_description if existing else ""))
      )
      item_code = normalize_text(payload.get("item_code", payload.get("ic_item_code", ""))).upper()
-     uom = _resolve_uom(payload.get("uom_id", payload.get("ic_uom")))
      qty = _to_int(payload.get("qty", payload.get("ic_qty", existing.ic_qty if existing else 0)), -1)
 
      if not project_ref:
@@ -204,7 +242,6 @@ def _validate_and_prepare(payload, request, existing=None):
          "ic_cost_max": costs["ic_cost_max"],
          "ic_cost_min": costs["ic_cost_min"],
          "ic_cost": ic_cost,
-         "ic_uom": uom,
          "ic_total_price": ic_total_price,
          "ic_updated_by": request.user,
      }
@@ -217,7 +254,7 @@ def list_item_costing_api_view(request):
     if na:
         return na
 
-    rows = ItemCostingInfo.objects.select_related("ic_project_ref", "ic_item_category", "ic_uom", "ic_updated_by").order_by("-id")
+    rows = ItemCostingInfo.objects.select_related("ic_project_ref", "ic_item_category", "ic_updated_by").order_by("-id")
     page, page_size = _parse_paging(request)
 
     total = rows.count()
@@ -242,37 +279,27 @@ def item_costing_meta_api_view(request):
 
     item_categories = ItemCategory.objects.order_by("name")
     lab_items = LabFurnitureItem.objects.select_related("item_category").order_by("item_category__name", "item_name", "item_code")
-    uoms = UOM.objects.order_by("name")
     projects = Project.objects.order_by("project_id", "project_name")
 
     return JsonResponse(
         {
             "project_refs": [
         {
-            "id": row.id,
+            "id": row.pk,
             "name": f"{row.project_id} - {row.project_name}".strip(" -"),
         }
         for row in projects
     ],
-            "item_categories": [{"id": row.id, "name": row.name} for row in item_categories],
+            "item_categories": [{"id": row.pk, "name": row.name} for row in item_categories],
             "lab_items": [
                 {
-                    "id": row.id,
-                    "item_category_id": row.item_category_id,
+                    "id": row.pk,
+                    "item_category_id": row.item_category.pk,
                     "item_category": row.item_category.name,
                     "item_name": row.item_name,
                     "item_code": row.item_code,
                 }
                 for row in lab_items
-            ],
-            "uoms": [
-                {
-                    "id": row.id,
-                    "name": row.name,
-                    "symbol": row.symbol,
-                    "label": f"{row.name} ({row.symbol})",
-                }
-                for row in uoms
             ],
         }
     )
@@ -290,6 +317,7 @@ def item_costing_cost_preview_api_view(request):
         return JsonResponse({"message": "item_code query param is required."}, status=400)
 
     costs = _compute_costs(item_code, qty)
+    purchase_reference = _get_purchase_reference(item_code)
     return JsonResponse(
         {
             "item_code": item_code,
@@ -298,6 +326,12 @@ def item_costing_cost_preview_api_view(request):
             "cost_min": str(costs["ic_cost_min"]),
             "cost": str(costs["ic_cost"]),
             "total_price": str(costs["ic_total_price"]),
+            "purchase_qty": purchase_reference["purchase_qty"],
+            "purchase_uom": purchase_reference["purchase_uom"],
+            "purchase_uom_id": purchase_reference["purchase_uom_id"],
+            "purchase_length": purchase_reference["purchase_length"],
+            "purchase_width": purchase_reference["purchase_width"],
+            "purchase_height": purchase_reference["purchase_height"],
         }
     )
 
@@ -326,7 +360,7 @@ def item_costing_detail_api_view(request, pk):
         return na
 
     try:
-        row = ItemCostingInfo.objects.select_related("ic_project_ref", "ic_item_category", "ic_uom", "ic_updated_by").get(pk=pk)
+        row = ItemCostingInfo.objects.select_related("ic_project_ref", "ic_item_category", "ic_updated_by").get(pk=pk)
     except ItemCostingInfo.DoesNotExist:
         return JsonResponse({"message": "Item Costing record not found."}, status=404)
 
