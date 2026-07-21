@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import LabFurnitureItem, LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -46,10 +46,13 @@ def _serialize_vendor_detail(vendor_detail):
     }
 
 
-def _serialize_item(item):
+def _serialize_item(item, item_master_by_code=None):
     raw_grn = str(item.grn_number or "").strip()
     if raw_grn and not raw_grn.upper().startswith("GRN"):
         raw_grn = f"GRN{item.id:04d}"
+
+    normalized_code = normalize_text(item.item_code).upper()
+    item_master = (item_master_by_code or {}).get(normalized_code)
 
     return {
         "id": item.id,
@@ -63,16 +66,19 @@ def _serialize_item(item):
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
         "uom_id": item.uom_id,
-        "length": str(item.length),
-        "width": str(item.width),
-        "height": str(item.height),
-        "volume": str(item.volume),
+        "length": str(item_master.length) if item_master else "0",
+        "width": str(item_master.width) if item_master else "0",
+        "height": str(item_master.height) if item_master else "0",
+        "volume": str(item_master.volume) if item_master else "0",
     }
 
 
 def _serialize(obj):
     items_qs = obj.items.all() if hasattr(obj, 'items') else []
     items = list(items_qs) if items_qs else []
+    item_codes = {normalize_text(item.item_code).upper() for item in items if normalize_text(item.item_code)}
+    item_master_rows = LabFurnitureItem.objects.filter(item_code__in=item_codes) if item_codes else []
+    item_master_by_code = {normalize_text(row.item_code).upper(): row for row in item_master_rows}
     first_item = items[0] if items else None
     vendor_detail = _serialize_vendor_detail(obj)
 
@@ -82,7 +88,7 @@ def _serialize(obj):
         "vendor_detail": vendor_detail,
         "notes": obj.notes or "",
         "status_id": obj.status_id,
-        "items": [_serialize_item(item) for item in items] if items else [],
+        "items": [_serialize_item(item, item_master_by_code) for item in items] if items else [],
         # Legacy/compatibility fields for lists view
         "purchase_id": getattr(obj, "purchase_id", obj.pk),
         "invoice_number": obj.invoice_number,
@@ -338,12 +344,8 @@ def create_stock_purchase_api_view(request):
             quantity=_to_decimal(row.get("quantity"), "0"),
             unit_price=_to_decimal(row.get("unit_price"), "0"),
             uom_id=row.get("uom_id") or None,
-            length=_to_decimal(row.get("length"), "0"),
-            width=_to_decimal(row.get("width"), "0"),
-            height=_to_decimal(row.get("height"), "0"),
         )
         item.total_price = item.quantity * item.unit_price
-        item.volume = item.length * item.width * item.height
         item.save()
 
     return JsonResponse({"success": True, "stock_purchase": _serialize(obj)}, status=201)
@@ -400,10 +402,6 @@ def stock_purchase_detail_api_view(request, pk):
             item.unit_price = _to_decimal(row.get("unit_price"), "0")
             item.total_price = item.quantity * item.unit_price
             item.uom_id = row.get("uom_id") or None
-            item.length = _to_decimal(row.get("length"), "0")
-            item.width = _to_decimal(row.get("width"), "0")
-            item.height = _to_decimal(row.get("height"), "0")
-            item.volume = item.length * item.width * item.height
             item.save()
 
     return JsonResponse({'success': True, 'stock_purchase': _serialize(obj)})

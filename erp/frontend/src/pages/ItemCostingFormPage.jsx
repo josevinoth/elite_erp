@@ -19,6 +19,7 @@ const EMPTY_FORM = {
   purchase_length: "0",
   purchase_width: "0",
   purchase_height: "0",
+  purchase_volume: "0",
   cost_max: "0",
   cost_min: "0",
   cost: "0",
@@ -70,6 +71,7 @@ function ItemCostingFormPage() {
             purchase_length: String(detailData.item.purchase_length ?? 0),
             purchase_width: String(detailData.item.purchase_width ?? 0),
             purchase_height: String(detailData.item.purchase_height ?? 0),
+            purchase_volume: String(detailData.item.purchase_volume ?? 0),
             cost_max: String(detailData.item.cost_max ?? 0),
             cost_min: String(detailData.item.cost_min ?? 0),
             cost: String(detailData.item.cost ?? 0),
@@ -133,6 +135,7 @@ function ItemCostingFormPage() {
         purchase_length: "0",
         purchase_width: "0",
         purchase_height: "0",
+        purchase_volume: "0",
         cost_max: "0",
         cost_min: "0",
         cost: "0",
@@ -152,6 +155,7 @@ function ItemCostingFormPage() {
           purchase_length: String(data.purchase_length ?? 0),
           purchase_width: String(data.purchase_width ?? 0),
           purchase_height: String(data.purchase_height ?? 0),
+          purchase_volume: String(data.purchase_volume ?? 0),
           cost_max: String(data.cost_max ?? 0),
           cost_min: String(data.cost_min ?? 0),
           cost: String(data.cost ?? 0),
@@ -168,6 +172,7 @@ function ItemCostingFormPage() {
           purchase_length: String(data.purchase_length ?? 0),
           purchase_width: String(data.purchase_width ?? 0),
           purchase_height: String(data.purchase_height ?? 0),
+          purchase_volume: String(data.purchase_volume ?? 0),
           cost_max: String(data.cost_max ?? 0),
           cost_min: String(data.cost_min ?? 0),
           total_price: String(newTotalPrice),
@@ -182,6 +187,7 @@ function ItemCostingFormPage() {
         purchase_length: "0",
         purchase_width: "0",
         purchase_height: "0",
+        purchase_volume: "0",
         cost_max: "0",
         cost_min: "0",
         cost: "0",
@@ -204,6 +210,7 @@ function ItemCostingFormPage() {
         purchase_length: "0",
         purchase_width: "0",
         purchase_height: "0",
+        purchase_volume: "0",
         cost_max: "0",
         cost_min: "0",
         cost: "0",
@@ -223,6 +230,7 @@ function ItemCostingFormPage() {
         purchase_length: "0",
         purchase_width: "0",
         purchase_height: "0",
+        purchase_volume: "0",
         cost_max: "0",
         cost_min: "0",
         cost: "0",
@@ -463,6 +471,19 @@ function ItemCostingFormPage() {
               type="number"
               className="auth-input auth-input--readonly"
               value={form.purchase_height}
+              disabled
+              readOnly
+            />
+          </div>
+
+          <div className="modal-form__row">
+            <label className="modal-form__label" htmlFor="purchase_volume">Volume</label>
+            <input
+              id="purchase_volume"
+              name="purchase_volume"
+              type="number"
+              className="auth-input auth-input--readonly"
+              value={form.purchase_volume}
               disabled
               readOnly
             />

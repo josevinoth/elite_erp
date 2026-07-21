@@ -2,6 +2,7 @@ from django.core.validators import RegexValidator
 from django.db import models
 
 from ..utils import normalize_text
+from .cut_optimiser import UOM
 from .item_category import ItemCategory
 
 
@@ -17,6 +18,11 @@ class LabFurnitureItem(models.Model):
         on_delete=models.PROTECT,
         related_name="items",
     )
+    uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="lab_furniture_items")
+    length = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    width = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    height = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    volume = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -30,5 +36,6 @@ class LabFurnitureItem(models.Model):
     def save(self, *args, **kwargs):
         self.item_name = normalize_text(self.item_name)
         self.item_code = normalize_text(self.item_code).upper()[:6]
+        self.volume = (self.length or 0) * (self.width or 0) * (self.height or 0)
         super().save(*args, **kwargs)
 

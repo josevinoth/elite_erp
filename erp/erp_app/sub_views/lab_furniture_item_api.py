@@ -1,10 +1,11 @@
 import json
+from decimal import Decimal, InvalidOperation
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import ItemCategory, LabFurnitureItem
+from ..sub_models import ItemCategory, LabFurnitureItem, UOM
 from ..utils import normalize_text
 
 
@@ -68,13 +69,44 @@ def _next_item_code():
 
 
 def _serialize(obj):
+    item_category_id = getattr(obj, "item_category_id", None)
+    uom_id = getattr(obj, "uom_id", None)
     return {
         "id": obj.pk,
         "item_code": obj.item_code,
         "item_name": obj.item_name,
-        "item_category": obj.item_category.name if obj.item_category_id else "",
-        "item_category_id": obj.item_category_id,
+        "item_category": obj.item_category.name if item_category_id else "",
+        "item_category_id": item_category_id,
+        "uom": f"{obj.uom.name} ({obj.uom.symbol})" if uom_id else "",
+        "uom_id": uom_id,
+        "length": str(obj.length),
+        "width": str(obj.width),
+        "height": str(obj.height),
+        "volume": str(obj.volume),
     }
+
+
+def _to_decimal(value, fallback="0"):
+    if value in (None, ""):
+        return Decimal(str(fallback))
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal(str(fallback))
+
+
+def _resolve_uom(value):
+    if value in (None, ""):
+        return None
+
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return UOM.objects.filter(pk=int(value)).first()
+
+    raw = normalize_text(value)
+    if not raw:
+        return None
+
+    return UOM.objects.filter(name__iexact=raw).first() or UOM.objects.filter(symbol__iexact=raw).first()
 
 
 def _duplicate_exists(item_name, item_category, exclude_id=None):
@@ -134,8 +166,12 @@ def create_lab_furniture_item_api_view(request):
 
     payload = _read_json(request)
     item_name = normalize_text(payload.get("item_name", ""))
-    item_category = _resolve_category(payload.get("item_category", ""))
+    item_category = _resolve_category(payload.get("item_category_id", payload.get("item_category", "")))
     item_code = _normalize_code(payload.get("item_code", "")) or _next_item_code()
+    uom = _resolve_uom(payload.get("uom_id", payload.get("uom")))
+    length = _to_decimal(payload.get("length"), "0")
+    width = _to_decimal(payload.get("width"), "0")
+    height = _to_decimal(payload.get("height"), "0")
 
     if not item_name:
         return JsonResponse({"message": "Item name is required."}, status=400)
@@ -145,11 +181,17 @@ def create_lab_furniture_item_api_view(request):
         return JsonResponse({"message": "Item already exists in this category."}, status=400)
     if LabFurnitureItem.objects.filter(item_code__iexact=item_code).exists():
         return JsonResponse({"message": "Item code already exists."}, status=400)
+    if payload.get("uom_id") not in (None, "") and not uom:
+        return JsonResponse({"message": "Selected UOM was not found."}, status=400)
 
     obj = LabFurnitureItem.objects.create(
         item_name=item_name,
         item_category=item_category,
         item_code=item_code,
+        uom=uom,
+        length=length,
+        width=width,
+        height=height,
     )
     return JsonResponse({"success": True, "lab_furniture_item": _serialize(obj)}, status=201)
 
@@ -172,8 +214,15 @@ def lab_furniture_item_detail_api_view(request, pk):
 
     payload = _read_json(request)
     item_name = normalize_text(payload.get("item_name", obj.item_name))
-    item_category = _resolve_category(payload.get("item_category", obj.item_category))
+    item_category = _resolve_category(
+        payload.get("item_category_id", payload.get("item_category", obj.item_category))
+    )
     item_code = _normalize_code(payload.get("item_code", obj.item_code))
+    current_uom_id = getattr(obj, "uom_id", None)
+    uom = _resolve_uom(payload.get("uom_id", payload.get("uom", current_uom_id)))
+    length = _to_decimal(payload.get("length", obj.length), "0")
+    width = _to_decimal(payload.get("width", obj.width), "0")
+    height = _to_decimal(payload.get("height", obj.height), "0")
 
     if not item_name:
         return JsonResponse({"message": "Item name is required."}, status=400)
@@ -183,10 +232,16 @@ def lab_furniture_item_detail_api_view(request, pk):
         return JsonResponse({"message": "Item already exists in this category."}, status=400)
     if LabFurnitureItem.objects.filter(item_code__iexact=item_code).exclude(pk=obj.pk).exists():
         return JsonResponse({"message": "Item code already exists."}, status=400)
+    if payload.get("uom_id") not in (None, "") and not uom:
+        return JsonResponse({"message": "Selected UOM was not found."}, status=400)
 
     obj.item_name = item_name
     obj.item_category = item_category
     obj.item_code = item_code
+    obj.uom = uom
+    obj.length = length
+    obj.width = width
+    obj.height = height
     obj.save()
     return JsonResponse({"success": True, "lab_furniture_item": _serialize(obj)})
 

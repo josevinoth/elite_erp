@@ -37,6 +37,11 @@ const toNumber = (value) => {
 
 const toCurrency = (value) => (Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2);
 
+const toDimensionValue = (value, fallback = "0") => {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+};
+
 function StockPurchaseAddPage() {
   const navigate = useNavigate();
   const { purchaseId } = useParams();
@@ -217,6 +222,44 @@ function StockPurchaseAddPage() {
         .sort((a, b) => a.localeCompare(b));
   };
 
+  const getItemMasterByCode = (itemCode) => {
+    const normalizedCode = String(itemCode || "").trim();
+    if (!normalizedCode) return null;
+    return itemMasterOptions.find((item) => String(item.item_code || "") === normalizedCode) || null;
+  };
+
+  const dimensionPatchFromMaster = (masterItem) => ({
+    length: toDimensionValue(masterItem?.length, "0"),
+    width: toDimensionValue(masterItem?.width, "0"),
+    height: toDimensionValue(masterItem?.height, "0"),
+    volume: toDimensionValue(masterItem?.volume, "0"),
+  });
+
+  useEffect(() => {
+    if (!itemMasterOptions.length) return;
+
+    setItems((prev) =>
+      prev.map((row) => {
+        const masterItem = getItemMasterByCode(row.item_code);
+        if (!masterItem) return row;
+        const patch = dimensionPatchFromMaster(masterItem);
+        if (
+          row.length === patch.length
+          && row.width === patch.width
+          && row.height === patch.height
+          && row.volume === patch.volume
+        ) {
+          return row;
+        }
+        return {
+          ...row,
+          ...patch,
+          item_master_id: row.item_master_id || String(masterItem.id || ""),
+        };
+      })
+    );
+  }, [itemMasterOptions]);
+
   const handleCategorySelect = (rowId, category) => {
     setItems((prev) =>
         prev.map((row) => {
@@ -227,6 +270,7 @@ function StockPurchaseAddPage() {
             item_category: category,
             item_name: "",
             item_code: "",
+            ...dimensionPatchFromMaster(null),
           };
         })
     );
@@ -257,6 +301,7 @@ function StockPurchaseAddPage() {
             item_master_id: selected ? String(selected.id) : "",
             item_name: itemName,
             item_code: selected ? String(selected.item_code || "") : "",
+            ...dimensionPatchFromMaster(selected),
           };
         })
     );
@@ -266,16 +311,14 @@ function StockPurchaseAddPage() {
     setItems((prev) =>
         prev.map((row) => {
           if (row.rowId !== rowId) return row;
-          const selected = itemMasterOptions.find(
-              (item) =>
-                  String(item.item_category || "") === String(row.item_category || "")
-                  && String(item.item_name || "") === String(row.item_name || "")
-                  && String(item.item_code || "") === String(itemCode || "")
-          );
+          const selected = getItemMasterByCode(itemCode);
           return {
             ...row,
             item_master_id: selected ? String(selected.id) : "",
+            item_category: selected ? String(selected.item_category || "") : row.item_category,
+            item_name: selected ? String(selected.item_name || "") : row.item_name,
             item_code: itemCode,
+            ...dimensionPatchFromMaster(selected),
           };
         })
     );
@@ -288,10 +331,6 @@ function StockPurchaseAddPage() {
           const next = { ...row, [key]: value };
           if (key === "quantity" || key === "unit_price") {
             next.total_price = toCurrency(toNumber(next.quantity) * toNumber(next.unit_price));
-          }
-          if (key === "length" || key === "width" || key === "height") {
-            const vol = toNumber(next.length) * toNumber(next.width) * toNumber(next.height);
-            next.volume = vol.toFixed(3);
           }
           return next;
         })
@@ -380,9 +419,6 @@ function StockPurchaseAddPage() {
           unit_price: row.unit_price || "0",
           total_price: row.total_price || "0",
           uom_id: row.uom_id || null,
-          length: row.length || "0",
-          width: row.width || "0",
-          height: row.height || "0",
         }));
 
     const seenNames = new Set();
@@ -741,10 +777,10 @@ function StockPurchaseAddPage() {
                               type="number"
                               step="any"
                               min="0"
-                              className="auth-input"
+                              className="auth-input auth-input--readonly"
                               value={row.length}
-                              onChange={(e) => handleItemValueChange(row.rowId, "length", e.target.value)}
-                              disabled={!savedPurchaseDetailId}
+                              readOnly
+                              disabled
                           />
                         </td>
                         <td>
@@ -752,10 +788,10 @@ function StockPurchaseAddPage() {
                               type="number"
                               step="any"
                               min="0"
-                              className="auth-input"
+                              className="auth-input auth-input--readonly"
                               value={row.width}
-                              onChange={(e) => handleItemValueChange(row.rowId, "width", e.target.value)}
-                              disabled={!savedPurchaseDetailId}
+                              readOnly
+                              disabled
                           />
                         </td>
                         <td>
@@ -763,10 +799,10 @@ function StockPurchaseAddPage() {
                               type="number"
                               step="any"
                               min="0"
-                              className="auth-input"
+                              className="auth-input auth-input--readonly"
                               value={row.height}
-                              onChange={(e) => handleItemValueChange(row.rowId, "height", e.target.value)}
-                              disabled={!savedPurchaseDetailId}
+                              readOnly
+                              disabled
                           />
                         </td>
                         <td>

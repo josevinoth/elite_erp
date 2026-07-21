@@ -119,6 +119,7 @@ def _empty_purchase_reference():
         "purchase_length": "0",
         "purchase_width": "0",
         "purchase_height": "0",
+        "purchase_volume": "0",
     }
 
 
@@ -133,11 +134,16 @@ def _get_purchase_reference(item_code):
         .order_by("-updated_at", "-id")
         .first()
     )
-    if not purchase_item:
-        return _empty_purchase_reference()
+    item_master = (
+        LabFurnitureItem.objects.select_related("uom")
+        .filter(item_code__iexact=normalized_code)
+        .first()
+    )
 
-    purchase_uom = getattr(purchase_item, "uom", None)
-    purchase_uom_id = getattr(purchase_uom, "pk", None)
+    purchase_uom = getattr(item_master, "uom", None) if item_master else None
+    if not purchase_uom and purchase_item:
+        purchase_uom = getattr(purchase_item, "uom", None)
+    purchase_uom_id = getattr(purchase_uom, "pk", None) if purchase_uom else None
     uom_label = ""
     if purchase_uom_id and purchase_uom:
         if purchase_uom.name and purchase_uom.symbol:
@@ -146,12 +152,13 @@ def _get_purchase_reference(item_code):
             uom_label = purchase_uom.symbol or purchase_uom.name or ""
 
     return {
-        "purchase_qty": str(purchase_item.quantity),
+        "purchase_qty": str(purchase_item.quantity) if purchase_item else "0",
         "purchase_uom": uom_label,
         "purchase_uom_id": purchase_uom_id,
-        "purchase_length": str(purchase_item.length),
-        "purchase_width": str(purchase_item.width),
-        "purchase_height": str(purchase_item.height),
+        "purchase_length": str(item_master.length) if item_master else "0",
+        "purchase_width": str(item_master.width) if item_master else "0",
+        "purchase_height": str(item_master.height) if item_master else "0",
+        "purchase_volume": str(item_master.volume) if item_master else "0",
     }
 
 
@@ -189,6 +196,7 @@ def _serialize(row):
         "purchase_length": purchase_reference["purchase_length"],
         "purchase_width": purchase_reference["purchase_width"],
         "purchase_height": purchase_reference["purchase_height"],
+        "purchase_volume": purchase_reference["purchase_volume"],
         "total_price": str(row.ic_total_price),
         "updated_by": row.ic_updated_by.username if updated_by_id else "",
         "updated_on": row.ic_updated_at.isoformat() if row.ic_updated_at else "",
@@ -332,6 +340,7 @@ def item_costing_cost_preview_api_view(request):
             "purchase_length": purchase_reference["purchase_length"],
             "purchase_width": purchase_reference["purchase_width"],
             "purchase_height": purchase_reference["purchase_height"],
+            "purchase_volume": purchase_reference["purchase_volume"],
         }
     )
 

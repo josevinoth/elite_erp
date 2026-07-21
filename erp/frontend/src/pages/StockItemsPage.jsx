@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import CrudPage from "../components/CrudPage";
 import {
-  createLabFurnitureItemCategory,
   createLabFurnitureItem,
   deleteLabFurnitureItem,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
+  listUoms,
   updateLabFurnitureItem,
 } from "../services/crudApi";
 
@@ -13,33 +13,56 @@ const COLUMNS = [
   { key: "item_category", label: "Item Category" },
   { key: "item_name", label: "Item Name" },
   { key: "item_code", label: "Item Code" },
+  { key: "uom", label: "UOM" },
+  { key: "length", label: "Length/Size" },
+  { key: "width", label: "Width" },
+  { key: "height", label: "Height/Thk" },
+  { key: "volume", label: "Volume" },
 ];
 
 const FIELDS = [
+  { key: "item_category_id", label: "Item Category", required: true },
   { key: "item_name", label: "Item Name", required: true },
-  { key: "item_category", label: "Item Category", required: true },
+  { key: "uom_id", label: "UOM", required: false },
+  { key: "length", label: "Length/Size", type: "number", min: 0, step: "any", default: "0" },
+  { key: "width", label: "Width", type: "number", min: 0, step: "any", default: "0" },
+  { key: "height", label: "Height/Thk", type: "number", min: 0, step: "any", default: "0" },
+  { key: "volume", label: "Volume", type: "number", readOnly: true, default: "0" },
 ];
 
 function StockItemsPage() {
   const [categoryOptions, setCategoryOptions] = useState([]);
-
-  const normalizeCategoryName = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  const [uomOptions, setUomOptions] = useState([]);
 
   const loadCategories = useCallback(async () => {
     const data = await listLabFurnitureItemCategories();
     const categories = Array.isArray(data.item_categories)
-      ? data.item_categories.map((category) => ({
+        ? data.item_categories.map((category) => ({
           value: String(category.id),
           label: category.name,
         }))
-      : [];
+        : [];
     setCategoryOptions(categories);
     return categories;
   }, []);
 
+  const loadUoms = useCallback(async () => {
+    const data = await listUoms();
+    const rows = Array.isArray(data) ? data : (Array.isArray(data?.uoms) ? data.uoms : []);
+    const options = rows.map((uom) => ({
+      value: String(uom.id),
+      label: `${uom.name} (${uom.symbol})`,
+    }));
+    setUomOptions(options);
+    return options;
+  }, []);
+
   useEffect(() => {
-    loadCategories().catch(() => setCategoryOptions([]));
-  }, [loadCategories]);
+    Promise.all([loadCategories(), loadUoms()]).catch(() => {
+      setCategoryOptions([]);
+      setUomOptions([]);
+    });
+  }, [loadCategories, loadUoms]);
 
   const fetchFn = useCallback(async () => {
     const data = await listLabFurnitureItems();
@@ -56,59 +79,50 @@ function StockItemsPage() {
     return data.lab_furniture_item;
   }, []);
 
-  const appendCategory = async (name) => {
-    const normalizedName = normalizeCategoryName(name);
-    const existing = categoryOptions.find(
-      (option) => normalizeCategoryName(option.label).toLowerCase() === normalizedName.toLowerCase()
-    );
-
-    if (existing) {
-      window.alert(`Warning: Item Category \"${existing.label}\" already exists.`);
-      return String(existing.value);
-    }
-
-    try {
-      const data = await createLabFurnitureItemCategory({ name: normalizedName });
-      await loadCategories();
-      return String(data.item_category.id);
-    } catch (err) {
-      // Duplicate can still happen if another user creates the category concurrently.
-      if (String(err?.message || "").toLowerCase().includes("already exists")) {
-        window.alert(`Warning: Item Category \"${normalizedName}\" already exists.`);
-        const latestCategories = await loadCategories();
-        const matched = latestCategories.find(
-          (option) => normalizeCategoryName(option.label).toLowerCase() === normalizedName.toLowerCase()
-        );
-        if (matched) {
-          return String(matched.value);
-        }
-      }
-      throw err;
-    }
-  };
-
   const fields = [
-    FIELDS[0],
     {
-      ...FIELDS[1],
+      ...FIELDS[0],
       options: categoryOptions,
-      onAppend: appendCategory,
-      default: categoryOptions[0]?.value || "",
+      isClearable: false,
     },
+    FIELDS[1],
+    {
+      ...FIELDS[2],
+      options: uomOptions,
+    },
+    FIELDS[3],
+    FIELDS[4],
+    FIELDS[5],
+    FIELDS[6],
   ];
 
+  const computeValues = useCallback((changedKey, _changedValue, allValues) => {
+    if (!["length", "width", "height"].includes(changedKey)) {
+      return {};
+    }
+
+    const length = Number(allValues.length || 0);
+    const width = Number(allValues.width || 0);
+    const height = Number(allValues.height || 0);
+    const volume = (Number.isFinite(length) ? length : 0)
+        * (Number.isFinite(width) ? width : 0)
+        * (Number.isFinite(height) ? height : 0);
+    return { volume: volume.toFixed(3) };
+  }, []);
+
   return (
-    <CrudPage
-      title="Item Master"
-      columns={COLUMNS}
-      fields={fields}
-      fetchFn={fetchFn}
-      createFn={createFn}
-      updateFn={updateFn}
-      deleteFn={deleteLabFurnitureItem}
-      tableMaxHeight="58vh"
-      stickyHeader
-    />
+      <CrudPage
+          title="Item Master"
+          columns={COLUMNS}
+          fields={fields}
+          fetchFn={fetchFn}
+          createFn={createFn}
+          updateFn={updateFn}
+          deleteFn={deleteLabFurnitureItem}
+          computeValues={computeValues}
+          tableMaxHeight="58vh"
+          stickyHeader
+      />
   );
 }
 
