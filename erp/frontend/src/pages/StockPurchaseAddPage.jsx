@@ -5,6 +5,7 @@ import {
   createStockPurchase,
   createStockPurchaseVendorDetail,
   getStockPurchaseById,
+  listLabFurnitureItemCategories,
   listLabFurnitureItems,
   listVendors,
   listUoms,
@@ -17,17 +18,20 @@ const emptyItem = (id) => ({
   rowId: id,
   grn_number: "",
   item_master_id: "",
+  item_category_id: "",
   item_category: "",
   item_name: "",
   item_code: "",
+  item_code_id: "",
+  item_type: "BUY",
   quantity: "",
   unit_price: "",
-  total_price: "0.00",
+  total_price: "0.0",
   uom_id: "",
   length: "0",
   width: "0",
   height: "0",
-  volume: "0.000",
+  volume: "0.0",
 });
 
 const toNumber = (value) => {
@@ -57,6 +61,7 @@ function StockPurchaseAddPage() {
   });
   const [vendorOptions, setVendorOptions] = useState([]);
   const [uomOptions, setUomOptions] = useState([]);
+  const [categoryOptions, setCategoryOptions] = useState([]);
   const [itemMasterOptions, setItemMasterOptions] = useState([]);
   const [items, setItems] = useState([emptyItem(1)]);
   const [nextItemId, setNextItemId] = useState(2);
@@ -87,17 +92,19 @@ function StockPurchaseAddPage() {
   useEffect(() => {
     let alive = true;
 
-    Promise.all([listVendors(), listLabFurnitureItems(), listUoms()])
-        .then(([vendorData, itemData, uomData]) => {
+    Promise.all([listVendors(), listLabFurnitureItems(), listLabFurnitureItemCategories(), listUoms()])
+        .then(([vendorData, itemData, categoryData, uomData]) => {
           if (!alive) return;
           setVendorOptions(vendorData.vendors || []);
           setItemMasterOptions(itemData.lab_furniture_items || []);
+          setCategoryOptions(categoryData.item_categories || []);
           setUomOptions(Array.isArray(uomData) ? uomData : (uomData.uoms || []));
         })
         .catch(() => {
           if (!alive) return;
           setVendorOptions([]);
           setItemMasterOptions([]);
+          setCategoryOptions([]);
           setUomOptions([]);
         });
 
@@ -125,10 +132,13 @@ function StockPurchaseAddPage() {
               ? record.items.map((item, index) => ({
                 rowId: item.id || index + 1,
                 grn_number: item.grn_number || "",
-                item_master_id: "",
+                item_master_id: item.item_master_id ? String(item.item_master_id) : (item.item_code_id ? String(item.item_code_id) : ""),
+                item_category_id: item.item_category_id ? String(item.item_category_id) : "",
                 item_category: item.item_category || "",
                 item_name: item.item_name || "",
                 item_code: item.item_code || "",
+                item_code_id: item.item_code_id ? String(item.item_code_id) : (item.item_master_id ? String(item.item_master_id) : ""),
+                item_type: item.item_type || "BUY",
                 quantity: item.quantity || "0",
                 unit_price: item.unit_price || "0",
                 total_price: item.total_price || "0",
@@ -176,17 +186,6 @@ function StockPurchaseAddPage() {
     setVendorFormValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const categoryOptions = useMemo(() => {
-    const unique = new Map();
-    itemMasterOptions.forEach((item) => {
-      const category = String(item.item_category || "").trim();
-      if (category && !unique.has(category)) {
-        unique.set(category, category);
-      }
-    });
-    return [...unique.values()].sort((a, b) => a.localeCompare(b));
-  }, [itemMasterOptions]);
-
   const computedItemsTotalValue = useMemo(() => {
     const total = items.reduce((sum, row) => sum + toNumber(row.total_price), 0);
     return toCurrency(total);
@@ -199,33 +198,27 @@ function StockPurchaseAddPage() {
     return toCurrency(totalAfterTax);
   }, [computedItemsTotalValue, vendorFormValues.tax]);
 
-  const getItemNamesForCategory = (category) => {
-    const unique = new Map();
-    itemMasterOptions
-        .filter((item) => String(item.item_category || "") === String(category || ""))
-        .forEach((item) => {
-          const name = String(item.item_name || "").trim();
-          if (name && !unique.has(name)) unique.set(name, name);
-        });
-    return [...unique.values()].sort((a, b) => a.localeCompare(b));
-  };
-
-  const getItemCodesForSelection = (category, itemName) => {
+  const getItemCodesForSelection = (categoryId) => {
     return itemMasterOptions
         .filter(
-            (item) =>
-                String(item.item_category || "") === String(category || "")
-                && String(item.item_name || "") === String(itemName || "")
+            (item) => !categoryId || String(item.item_category_id || "") === String(categoryId || "")
         )
-        .map((item) => String(item.item_code || ""))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b));
+        .map((item) => ({
+          id: String(item.id || ""),
+          code: String(item.item_code || ""),
+          name: String(item.item_name || ""),
+          categoryId: String(item.item_category_id || ""),
+          category: String(item.item_category || ""),
+          uomId: item.uom_id ? String(item.uom_id) : "",
+        }))
+        .filter((item) => item.id && item.code)
+        .sort((a, b) => a.code.localeCompare(b.code));
   };
 
-  const getItemMasterByCode = (itemCode) => {
-    const normalizedCode = String(itemCode || "").trim();
-    if (!normalizedCode) return null;
-    return itemMasterOptions.find((item) => String(item.item_code || "") === normalizedCode) || null;
+  const getItemMasterById = (itemId) => {
+    const normalizedId = String(itemId || "").trim();
+    if (!normalizedId) return null;
+    return itemMasterOptions.find((item) => String(item.id || "") === normalizedId) || null;
   };
 
   const dimensionPatchFromMaster = (masterItem) => ({
@@ -240,7 +233,7 @@ function StockPurchaseAddPage() {
 
     setItems((prev) =>
       prev.map((row) => {
-        const masterItem = getItemMasterByCode(row.item_code);
+        const masterItem = getItemMasterById(row.item_code_id || row.item_master_id);
         if (!masterItem) return row;
         const patch = dimensionPatchFromMaster(masterItem);
         if (
@@ -255,69 +248,51 @@ function StockPurchaseAddPage() {
           ...row,
           ...patch,
           item_master_id: row.item_master_id || String(masterItem.id || ""),
+          item_category_id: row.item_category_id || String(masterItem.item_category_id || ""),
+          item_category: row.item_category || String(masterItem.item_category || ""),
+          item_name: row.item_name || String(masterItem.item_name || ""),
+          item_code: row.item_code || String(masterItem.item_code || ""),
+          item_code_id: row.item_code_id || String(masterItem.id || ""),
+          uom_id: row.uom_id || (masterItem.uom_id ? String(masterItem.uom_id) : ""),
         };
       })
     );
   }, [itemMasterOptions]);
 
-  const handleCategorySelect = (rowId, category) => {
+  const handleCategorySelect = (rowId, categoryId) => {
+    const selectedCategory = categoryOptions.find((category) => String(category.id) === String(categoryId || ""));
     setItems((prev) =>
         prev.map((row) => {
           if (row.rowId !== rowId) return row;
           return {
             ...row,
             item_master_id: "",
-            item_category: category,
+            item_category_id: String(categoryId || ""),
+            item_category: selectedCategory?.name || "",
             item_name: "",
             item_code: "",
+            item_code_id: "",
+            uom_id: "",
             ...dimensionPatchFromMaster(null),
           };
         })
     );
   };
 
-  const handleItemNameSelect = (rowId, itemName) => {
-    const normalized = String(itemName || "").trim().toLowerCase();
-    if (normalized) {
-      const alreadyExists = items.some(
-          (row) => row.rowId !== rowId && String(row.item_name || "").trim().toLowerCase() === normalized
-      );
-      if (alreadyExists) {
-        window.alert("Duplicate item name is not allowed in the same invoice.");
-        return;
-      }
-    }
-
+  const handleItemCodeSelect = (rowId, itemCodeId) => {
     setItems((prev) =>
         prev.map((row) => {
           if (row.rowId !== rowId) return row;
-          const selected = itemMasterOptions.find(
-              (item) =>
-                  String(item.item_category || "") === String(row.item_category || "")
-                  && String(item.item_name || "") === String(itemName || "")
-          );
+          const selected = getItemMasterById(itemCodeId);
           return {
             ...row,
             item_master_id: selected ? String(selected.id) : "",
-            item_name: itemName,
-            item_code: selected ? String(selected.item_code || "") : "",
-            ...dimensionPatchFromMaster(selected),
-          };
-        })
-    );
-  };
-
-  const handleItemCodeSelect = (rowId, itemCode) => {
-    setItems((prev) =>
-        prev.map((row) => {
-          if (row.rowId !== rowId) return row;
-          const selected = getItemMasterByCode(itemCode);
-          return {
-            ...row,
-            item_master_id: selected ? String(selected.id) : "",
+            item_category_id: selected ? String(selected.item_category_id || "") : row.item_category_id,
             item_category: selected ? String(selected.item_category || "") : row.item_category,
             item_name: selected ? String(selected.item_name || "") : row.item_name,
-            item_code: itemCode,
+            item_code: selected ? String(selected.item_code || "") : "",
+            item_code_id: selected ? String(selected.id || "") : "",
+            uom_id: selected?.uom_id ? String(selected.uom_id) : row.uom_id,
             ...dimensionPatchFromMaster(selected),
           };
         })
@@ -412,9 +387,13 @@ function StockPurchaseAddPage() {
         .map((row) => ({
           id: row.rowId,
           grn_number: row.grn_number || "",
+          item_category_id: row.item_category_id || null,
           item_category: row.item_category,
           item_name: row.item_name,
           item_code: row.item_code,
+          item_code_id: row.item_code_id || row.item_master_id || null,
+          item_master_id: row.item_master_id || row.item_code_id || null,
+          item_type: row.item_type || "BUY",
           quantity: row.quantity || "0",
           unit_price: row.unit_price || "0",
           total_price: row.total_price || "0",
@@ -669,13 +648,14 @@ function StockPurchaseAddPage() {
                 <BsPlusCircleFill aria-hidden="true" />
               </button>
             </div>
-            <div className="users-table-wrap">
-              <table className="users-table">
+            <div className="users-table-wrap" style={{ overflowX: "auto" }}>
+              <table className="users-table users-table--sp-items">
                 <thead>
                 <tr>
                   <th>Item Category</th>
                   <th>Item Name</th>
                   <th>Item Code</th>
+                  <th>Item Type</th>
                   <th>GRN No.</th>
                   <th>UOM</th>
                   <th>Qty/Size</th>
@@ -697,40 +677,41 @@ function StockPurchaseAddPage() {
                         <td>
                           <select
                               className="auth-input"
-                              value={row.item_category}
+                              value={row.item_category_id}
                               onChange={(e) => handleCategorySelect(row.rowId, e.target.value)}
                               disabled={!savedPurchaseDetailId}
                           >
                             <option value="">Select category</option>
                             {categoryOptions.map((category) => (
-                                <option key={`${row.rowId}-cat-${category}`} value={category}>{category}</option>
+                                <option key={`${row.rowId}-cat-${category.id}`} value={category.id}>{category.name}</option>
                             ))}
                           </select>
                         </td>
                         <td>
-                          <select
-                              className="auth-input"
-                              value={row.item_name}
-                              onChange={(e) => handleItemNameSelect(row.rowId, e.target.value)}
-                              disabled={!savedPurchaseDetailId || !row.item_category}
-                          >
-                            <option value="">Select item name</option>
-                            {getItemNamesForCategory(row.item_category).map((itemName) => (
-                                <option key={`${row.rowId}-name-${itemName}`} value={itemName}>{itemName}</option>
-                            ))}
-                          </select>
+                          <input className="auth-input auth-input--readonly" value={row.item_name} readOnly disabled />
                         </td>
                         <td>
                           <select
                               className="auth-input"
-                              value={row.item_code}
+                              value={row.item_code_id}
                               onChange={(e) => handleItemCodeSelect(row.rowId, e.target.value)}
-                              disabled={!savedPurchaseDetailId || !row.item_name}
+                              disabled={!savedPurchaseDetailId || !row.item_category_id}
                           >
                             <option value="">Select item code</option>
-                            {getItemCodesForSelection(row.item_category, row.item_name).map((itemCode) => (
-                                <option key={`${row.rowId}-code-${itemCode}`} value={itemCode}>{itemCode}</option>
+                            {getItemCodesForSelection(row.item_category_id).map((item) => (
+                                <option key={`${row.rowId}-code-${item.id}`} value={item.id}>{item.code}</option>
                             ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                              className="auth-input"
+                              value={row.item_type}
+                              onChange={(e) => handleItemValueChange(row.rowId, "item_type", e.target.value)}
+                              disabled={!savedPurchaseDetailId}
+                          >
+                            <option value="BUY">BUY</option>
+                            <option value="MAKE">MAKE</option>
                           </select>
                         </td>
                         <td>

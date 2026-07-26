@@ -31,7 +31,8 @@ from .sub_models import (
     non_standard_lab_mod,
     non_moe_product_series_mod,
     approval_status_mod,
-    item_costing_mod
+    item_costing_mod,
+    item_type_mod
 )
 
 __all__ = [
@@ -68,4 +69,5 @@ __all__ = [
     "non_moe_product_series_mod",
     "approval_status_mod",
     "item_costing_mod",
+    "item_type_mod",
 ]

@@ -28,7 +28,7 @@ class ItemCostingSerializer(serializers.ModelSerializer):
     def get_uom(self, obj):
         purchase_item = (
             StockPurchaseItem.objects.select_related("uom")
-            .filter(item_code__iexact=getattr(obj, "ic_item_code", ""))
+            .filter(item_code__item_code__iexact=getattr(obj, "ic_item_code", ""))
             .order_by("-updated_at", "-id")
             .first()
         )

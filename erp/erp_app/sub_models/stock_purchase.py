@@ -1,6 +1,8 @@
 from django.db import models
 
 from ..utils import normalize_text
+from .item_category import ItemCategory
+from .lab_furniture_item import LabFurnitureItem
 from .vendor import Vendor
 from .cut_optimiser import UOM
 
@@ -40,6 +42,13 @@ class StockPurchaseVendorDetail(models.Model):
 
 
 class StockPurchaseItem(models.Model):
+    ITEM_TYPE_BUY = "BUY"
+    ITEM_TYPE_MAKE = "MAKE"
+    ITEM_TYPE_CHOICES = [
+        (ITEM_TYPE_BUY, "BUY"),
+        (ITEM_TYPE_MAKE, "MAKE"),
+    ]
+
     vendor_detail = models.ForeignKey(StockPurchaseVendorDetail, on_delete=models.CASCADE, related_name="items")
     lce_estimate = models.ForeignKey(
         "erp_app.LCEEstimate",
@@ -49,14 +58,27 @@ class StockPurchaseItem(models.Model):
         related_name="linked_items",
     )
     grn_number = models.CharField(max_length=7, unique=True, blank=True)
-    item_category = models.CharField(max_length=120, blank=True)
+    item_category = models.ForeignKey(
+        ItemCategory,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="stock_purchase_items",
+    )
     item_name = models.CharField(max_length=200)
-    item_code = models.CharField(max_length=100, blank=True)
+    item_code = models.ForeignKey(
+        LabFurnitureItem,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="stock_purchase_items",
+    )
     quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     lce_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_purchase_items")
+    item_type = models.CharField(max_length=4, choices=ITEM_TYPE_CHOICES, default=ITEM_TYPE_BUY, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -67,9 +89,12 @@ class StockPurchaseItem(models.Model):
         return self.item_name
 
     def save(self, *args, **kwargs):
-        self.item_category = normalize_text(self.item_category)
+        if getattr(self, "item_code_id", None):
+            self.item_name = normalize_text(self.item_code.item_name)
+            if getattr(self.item_code, "item_category_id", None):
+                self.item_category = self.item_code.item_category
         self.item_name = normalize_text(self.item_name)
-        self.item_code = normalize_text(self.item_code)
+        self.item_type = (normalize_text(self.item_type) or self.ITEM_TYPE_BUY).upper()
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
 
         # Normalize legacy GRN values (e.g. 0000001) to prefixed format (GRN0001).

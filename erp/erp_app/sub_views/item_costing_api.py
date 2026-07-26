@@ -90,7 +90,7 @@ def _compute_costs(item_code, qty):
     normalized_code = normalize_text(item_code).upper()
     costs = [
         _to_decimal(value, Decimal("0"))
-        for value in StockPurchaseItem.objects.filter(item_code__iexact=normalized_code).values_list("lce_cost", flat=True)
+        for value in StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).values_list("lce_cost", flat=True)
     ]
 
     if not costs:
@@ -129,8 +129,8 @@ def _get_purchase_reference(item_code):
         return _empty_purchase_reference()
 
     purchase_item = (
-        StockPurchaseItem.objects.select_related("uom")
-        .filter(item_code__iexact=normalized_code)
+        StockPurchaseItem.objects.select_related("uom", "item_code", "item_code__uom")
+        .filter(item_code__item_code__iexact=normalized_code)
         .order_by("-updated_at", "-id")
         .first()
     )

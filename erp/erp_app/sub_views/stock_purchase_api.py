@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import LabFurnitureItem, LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import ItemCategory, LabFurnitureItem, LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -31,6 +31,49 @@ def _to_decimal(value, fallback="0"):
         return Decimal(str(fallback))
 
 
+def _resolve_item_category(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return ItemCategory.objects.filter(pk=int(value)).first()
+    raw = normalize_text(value)
+    if not raw:
+        return None
+    return ItemCategory.objects.filter(name__iexact=raw).first()
+
+
+def _resolve_item_master(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, LabFurnitureItem):
+        return value
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return LabFurnitureItem.objects.select_related("item_category", "uom").filter(pk=int(value)).first()
+    raw = normalize_text(value).upper()
+    if not raw:
+        return None
+    return LabFurnitureItem.objects.select_related("item_category", "uom").filter(item_code__iexact=raw).first()
+
+
+def _normalize_item_type(value):
+    normalized = normalize_text(value).upper()
+    return normalized if normalized in {choice for choice, _label in StockPurchaseItem.ITEM_TYPE_CHOICES} else StockPurchaseItem.ITEM_TYPE_BUY
+
+
+def _resolve_item_row_references(row):
+    raw_category_id = row.get("item_category_id", row.get("item_category", ""))
+    raw_item_id = row.get("item_code_id", row.get("item_master_id", row.get("item_code", "")))
+    item_category = _resolve_item_category(raw_category_id)
+    item_master = _resolve_item_master(raw_item_id)
+
+    if raw_category_id not in (None, "") and not item_category:
+        raise ValueError("Selected item category was not found.")
+    if raw_item_id not in (None, "") and not item_master:
+        raise ValueError("Selected item code was not found.")
+
+    return item_category, item_master
+
+
 def _serialize_vendor_detail(vendor_detail):
     if not vendor_detail:
         return None
@@ -51,21 +94,26 @@ def _serialize_item(item, item_master_by_code=None):
     if raw_grn and not raw_grn.upper().startswith("GRN"):
         raw_grn = f"GRN{item.id:04d}"
 
-    normalized_code = normalize_text(item.item_code).upper()
-    item_master = (item_master_by_code or {}).get(normalized_code)
+    item_master = getattr(item, "item_code", None)
+    item_category = getattr(item, "item_category", None) or getattr(item_master, "item_category", None)
+    resolved_uom = getattr(item, "uom", None) or getattr(item_master, "uom", None)
 
     return {
         "id": item.id,
         "grn_number": raw_grn,
-        "item_category": item.item_category,
+        "item_category": item_category.name if item_category else "",
+        "item_category_id": getattr(item, "item_category_id", None) or getattr(item_master, "item_category_id", None),
         "item_name": item.item_name,
-        "item_code": item.item_code,
+        "item_code": item_master.item_code if item_master else "",
+        "item_code_id": getattr(item, "item_code_id", None),
+        "item_master_id": getattr(item, "item_code_id", None),
+        "item_type": item.item_type or StockPurchaseItem.ITEM_TYPE_BUY,
         "quantity": str(item.quantity),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
-        "uom_id": item.uom_id,
+        "uom_id": getattr(resolved_uom, "pk", None),
         "length": str(item_master.length) if item_master else "0",
         "width": str(item_master.width) if item_master else "0",
         "height": str(item_master.height) if item_master else "0",
@@ -76,9 +124,6 @@ def _serialize_item(item, item_master_by_code=None):
 def _serialize(obj):
     items_qs = obj.items.all() if hasattr(obj, 'items') else []
     items = list(items_qs) if items_qs else []
-    item_codes = {normalize_text(item.item_code).upper() for item in items if normalize_text(item.item_code)}
-    item_master_rows = LabFurnitureItem.objects.filter(item_code__in=item_codes) if item_codes else []
-    item_master_by_code = {normalize_text(row.item_code).upper(): row for row in item_master_rows}
     first_item = items[0] if items else None
     vendor_detail = _serialize_vendor_detail(obj)
 
@@ -88,7 +133,7 @@ def _serialize(obj):
         "vendor_detail": vendor_detail,
         "notes": obj.notes or "",
         "status_id": obj.status_id,
-        "items": [_serialize_item(item, item_master_by_code) for item in items] if items else [],
+        "items": [_serialize_item(item) for item in items] if items else [],
         # Legacy/compatibility fields for lists view
         "purchase_id": getattr(obj, "purchase_id", obj.pk),
         "invoice_number": obj.invoice_number,
@@ -102,7 +147,7 @@ def _serialize(obj):
         "purchase_total": str(sum((getattr(item, 'total_price', 0) for item in items), Decimal("0"))),
         # legacy keys for UI compatibility in list view
         "item_name": first_item.item_name if first_item else "",
-        "category": first_item.item_category if first_item else "",
+        "category": ((first_item.item_category.name if getattr(first_item, "item_category_id", None) else "") if first_item else ""),
         "vendor": obj.vendor.name if obj.vendor else "",
         "quantity": str(first_item.quantity) if first_item else "0",
         "unit_price": str(first_item.unit_price) if first_item else "0",
@@ -219,14 +264,17 @@ def _sync_items(stock_purchase, items_payload):
         if item:
             retained_existing_ids.add(item.id)
         else:
-            item = StockPurchaseItem(stock_purchase=stock_purchase)
+            item = StockPurchaseItem(vendor_detail=stock_purchase)
 
-        item.item_category = normalize_text(row.get("item_category", ""))
-        item.item_name = item_name
-        item.item_code = normalize_text(row.get("item_code", ""))
+        item_category, item_master = _resolve_item_row_references(row)
+        item.item_code = item_master
+        item.item_category = item_category or (item_master.item_category if item_master else None)
+        item.item_name = item_master.item_name if item_master else item_name
+        item.item_type = _normalize_item_type(row.get("item_type", item.item_type))
         item.quantity = _to_decimal(row.get("quantity"), "0")
         item.unit_price = _to_decimal(row.get("unit_price"), "0")
         item.total_price = item.quantity * item.unit_price
+        item.uom_id = row.get("uom_id") or getattr(item_master, "uom_id", None)
         item.save()
 
         if item.lce_estimate_id:
@@ -251,7 +299,7 @@ def _sync_items(stock_purchase, items_payload):
 def _first_duplicate_code_in_payload(items_payload):
     seen = set()
     for row in items_payload:
-        code = normalize_text(row.get("item_code", "")).upper()
+        code = str(row.get("item_code_id") or row.get("item_master_id") or row.get("item_code") or "").strip().upper()
         if not code:
             continue
         if code in seen:
@@ -278,22 +326,22 @@ def _first_duplicate_code_for_invoice(invoice_number, items_payload, exclude_pur
         return None
 
     candidate_codes = {
-        normalize_text(row.get("item_code", "")).upper()
+        int(row.get("item_code_id") or row.get("item_master_id"))
         for row in items_payload
-        if normalize_text(row.get("item_code", ""))
+        if str(row.get("item_code_id") or row.get("item_master_id") or "").isdigit()
     }
     if not candidate_codes:
         return None
 
     for code in candidate_codes:
         qs = StockPurchaseItem.objects.filter(
-            stock_purchase__vendor_detail__invoice_number__iexact=invoice,
-            item_code__iexact=code,
+            vendor_detail__invoice_number__iexact=invoice,
+            item_code_id=code,
         )
         if exclude_purchase_id:
-            qs = qs.exclude(stock_purchase_id=exclude_purchase_id)
+            qs = qs.exclude(vendor_detail_id=exclude_purchase_id)
         if qs.exists():
-            return code
+            return str(code)
     return None
 
 
@@ -302,7 +350,13 @@ def list_stock_purchases_api_view(request):
     na = _ensure_authenticated(request)
     if na:
         return na
-    rows = StockPurchaseVendorDetail.objects.select_related("vendor").prefetch_related("items").order_by("-id")
+    rows = StockPurchaseVendorDetail.objects.select_related("vendor").prefetch_related(
+        "items__item_category",
+        "items__item_code",
+        "items__item_code__item_category",
+        "items__item_code__uom",
+        "items__uom",
+    ).order_by("-id")
     return JsonResponse({"stock_purchases": [_serialize(o) for o in rows]})
 
 
@@ -335,18 +389,24 @@ def create_stock_purchase_api_view(request):
     )
 
     items_payload = p.get("items") or []
-    for row in items_payload:
-        item = StockPurchaseItem(
-            vendor_detail=obj,
-            item_category=normalize_text(row.get("item_category", "")),
-            item_name=normalize_text(row.get("item_name", "")),
-            item_code=normalize_text(row.get("item_code", "")),
-            quantity=_to_decimal(row.get("quantity"), "0"),
-            unit_price=_to_decimal(row.get("unit_price"), "0"),
-            uom_id=row.get("uom_id") or None,
-        )
-        item.total_price = item.quantity * item.unit_price
-        item.save()
+    try:
+        for row in items_payload:
+            item_category, item_master = _resolve_item_row_references(row)
+            item = StockPurchaseItem(
+                vendor_detail=obj,
+                item_category=item_category or (item_master.item_category if item_master else None),
+                item_name=item_master.item_name if item_master else normalize_text(row.get("item_name", "")),
+                item_code=item_master,
+                quantity=_to_decimal(row.get("quantity"), "0"),
+                unit_price=_to_decimal(row.get("unit_price"), "0"),
+                uom_id=row.get("uom_id") or getattr(item_master, "uom_id", None),
+                item_type=_normalize_item_type(row.get("item_type", StockPurchaseItem.ITEM_TYPE_BUY)),
+            )
+            item.total_price = item.quantity * item.unit_price
+            item.save()
+    except ValueError as exc:
+        obj.delete()
+        return JsonResponse({"message": str(exc)}, status=400)
 
     return JsonResponse({"success": True, "stock_purchase": _serialize(obj)}, status=201)
 
@@ -382,27 +442,32 @@ def stock_purchase_detail_api_view(request, pk):
     # Update items if provided
     items_payload = p.get("items")
     if isinstance(items_payload, list):
-        # Remove existing items not in payload
-        existing_ids = {item.pk for item in obj.items.all()}
-        payload_ids = {row.get("id") for row in items_payload if row.get("id")}
-        to_delete = existing_ids - payload_ids
-        if to_delete:
-            StockPurchaseItem.objects.filter(pk__in=list(to_delete)).delete()
-        # Update or create items
-        for row in items_payload:
-            item_id = row.get("id")
-            if item_id and StockPurchaseItem.objects.filter(pk=item_id, vendor_detail=obj).exists():
-                item = StockPurchaseItem.objects.get(pk=item_id, vendor_detail=obj)
-            else:
-                item = StockPurchaseItem(vendor_detail=obj)
-            item.item_category = normalize_text(row.get("item_category", ""))
-            item.item_name = normalize_text(row.get("item_name", ""))
-            item.item_code = normalize_text(row.get("item_code", ""))
-            item.quantity = _to_decimal(row.get("quantity"), "0")
-            item.unit_price = _to_decimal(row.get("unit_price"), "0")
-            item.total_price = item.quantity * item.unit_price
-            item.uom_id = row.get("uom_id") or None
-            item.save()
+        try:
+            # Remove existing items not in payload
+            existing_ids = {item.pk for item in obj.items.all()}
+            payload_ids = {row.get("id") for row in items_payload if row.get("id")}
+            to_delete = existing_ids - payload_ids
+            if to_delete:
+                StockPurchaseItem.objects.filter(pk__in=list(to_delete)).delete()
+            # Update or create items
+            for row in items_payload:
+                item_id = row.get("id")
+                if item_id and StockPurchaseItem.objects.filter(pk=item_id, vendor_detail=obj).exists():
+                    item = StockPurchaseItem.objects.get(pk=item_id, vendor_detail=obj)
+                else:
+                    item = StockPurchaseItem(vendor_detail=obj)
+                item_category, item_master = _resolve_item_row_references(row)
+                item.item_category = item_category or (item_master.item_category if item_master else None)
+                item.item_name = item_master.item_name if item_master else normalize_text(row.get("item_name", ""))
+                item.item_code = item_master
+                item.quantity = _to_decimal(row.get("quantity"), "0")
+                item.unit_price = _to_decimal(row.get("unit_price"), "0")
+                item.total_price = item.quantity * item.unit_price
+                item.uom_id = row.get("uom_id") or getattr(item_master, "uom_id", None)
+                item.item_type = _normalize_item_type(row.get("item_type", item.item_type))
+                item.save()
+        except ValueError as exc:
+            return JsonResponse({"message": str(exc)}, status=400)
 
     return JsonResponse({'success': True, 'stock_purchase': _serialize(obj)})
 
@@ -413,7 +478,7 @@ def stock_purchase_item_trace_api_view(request, item_id):
     if na:
         return na
 
-    item = StockPurchaseItem.objects.select_related("vendor_detail", "lce_estimate").filter(pk=item_id).first()
+    item = StockPurchaseItem.objects.select_related("vendor_detail", "lce_estimate", "item_code").filter(pk=item_id).first()
     if not item:
         return JsonResponse({"message": "Purchase item not found."}, status=404)
 
@@ -464,7 +529,7 @@ def stock_purchase_item_trace_api_view(request, item_id):
                 "item": {
                     "id": item.pk,
                     "grn_number": item.grn_number,
-                    "item_code": item.item_code,
+                    "item_code": item.item_code.item_code if getattr(item, "item_code_id", None) else "",
                     "item_name": item.item_name,
                     "purchase_id": item.vendor_detail.purchase_id if item.vendor_detail else None,
                     "purchase_number": item.vendor_detail.invoice_number if item.vendor_detail else "",
