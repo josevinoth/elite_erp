@@ -645,7 +645,7 @@ function StockPurchaseAddPage() {
                   title="Add Item Row"
                   aria-label="Add Item Row"
               >
-                <BsPlusCircleFill aria-hidden="true" />
+                <BsPlusCircleFill aria-hidden="true" />Add
               </button>
             </div>
             <div className="users-table-wrap" style={{ overflowX: "auto" }}>
