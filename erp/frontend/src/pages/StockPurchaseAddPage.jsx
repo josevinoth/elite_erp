@@ -147,7 +147,7 @@ function StockPurchaseAddPage() {
                         length: item.length || "0",
                         width: item.width || "0",
                         height: item.height || "0",
-                        volume: item.volume || "0.000",
+                        volume: item.volume || "0.00",
                     }))
                     : [];
 

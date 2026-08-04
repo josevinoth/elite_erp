@@ -44,6 +44,19 @@ textarea {
     box-shadow 180ms ease, transform 180ms ease;
 }
 
+/* Keep form control borders aligned with the page-header color palette. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  border-color: var(--form-label-color) !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--form-label-color) !important;
+}
+
 .app-icon {
   width: 20px;
   height: 20px;

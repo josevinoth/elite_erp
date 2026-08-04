@@ -79,8 +79,8 @@ function HomeLayout({ currentUser }) {
       icon: BsBoxSeam,
     },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
-    { title: "Orders:", stat: "Project Orders", to: "/stocks", icon: BsBarChartFill },
-    { title: "Stocks:", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },
+    { title: "Orders", stat: "Project Orders", to: "/stocks", icon: BsBarChartFill },
+    { title: "Stocks", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },
     ...(isAdmin || isCdcTeam
       ? [
           {

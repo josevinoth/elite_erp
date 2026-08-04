@@ -42,13 +42,6 @@ class StockPurchaseVendorDetail(models.Model):
 
 
 class StockPurchaseItem(models.Model):
-    ITEM_TYPE_BUY = "BUY"
-    ITEM_TYPE_MAKE = "MAKE"
-    ITEM_TYPE_CHOICES = [
-        (ITEM_TYPE_BUY, "BUY"),
-        (ITEM_TYPE_MAKE, "MAKE"),
-    ]
-
     vendor_detail = models.ForeignKey(StockPurchaseVendorDetail, on_delete=models.CASCADE, related_name="items")
     lce_estimate = models.ForeignKey(
         "erp_app.LCEEstimate",
@@ -66,19 +59,13 @@ class StockPurchaseItem(models.Model):
         related_name="stock_purchase_items",
     )
     item_name = models.CharField(max_length=200)
-    item_code = models.ForeignKey(
-        LabFurnitureItem,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="stock_purchase_items",
-    )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    item_code = models.ForeignKey(LabFurnitureItem,on_delete=models.PROTECT,null=True,blank=True,related_name="stock_purchase_items",)
+    quantity = models.DecimalField(max_digits=12, decimal_places=0, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    lce_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    lce_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_purchase_items")
-    item_type = models.CharField(max_length=4, choices=ITEM_TYPE_CHOICES, default=ITEM_TYPE_BUY, blank=True)
+    item_type = models.ForeignKey("erp_app.ItemType_info", on_delete=models.PROTECT, default=1,related_name="stock_purchase_items",)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -94,7 +81,6 @@ class StockPurchaseItem(models.Model):
             if getattr(self.item_code, "item_category_id", None):
                 self.item_category = self.item_code.item_category
         self.item_name = normalize_text(self.item_name)
-        self.item_type = (normalize_text(self.item_type) or self.ITEM_TYPE_BUY).upper()
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
 
         # Normalize legacy GRN values (e.g. 0000001) to prefixed format (GRN0001).

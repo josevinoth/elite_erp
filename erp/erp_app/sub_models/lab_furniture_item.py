@@ -4,7 +4,7 @@ from django.db import models
 from ..utils import normalize_text
 from .cut_optimiser import UOM
 from .item_category import ItemCategory
-
+from .item_type_mod import ItemType_info
 
 class LabFurnitureItem(models.Model):
     item_name = models.CharField(max_length=255)
@@ -18,11 +18,12 @@ class LabFurnitureItem(models.Model):
         on_delete=models.PROTECT,
         related_name="items",
     )
-    uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="lab_furniture_items")
-    length = models.DecimalField(max_digits=12, decimal_places=3, default=0)
-    width = models.DecimalField(max_digits=12, decimal_places=3, default=0)
-    height = models.DecimalField(max_digits=12, decimal_places=3, default=0)
-    volume = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="lab_furniture_items_uom")
+    item_type = models.ForeignKey(ItemType_info, on_delete=models.PROTECT, default=1,related_name="lab_furniture_items_type",)
+    length = models.DecimalField(max_digits=12, decimal_places=1, default=0)
+    width = models.DecimalField(max_digits=12, decimal_places=1, default=0)
+    height = models.DecimalField(max_digits=12, decimal_places=1, default=0)
+    volume = models.DecimalField(max_digits=14, decimal_places=1, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

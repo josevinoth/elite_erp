@@ -55,11 +55,6 @@ def _resolve_item_master(value):
     return LabFurnitureItem.objects.select_related("item_category", "uom").filter(item_code__iexact=raw).first()
 
 
-def _normalize_item_type(value):
-    normalized = normalize_text(value).upper()
-    return normalized if normalized in {choice for choice, _label in StockPurchaseItem.ITEM_TYPE_CHOICES} else StockPurchaseItem.ITEM_TYPE_BUY
-
-
 def _resolve_item_row_references(row):
     raw_category_id = row.get("item_category_id", row.get("item_category", ""))
     raw_item_id = row.get("item_code_id", row.get("item_master_id", row.get("item_code", "")))
@@ -96,7 +91,9 @@ def _serialize_item(item, item_master_by_code=None):
 
     item_master = getattr(item, "item_code", None)
     item_category = getattr(item, "item_category", None) or getattr(item_master, "item_category", None)
-    resolved_uom = getattr(item, "uom", None) or getattr(item_master, "uom", None)
+    resolved_uom = getattr(item_master, "uom", None)
+    resolved_item_type = getattr(item_master, "item_type", None)
+    item_type_name = getattr(resolved_item_type, "it_name", None) or "BUY"
 
     return {
         "id": item.id,
@@ -107,7 +104,7 @@ def _serialize_item(item, item_master_by_code=None):
         "item_code": item_master.item_code if item_master else "",
         "item_code_id": getattr(item, "item_code_id", None),
         "item_master_id": getattr(item, "item_code_id", None),
-        "item_type": item.item_type or StockPurchaseItem.ITEM_TYPE_BUY,
+        "item_type": item_type_name,
         "quantity": str(item.quantity),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
@@ -270,11 +267,10 @@ def _sync_items(stock_purchase, items_payload):
         item.item_code = item_master
         item.item_category = item_category or (item_master.item_category if item_master else None)
         item.item_name = item_master.item_name if item_master else item_name
-        item.item_type = _normalize_item_type(row.get("item_type", item.item_type))
+        item.item_type = _resolve_item_type(row.get("item_type", getattr(item, "item_type_id", None)))
         item.quantity = _to_decimal(row.get("quantity"), "0")
         item.unit_price = _to_decimal(row.get("unit_price"), "0")
         item.total_price = item.quantity * item.unit_price
-        item.uom_id = row.get("uom_id") or getattr(item_master, "uom_id", None)
         item.save()
 
         if item.lce_estimate_id:
@@ -355,7 +351,7 @@ def list_stock_purchases_api_view(request):
         "items__item_code",
         "items__item_code__item_category",
         "items__item_code__uom",
-        "items__uom",
+        "items__item_code__item_type",
     ).order_by("-id")
     return JsonResponse({"stock_purchases": [_serialize(o) for o in rows]})
 
@@ -399,8 +395,6 @@ def create_stock_purchase_api_view(request):
                 item_code=item_master,
                 quantity=_to_decimal(row.get("quantity"), "0"),
                 unit_price=_to_decimal(row.get("unit_price"), "0"),
-                uom_id=row.get("uom_id") or getattr(item_master, "uom_id", None),
-                item_type=_normalize_item_type(row.get("item_type", StockPurchaseItem.ITEM_TYPE_BUY)),
             )
             item.total_price = item.quantity * item.unit_price
             item.save()
@@ -463,8 +457,6 @@ def stock_purchase_detail_api_view(request, pk):
                 item.quantity = _to_decimal(row.get("quantity"), "0")
                 item.unit_price = _to_decimal(row.get("unit_price"), "0")
                 item.total_price = item.quantity * item.unit_price
-                item.uom_id = row.get("uom_id") or getattr(item_master, "uom_id", None)
-                item.item_type = _normalize_item_type(row.get("item_type", item.item_type))
                 item.save()
         except ValueError as exc:
             return JsonResponse({"message": str(exc)}, status=400)
