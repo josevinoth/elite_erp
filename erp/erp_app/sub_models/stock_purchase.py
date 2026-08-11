@@ -80,6 +80,11 @@ class StockPurchaseItem(models.Model):
             self.item_name = normalize_text(self.item_code.item_name)
             if getattr(self.item_code, "item_category_id", None):
                 self.item_category = self.item_code.item_category
+            # Also pull item_type and uom from Item Master
+            if getattr(self.item_code, "item_type_id", None):
+                self.item_type_id = self.item_code.item_type_id
+            if getattr(self.item_code, "uom_id", None):
+                self.uom_id = self.item_code.uom_id
         self.item_name = normalize_text(self.item_name)
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
 

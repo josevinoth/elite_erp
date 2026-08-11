@@ -24,6 +24,7 @@ Generated documentation for React pages and backend API/modules in the ERP works
 | Page | `ProjectsPage.jsx` | `erp/docs/traceability/pages/projects-page/requirements.md` | `erp/docs/traceability/pages/projects-page/function_mapping.md` |
 | Page | `RegisterPage.jsx` | `erp/docs/traceability/pages/register-page/requirements.md` | `erp/docs/traceability/pages/register-page/function_mapping.md` |
 | Page | `StockItemsPage.jsx` | `erp/docs/traceability/pages/stock-items-page/requirements.md` | `erp/docs/traceability/pages/stock-items-page/function_mapping.md` |
+| Page | `StockManufacturePage.jsx` | `erp/docs/traceability/pages/stock-manufacture-page/requirements.md` | `erp/docs/traceability/pages/stock-manufacture-page/function_mapping.md` |
 | Page | `StockPurchaseAddPage.jsx` | `erp/docs/traceability/pages/stock-purchase-add-page/requirements.md` | `erp/docs/traceability/pages/stock-purchase-add-page/function_mapping.md` |
 | Page | `StockPurchaseItemTracePage.jsx` | `erp/docs/traceability/pages/stock-purchase-item-trace-page/requirements.md` | `erp/docs/traceability/pages/stock-purchase-item-trace-page/function_mapping.md` |
 | Page | `StockPurchasePage.jsx` | `erp/docs/traceability/pages/stock-purchase-page/requirements.md` | `erp/docs/traceability/pages/stock-purchase-page/function_mapping.md` |
@@ -37,6 +38,7 @@ Generated documentation for React pages and backend API/modules in the ERP works
 | Module | `projects_api.py` | `erp/docs/traceability/modules/projects-api/requirements.md` | `erp/docs/traceability/modules/projects-api/function_mapping.md` |
 | Module | `register_view.py` | `erp/docs/traceability/modules/register-view/requirements.md` | `erp/docs/traceability/modules/register-view/function_mapping.md` |
 | Module | `stock_maintenance_api.py` | `erp/docs/traceability/modules/stock-maintenance-api/requirements.md` | `erp/docs/traceability/modules/stock-maintenance-api/function_mapping.md` |
+| Module | `stock_manufacture_api.py` | `erp/docs/traceability/modules/stock-manufacture-api/requirements.md` | `erp/docs/traceability/modules/stock-manufacture-api/function_mapping.md` |
 | Module | `stock_purchase_api.py` | `erp/docs/traceability/modules/stock-purchase-api/requirements.md` | `erp/docs/traceability/modules/stock-purchase-api/function_mapping.md` |
 | Module | `stock_purchase_status_option_api.py` | `erp/docs/traceability/modules/stock-purchase-status-option-api/requirements.md` | `erp/docs/traceability/modules/stock-purchase-status-option-api/function_mapping.md` |
 | Module | `stock_purchase_vendor_api.py` | `erp/docs/traceability/modules/stock-purchase-vendor-api/requirements.md` | `erp/docs/traceability/modules/stock-purchase-vendor-api/function_mapping.md` |
@@ -60,11 +62,13 @@ Generated documentation for React pages and backend API/modules in the ERP works
 | Purchasing | Page | `StockPurchasePage.jsx` | `erp/docs/traceability/pages/stock-purchase-page/requirements.md` | `erp/docs/traceability/pages/stock-purchase-page/function_mapping.md` |
 | Purchasing | Page | `StockPurchaseAddPage.jsx` | `erp/docs/traceability/pages/stock-purchase-add-page/requirements.md` | `erp/docs/traceability/pages/stock-purchase-add-page/function_mapping.md` |
 | Purchasing | Page | `StockPurchaseItemTracePage.jsx` | `erp/docs/traceability/pages/stock-purchase-item-trace-page/requirements.md` | `erp/docs/traceability/pages/stock-purchase-item-trace-page/function_mapping.md` |
+| Purchasing | Page | `StockManufacturePage.jsx` | `erp/docs/traceability/pages/stock-manufacture-page/requirements.md` | `erp/docs/traceability/pages/stock-manufacture-page/function_mapping.md` |
 | Purchasing | Module | `stock_purchase_api.py` | `erp/docs/traceability/modules/stock-purchase-api/requirements.md` | `erp/docs/traceability/modules/stock-purchase-api/function_mapping.md` |
 | Purchasing | Module | `stock_purchase_vendor_api.py` | `erp/docs/traceability/modules/stock-purchase-vendor-api/requirements.md` | `erp/docs/traceability/modules/stock-purchase-vendor-api/function_mapping.md` |
 | Purchasing | Module | `stock_purchase_status_option_api.py` | `erp/docs/traceability/modules/stock-purchase-status-option-api/requirements.md` | `erp/docs/traceability/modules/stock-purchase-status-option-api/function_mapping.md` |
 | Purchasing | Module | `vendors_api.py` | `erp/docs/traceability/modules/vendors-api/requirements.md` | `erp/docs/traceability/modules/vendors-api/function_mapping.md` |
 | Purchasing | Module | `stock_maintenance_api.py` | `erp/docs/traceability/modules/stock-maintenance-api/requirements.md` | `erp/docs/traceability/modules/stock-maintenance-api/function_mapping.md` |
+| Purchasing | Module | `stock_manufacture_api.py` | `erp/docs/traceability/modules/stock-manufacture-api/requirements.md` | `erp/docs/traceability/modules/stock-manufacture-api/function_mapping.md` |
 | Item Master / Item Costing | Page | `StockItemsPage.jsx` | `erp/docs/traceability/pages/stock-items-page/requirements.md` | `erp/docs/traceability/pages/stock-items-page/function_mapping.md` |
 | Item Master / Item Costing | Page | `ItemCostingListPage.jsx` | `erp/docs/traceability/pages/item-costing-list-page/requirements.md` | `erp/docs/traceability/pages/item-costing-list-page/function_mapping.md` |
 | Item Master / Item Costing | Page | `ItemCostingFormPage.jsx` | `erp/docs/traceability/pages/item-costing-form-page/requirements.md` | `erp/docs/traceability/pages/item-costing-form-page/function_mapping.md` |

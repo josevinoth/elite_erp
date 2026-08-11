@@ -9,6 +9,7 @@ import {
     listLabFurnitureItems,
     listVendors,
     listUoms,
+    listItemTypes,
     updateStockPurchase,
     updateStockPurchaseVendorDetail,
     listStockPurchaseStatusOptions,
@@ -61,6 +62,7 @@ function StockPurchaseAddPage() {
     });
     const [vendorOptions, setVendorOptions] = useState([]);
     const [uomOptions, setUomOptions] = useState([]);
+    const [itemTypeOptions, setItemTypeOptions] = useState([]);
     const [categoryOptions, setCategoryOptions] = useState([]);
     const [itemMasterOptions, setItemMasterOptions] = useState([]);
     const [items, setItems] = useState([emptyItem(1)]);
@@ -92,13 +94,16 @@ function StockPurchaseAddPage() {
     useEffect(() => {
         let alive = true;
 
-        Promise.all([listVendors(), listLabFurnitureItems(), listLabFurnitureItemCategories(), listUoms()])
-            .then(([vendorData, itemData, categoryData, uomData]) => {
+        Promise.all([listVendors(), listLabFurnitureItems(), listLabFurnitureItemCategories(), listUoms(), listItemTypes()])
+            .then(([vendorData, itemData, categoryData, uomData, itemTypeData]) => {
                 if (!alive) return;
                 setVendorOptions(vendorData.vendors || []);
                 setItemMasterOptions(itemData.lab_furniture_items || []);
                 setCategoryOptions(categoryData.item_categories || []);
                 setUomOptions(Array.isArray(uomData) ? uomData : (uomData.uoms || []));
+                // Handle itemTypeData - could be array or object with data key
+                const itemTypes = Array.isArray(itemTypeData) ? itemTypeData : (itemTypeData?.item_types || []);
+                setItemTypeOptions(itemTypes);
             })
             .catch(() => {
                 if (!alive) return;
@@ -106,6 +111,7 @@ function StockPurchaseAddPage() {
                 setItemMasterOptions([]);
                 setCategoryOptions([]);
                 setUomOptions([]);
+                setItemTypeOptions([]);
             });
 
         return () => {
@@ -226,6 +232,8 @@ function StockPurchaseAddPage() {
         width: toDimensionValue(masterItem?.width, "0"),
         height: toDimensionValue(masterItem?.height, "0"),
         volume: toDimensionValue(masterItem?.volume, "0"),
+        item_name: masterItem?.item_name || "",
+        item_type: masterItem?.item_type || "BUY",
     });
 
     useEffect(() => {
@@ -241,6 +249,8 @@ function StockPurchaseAddPage() {
                     && row.width === patch.width
                     && row.height === patch.height
                     && row.volume === patch.volume
+                    && row.item_name === patch.item_name
+                    && row.item_type === patch.item_type
                 ) {
                     return row;
                 }
@@ -250,7 +260,6 @@ function StockPurchaseAddPage() {
                     item_master_id: row.item_master_id || String(masterItem.id || ""),
                     item_category_id: row.item_category_id || String(masterItem.item_category_id || ""),
                     item_category: row.item_category || String(masterItem.item_category || ""),
-                    item_name: row.item_name || String(masterItem.item_name || ""),
                     item_code: row.item_code || String(masterItem.item_code || ""),
                     item_code_id: row.item_code_id || String(masterItem.id || ""),
                     // Always sync UOM from Item Master for selected item code.
@@ -293,6 +302,7 @@ function StockPurchaseAddPage() {
                     item_name: selected ? String(selected.item_name || "") : row.item_name,
                     item_code: selected ? String(selected.item_code || "") : "",
                     item_code_id: selected ? String(selected.id || "") : "",
+                    item_type: selected ? String(selected.item_type || "BUY") : row.item_type,
                     // UOM is pulled from Item Master when item code is selected.
                     uom_id: selected?.uom_id ? String(selected.uom_id) : "",
                     ...dimensionPatchFromMaster(selected),
@@ -650,25 +660,25 @@ function StockPurchaseAddPage() {
                             <BsPlusCircleFill aria-hidden="true" />Add
                         </button>
                     </div>
-                    <div className="users-table-wrap" style={{ overflowX: "auto" }}>
-                        <table className="users-table">
+                    <div className="users-table-wrap" style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}>
+                        <table className="users-table users-table--sp-items">
                             <thead>
                             <tr>
-                                <th>Item Category</th>
-                                <th>Item Code</th>
-                                <th>Item Name</th>
-                                <th>Item Type</th>
-                                <th>GRN No.</th>
-                                <th>UOM</th>
-                                <th>Qty/Size</th>
-                                <th>Unit Price</th>
-                                <th>Total Price</th>
-                                <th>Length</th>
-                                <th>Width</th>
-                                <th>Height/Thk</th>
-                                <th>Volume</th>
-                                <th style={{ textAlign: "center" }}>Trace</th>
-                                <th>Action</th>
+                                <th style={{ width: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Category</th>
+                                <th style={{ width: "130px" }}>Item Code</th>
+                                <th style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Name</th>
+                                <th style={{ width: "120px" }}>Item Type</th>
+                                <th style={{ width: "120px" }}>GRN No.</th>
+                                <th style={{ width: "140px" }}>UOM</th>
+                                <th style={{ width: "100px" }}>Qty/Size</th>
+                                <th style={{ width: "130px" }}>Unit Price</th>
+                                <th style={{ width: "130px" }}>Total Price</th>
+                                <th style={{ width: "100px" }}>Length</th>
+                                <th style={{ width: "100px" }}>Width</th>
+                                <th style={{ width: "100px" }}>Height/Thk</th>
+                                <th style={{ width: "100px" }}>Volume</th>
+                                <th style={{ width: "70px", textAlign: "center" }}>Trace</th>
+                                <th style={{ width: "60px" }}>Action</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -676,7 +686,7 @@ function StockPurchaseAddPage() {
                                 // ...existing code...
                                 return (
                                     <tr key={row.rowId}>
-                                        <td>
+                                        <td style={{ width: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>
                                             <select
                                                 className="auth-input"
                                                 value={row.item_category_id}
@@ -689,7 +699,7 @@ function StockPurchaseAddPage() {
                                                 ))}
                                             </select>
                                         </td>
-                                        <td>
+                                        <td style={{ width: "130px" }}>
                                             <select
                                                 className="auth-input"
                                                 value={row.item_code_id}
@@ -702,24 +712,27 @@ function StockPurchaseAddPage() {
                                                 ))}
                                             </select>
                                         </td>
-                                        <td>
+                                        <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
                                             <input className="auth-input auth-input--readonly" value={row.item_name} readOnly disabled />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "120px" }}>
                                             <select
                                                 className="auth-input"
                                                 value={row.item_type}
-                                                onChange={(e) => handleItemValueChange(row.rowId, "item_type", e.target.value)}
-                                                disabled={!savedPurchaseDetailId}
+                                                onChange={() => {}}
+                                                disabled
+                                                title="Item Type is auto-filled from Item Master"
                                             >
-                                                <option value="BUY">BUY</option>
-                                                <option value="MAKE">MAKE</option>
+                                                <option value="">Select item type</option>
+                                                {itemTypeOptions.map((it) => (
+                                                    <option key={it.id} value={it.it_name}>{it.it_name}</option>
+                                                ))}
                                             </select>
                                         </td>
-                                        <td>
+                                        <td style={{ width: "120px" }}>
                                             <input className="auth-input auth-input--readonly" value={row.grn_number || "Auto"} readOnly disabled />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "140px" }}>
                                             <select
                                                 className="auth-input"
                                                 value={row.uom_id}
@@ -732,7 +745,7 @@ function StockPurchaseAddPage() {
                                                 ))}
                                             </select>
                                         </td>
-                                        <td>
+                                        <td style={{ width: "100px" }}>
                                             <input
                                                 type="number"
                                                 step="any"
@@ -742,7 +755,7 @@ function StockPurchaseAddPage() {
                                                 disabled={!savedPurchaseDetailId}
                                             />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "130px" }}>
                                             <input
                                                 type="number"
                                                 step="any"
@@ -752,10 +765,10 @@ function StockPurchaseAddPage() {
                                                 disabled={!savedPurchaseDetailId}
                                             />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "130px" }}>
                                             <input className="auth-input auth-input--readonly" value={row.total_price} readOnly />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "100px" }}>
                                             <input
                                                 type="number"
                                                 step="any"
@@ -766,7 +779,7 @@ function StockPurchaseAddPage() {
                                                 disabled
                                             />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "100px" }}>
                                             <input
                                                 type="number"
                                                 step="any"
@@ -777,7 +790,7 @@ function StockPurchaseAddPage() {
                                                 disabled
                                             />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "100px" }}>
                                             <input
                                                 type="number"
                                                 step="any"
@@ -788,7 +801,7 @@ function StockPurchaseAddPage() {
                                                 disabled
                                             />
                                         </td>
-                                        <td>
+                                        <td style={{ width: "100px" }}>
                                             <input
                                                 className="auth-input auth-input--readonly"
                                                 value={row.volume}
@@ -796,7 +809,7 @@ function StockPurchaseAddPage() {
                                                 disabled
                                             />
                                         </td>
-                                        <td style={{ verticalAlign: "middle", textAlign: "center" }}>
+                                        <td style={{ width: "70px", verticalAlign: "middle", textAlign: "center" }}>
                                             {row.rowId && row.grn_number ? (
                                                 <a
                                                     href={`/stock-purchase/item-trace/${row.rowId}`}
@@ -824,7 +837,7 @@ function StockPurchaseAddPage() {
                                                 <span style={{ color: "#5a8a88", fontSize: "0.75rem" }}>—</span>
                                             )}
                                         </td>
-                                        <td style={{ verticalAlign: "middle", textAlign: "center" }}>
+                                        <td style={{ width: "60px", verticalAlign: "middle", textAlign: "center" }}>
                                             <button
                                                 type="button"
                                                 className="users-action users-action--delete"

@@ -2,6 +2,8 @@
 
 ## Module purpose and business requirement
 Expose stock purchase list, create, detail, and item trace endpoints.
+-stock purchase add/edit page  should contain vendor details
+- 
 
 Source file: `erp_app/sub_views/stock_purchase_api.py`
 

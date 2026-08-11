@@ -1967,44 +1967,45 @@ select.auth-input option {
 }
 
 /* Column min-widths: keeps form controls readable */
+
 .users-table--sp-items th:nth-child(1),
-.users-table--sp-items td:nth-child(1) { min-width: 140px; } /* Item Category */
+.users-table--sp-items td:nth-child(1) { min-width: 280px; } /* Item Category */
 
 .users-table--sp-items th:nth-child(2),
-.users-table--sp-items td:nth-child(2) { min-width: 150px; } /* Item Name */
+.users-table--sp-items td:nth-child(2) { min-width: 130px; } /* Item Code */
 
 .users-table--sp-items th:nth-child(3),
-.users-table--sp-items td:nth-child(3) { min-width: 130px; } /* Item Code */
+.users-table--sp-items td:nth-child(3) { min-width: 300px; } /* Item Name */
 
 .users-table--sp-items th:nth-child(4),
-.users-table--sp-items td:nth-child(4) { min-width: 100px; } /* Item Type */
+.users-table--sp-items td:nth-child(4) { min-width: 120px; } /* Item Type */
 
 .users-table--sp-items th:nth-child(5),
-.users-table--sp-items td:nth-child(5) { min-width: 78px;  } /* GRN No. */
+.users-table--sp-items td:nth-child(5) { min-width: 120px; } /* GRN No. */
 
 .users-table--sp-items th:nth-child(6),
-.users-table--sp-items td:nth-child(6) { min-width: 112px; } /* UOM */
+.users-table--sp-items td:nth-child(6) { min-width: 140px; } /* UOM */
 
 .users-table--sp-items th:nth-child(7),
-.users-table--sp-items td:nth-child(7) { width: 82px; min-width: 82px; max-width: 82px; } /* Qty/Size */
+.users-table--sp-items td:nth-child(7) { min-width: 100px; } /* Qty/Size */
 
 .users-table--sp-items th:nth-child(8),
-.users-table--sp-items td:nth-child(8) { width: 90px; min-width: 90px; max-width: 90px; } /* Unit Price */
+.users-table--sp-items td:nth-child(8) { min-width: 130px; } /* Unit Price */
 
 .users-table--sp-items th:nth-child(9),
-.users-table--sp-items td:nth-child(9) { width: 90px; min-width: 90px; max-width: 90px; } /* Total Price */
+.users-table--sp-items td:nth-child(9) { min-width: 130px; } /* Total Price */
 
 .users-table--sp-items th:nth-child(10),
-.users-table--sp-items td:nth-child(10) { width: 74px; min-width: 74px; max-width: 74px; } /* Length */
+.users-table--sp-items td:nth-child(10) { width: 100px; min-width: 100px; max-width: 100px; } /* Length */
 
 .users-table--sp-items th:nth-child(11),
-.users-table--sp-items td:nth-child(11) { width: 74px; min-width: 74px; max-width: 74px; } /* Width */
+.users-table--sp-items td:nth-child(11) { width: 100px; min-width: 100px; max-width: 100px; } /* Width */
 
 .users-table--sp-items th:nth-child(12),
-.users-table--sp-items td:nth-child(12) { width: 80px; min-width: 80px; max-width: 80px; } /* Height/Thk */
+.users-table--sp-items td:nth-child(12) { width: 100px; min-width: 100px; max-width: 100px; } /* Height/Thk */
 
 .users-table--sp-items th:nth-child(13),
-.users-table--sp-items td:nth-child(13) { width: 78px; min-width: 78px; max-width: 78px; } /* Volume */
+.users-table--sp-items td:nth-child(13) { width: 100px; min-width: 100px; max-width: 100px; } /* Volume */
 
 
 .users-table--sp-items th:nth-child(14),
@@ -2018,6 +2019,12 @@ select.auth-input option {
 .users-table--sp-items td input {
   width: 100%;
   box-sizing: border-box;
+}
+
+.users-table--sp-items th:nth-child(1),
+.users-table--sp-items th:nth-child(3) {
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* ── end Purchase Items table overrides ── */

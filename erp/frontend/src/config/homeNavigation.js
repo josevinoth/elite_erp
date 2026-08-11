@@ -68,6 +68,11 @@ export const homeNavItems = [
         icon: "stockMaintenance",
       },
       {
+        label: "Stock Manufacture",
+        to: "/stock-manufacture",
+        icon: "itemMaster",
+      },
+      {
         label: "Item Master",
         to: "/stock-items",
         icon: "itemMaster",

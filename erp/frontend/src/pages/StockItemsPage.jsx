@@ -6,6 +6,7 @@ import {
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
   listUoms,
+  listItemTypes,
   updateLabFurnitureItem,
 } from "../services/crudApi";
 
@@ -13,6 +14,7 @@ const COLUMNS = [
   { key: "item_category", label: "Item Category" },
   { key: "item_name", label: "Item Name" },
   { key: "item_code", label: "Item Code" },
+  { key: "item_type", label: "Item Type" },
   { key: "uom", label: "UOM" },
   { key: "length", label: "Length/Size" },
   { key: "width", label: "Width" },
@@ -23,6 +25,7 @@ const COLUMNS = [
 const FIELDS = [
   { key: "item_category_id", label: "Item Category", required: true },
   { key: "item_name", label: "Item Name", required: true },
+  { key: "item_type_id", label: "Item Type", required: false },
   { key: "uom_id", label: "UOM", required: false },
   { key: "length", label: "Length/Size", type: "number", min: 0, step: "any", default: "0" },
   { key: "width", label: "Width", type: "number", min: 0, step: "any", default: "0" },
@@ -33,6 +36,7 @@ const FIELDS = [
 function StockItemsPage() {
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [uomOptions, setUomOptions] = useState([]);
+  const [itemTypeOptions, setItemTypeOptions] = useState([]);
 
   const loadCategories = useCallback(async () => {
     const data = await listLabFurnitureItemCategories();
@@ -57,12 +61,24 @@ function StockItemsPage() {
     return options;
   }, []);
 
+  const loadItemTypes = useCallback(async () => {
+    const data = await listItemTypes();
+    const rows = Array.isArray(data) ? data : (Array.isArray(data?.item_types) ? data.item_types : []);
+    const options = rows.map((itemType) => ({
+      value: String(itemType.id),
+      label: itemType.it_name,
+    }));
+    setItemTypeOptions(options);
+    return options;
+  }, []);
+
   useEffect(() => {
-    Promise.all([loadCategories(), loadUoms()]).catch(() => {
+    Promise.all([loadCategories(), loadUoms(), loadItemTypes()]).catch(() => {
       setCategoryOptions([]);
       setUomOptions([]);
+      setItemTypeOptions([]);
     });
-  }, [loadCategories, loadUoms]);
+  }, [loadCategories, loadUoms, loadItemTypes]);
 
   const fetchFn = useCallback(async () => {
     const data = await listLabFurnitureItems();
@@ -88,12 +104,16 @@ function StockItemsPage() {
     FIELDS[1],
     {
       ...FIELDS[2],
+      options: itemTypeOptions,
+    },
+    {
+      ...FIELDS[3],
       options: uomOptions,
     },
-    FIELDS[3],
     FIELDS[4],
     FIELDS[5],
     FIELDS[6],
+    FIELDS[7],
   ];
 
   const computeValues = useCallback((changedKey, _changedValue, allValues) => {

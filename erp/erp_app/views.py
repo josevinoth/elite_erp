@@ -107,13 +107,20 @@ from .sub_views import (
 )
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .serializers import UOMSerializer
+from .serializers import UOMSerializer, ItemTypeSerializer
 from .sub_models.cut_optimiser import UOM
+from .sub_models.item_type_mod import ItemType_info
 
 @api_view(['GET'])
 def list_uoms_api_view(request):
     uoms = UOM.objects.all()
     serializer = UOMSerializer(uoms, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+def list_item_types_api_view(request):
+    item_types = ItemType_info.objects.all()
+    serializer = ItemTypeSerializer(item_types, many=True)
     return Response(serializer.data)
 
 __all__ = [
@@ -216,6 +223,7 @@ __all__ = [
     "create_item_costing_api_view",
     "item_costing_detail_api_view",
     "list_uoms_api_view",
+    "list_item_types_api_view",
     "list_cut_optimiser",
     "create_cut_optimiser",
     "cut_optimiser_detail",

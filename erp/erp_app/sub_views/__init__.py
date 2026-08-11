@@ -127,9 +127,15 @@ from .user_management_api import (
 )
 from .vendors_api import create_vendor_api_view, list_vendors_api_view, vendor_detail_api_view
 
+from .stock_manufacture_api import (
+    list_stock_manufacture_items_api_view,
+    create_stock_manufacture_item_api_view,
+    stock_manufacture_item_detail_api_view,
+)
 from .stock_purchase_status_option_api import list_stock_purchase_status_options_api_view
 from .views_cut_optimiser import list_cut_optimiser, create_cut_optimiser, cut_optimiser_detail
 from .views_cut_optimiser import list_cut_sizes, cut_size_detail
+
 __all__ = [
     "BaseAuthFormView", "RegisterView", "LoginPageView",
     "csrf_token_view", "register_meta_api_view", "register_api_view", "login_api_view", "logout_api_view",
@@ -205,5 +211,8 @@ __all__ = [
     "list_stock_purchase_status_options_api_view",
     "list_cut_optimiser", "create_cut_optimiser", "cut_optimiser_detail",
     "list_cut_sizes", "cut_size_detail",
+    "list_stock_manufacture_items_api_view",
+    "create_stock_manufacture_item_api_view",
+    "stock_manufacture_item_detail_api_view",
 ]
 

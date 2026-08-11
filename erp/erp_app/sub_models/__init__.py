@@ -16,6 +16,7 @@ from .project import Project
 from .project_layout_drawing import ProjectLayoutDrawing
 from .stock_maintenance_type_option import StockMaintenanceTypeOption
 from .stock_maintenance import StockMaintenance
+from .stock_manufacture import StockManufactureItem
 from .stock_purchase import StockPurchaseItem, StockPurchaseVendorDetail
 from .task import Task
 from .task_status_option import TaskStatusOption
@@ -25,43 +26,45 @@ from .user_profile import UserProfile
 from .user_status_option import UserStatusOption
 from .vendor import Vendor
 from .notification_read import TaskNotificationRead, CommentNotificationRead
-from .cut_optimiser import CutOptimiserRecord,CutSize,UOM
+from .cut_optimiser import CutOptimiserRecord, CutSize, UOM
+from .item_type_mod import ItemType_info
 
 __all__ = [
-	"Activity",
-	"Comment",
-	"CommentAttachment",
-	"CDCTeamExpense",
-	"CountryCurrency",
-	"ExpenseItem",
-	"ExpenseSession",
-	"ExpenseStatusOption",
-	"ItemCategory",
-	"ItemCostingInfo",
-	"LabFurnitureItem",
-	"LCECostDetail",
-	"LCEEstimate",
-	"LCEChargeTypeOption",
-	"LCEBalanceSettlement",
-	"Vendor",
-	"Project",
-	"ProjectLayoutDrawing",
-	"ProjectLifecycleStatusOption",
-	"StockPurchaseItem",
-	"StockPurchaseVendorDetail",
-	"StockMaintenance",
-	"StockMaintenanceTypeOption",
-	"Task",
-	"ProjectStatusOption",
-	"TaskStatusOption",
-	"TimeSheet",
-	"Team",
-	"UserStatusOption",
-	"UserProfile",
-	"TaskNotificationRead",
-	"CommentNotificationRead",
-	"CutOptimiserRecord",
-	"CutSize",
-	"UOM",
-
+    "Activity",
+    "Comment",
+    "CommentAttachment",
+    "CDCTeamExpense",
+    "CountryCurrency",
+    "ExpenseItem",
+    "ExpenseSession",
+    "ExpenseStatusOption",
+    "ItemCategory",
+    "ItemCostingInfo",
+    "LabFurnitureItem",
+    "LCECostDetail",
+    "LCEEstimate",
+    "LCEChargeTypeOption",
+    "LCEBalanceSettlement",
+    "Vendor",
+    "Project",
+    "ProjectLayoutDrawing",
+    "ProjectLifecycleStatusOption",
+    "StockManufactureItem",
+    "StockPurchaseItem",
+    "StockPurchaseVendorDetail",
+    "StockMaintenance",
+    "StockMaintenanceTypeOption",
+    "Task",
+    "ProjectStatusOption",
+    "TaskStatusOption",
+    "TimeSheet",
+    "Team",
+    "UserStatusOption",
+    "UserProfile",
+    "TaskNotificationRead",
+    "CommentNotificationRead",
+    "CutOptimiserRecord",
+    "CutSize",
+    "UOM",
+    "ItemType_info",
 ]

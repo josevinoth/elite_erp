@@ -91,26 +91,35 @@ def _serialize_item(item, item_master_by_code=None):
 
     item_master = getattr(item, "item_code", None)
     item_category = getattr(item, "item_category", None) or getattr(item_master, "item_category", None)
+
+    # Pull item_name from Item Master if available, otherwise use item's item_name
+    resolved_item_name = item_master.item_name if item_master else item.item_name
+
+    # Pull uom and item_type from Item Master
     resolved_uom = getattr(item_master, "uom", None)
     resolved_item_type = getattr(item_master, "item_type", None)
     item_type_name = getattr(resolved_item_type, "it_name", None) or "BUY"
+    item_type_id = getattr(resolved_item_type, "pk", None)
 
     return {
         "id": item.id,
         "grn_number": raw_grn,
         "item_category": item_category.name if item_category else "",
         "item_category_id": getattr(item, "item_category_id", None) or getattr(item_master, "item_category_id", None),
-        "item_name": item.item_name,
+        "item_name": resolved_item_name,
         "item_code": item_master.item_code if item_master else "",
         "item_code_id": getattr(item, "item_code_id", None),
         "item_master_id": getattr(item, "item_code_id", None),
         "item_type": item_type_name,
+        "item_type_id": item_type_id,
         "quantity": str(item.quantity),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
         "uom_id": getattr(resolved_uom, "pk", None),
+        "uom_name": getattr(resolved_uom, "name", None),
+        "uom_symbol": getattr(resolved_uom, "symbol", None),
         "length": str(item_master.length) if item_master else "0",
         "width": str(item_master.width) if item_master else "0",
         "height": str(item_master.height) if item_master else "0",
@@ -412,7 +421,13 @@ def stock_purchase_detail_api_view(request, pk):
     if na:
         return na
     try:
-        obj = StockPurchaseVendorDetail.objects.get(pk=pk)
+        obj = StockPurchaseVendorDetail.objects.prefetch_related(
+            "items__item_category",
+            "items__item_code",
+            "items__item_code__item_category",
+            "items__item_code__uom",
+            "items__item_code__item_type",
+        ).get(pk=pk)
     except StockPurchaseVendorDetail.DoesNotExist:
         return JsonResponse({'message': 'Record not found.'}, status=404)
 

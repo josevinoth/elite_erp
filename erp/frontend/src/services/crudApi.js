@@ -31,6 +31,12 @@ export async function listUoms() {
   return parseJson(res);
 }
 
+// ── Item Types ─────────────────────────────────────────────
+export async function listItemTypes() {
+  const res = await fetch("/api/item-types/", { credentials: "include" });
+  return parseJson(res);
+}
+
 // ── Vendors ───────────────────────────────────────────────
 export async function listVendors() {
   const res = await fetch("/api/vendors/", { credentials: "include" });
@@ -1041,5 +1047,44 @@ export async function checkProjectRevisionExists(projectId, revision) {
 // ── Users ───────────────────────────────────────────────
 export async function listUsers() {
   const res = await fetch("/api/users/", { credentials: "include" });
+  return parseJson(res);
+}
+
+// ── Stock Manufacture ────────────────────────────────────
+export async function listStockManufactureItems() {
+  const res = await fetch("/api/stock-manufacture/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createStockManufactureItem(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/stock-manufacture/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateStockManufactureItem(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/stock-manufacture/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteStockManufactureItem(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/stock-manufacture/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
   return parseJson(res);
 }

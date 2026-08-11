@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import ItemCategory, LabFurnitureItem, UOM
+from ..sub_models import ItemCategory, LabFurnitureItem, UOM, ItemType_info
 from ..utils import normalize_text
 
 
@@ -71,6 +71,7 @@ def _next_item_code():
 def _serialize(obj):
     item_category_id = getattr(obj, "item_category_id", None)
     uom_id = getattr(obj, "uom_id", None)
+    item_type_id = getattr(obj, "item_type_id", None)
     return {
         "id": obj.pk,
         "item_code": obj.item_code,
@@ -79,6 +80,8 @@ def _serialize(obj):
         "item_category_id": item_category_id,
         "uom": f"{obj.uom.name} ({obj.uom.symbol})" if uom_id else "",
         "uom_id": uom_id,
+        "item_type": obj.item_type.it_name if item_type_id else "",
+        "item_type_id": item_type_id,
         "length": str(obj.length),
         "width": str(obj.width),
         "height": str(obj.height),
@@ -107,6 +110,20 @@ def _resolve_uom(value):
         return None
 
     return UOM.objects.filter(name__iexact=raw).first() or UOM.objects.filter(symbol__iexact=raw).first()
+
+
+def _resolve_item_type(value):
+    if value in (None, ""):
+        return None
+
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return ItemType_info.objects.filter(pk=int(value)).first()
+
+    raw = normalize_text(value)
+    if not raw:
+        return None
+
+    return ItemType_info.objects.filter(it_name__iexact=raw).first()
 
 
 def _duplicate_exists(item_name, item_category, exclude_id=None):
@@ -169,6 +186,7 @@ def create_lab_furniture_item_api_view(request):
     item_category = _resolve_category(payload.get("item_category_id", payload.get("item_category", "")))
     item_code = _normalize_code(payload.get("item_code", "")) or _next_item_code()
     uom = _resolve_uom(payload.get("uom_id", payload.get("uom")))
+    item_type = _resolve_item_type(payload.get("item_type_id", payload.get("item_type")))
     length = _to_decimal(payload.get("length"), "0")
     width = _to_decimal(payload.get("width"), "0")
     height = _to_decimal(payload.get("height"), "0")
@@ -183,12 +201,15 @@ def create_lab_furniture_item_api_view(request):
         return JsonResponse({"message": "Item code already exists."}, status=400)
     if payload.get("uom_id") not in (None, "") and not uom:
         return JsonResponse({"message": "Selected UOM was not found."}, status=400)
+    if payload.get("item_type_id") not in (None, "") and not item_type:
+        return JsonResponse({"message": "Selected Item Type was not found."}, status=400)
 
     obj = LabFurnitureItem.objects.create(
         item_name=item_name,
         item_category=item_category,
         item_code=item_code,
         uom=uom,
+        item_type=item_type,
         length=length,
         width=width,
         height=height,
@@ -220,6 +241,8 @@ def lab_furniture_item_detail_api_view(request, pk):
     item_code = _normalize_code(payload.get("item_code", obj.item_code))
     current_uom_id = getattr(obj, "uom_id", None)
     uom = _resolve_uom(payload.get("uom_id", payload.get("uom", current_uom_id)))
+    current_item_type_id = getattr(obj, "item_type_id", None)
+    item_type = _resolve_item_type(payload.get("item_type_id", payload.get("item_type", current_item_type_id)))
     length = _to_decimal(payload.get("length", obj.length), "0")
     width = _to_decimal(payload.get("width", obj.width), "0")
     height = _to_decimal(payload.get("height", obj.height), "0")
@@ -234,11 +257,14 @@ def lab_furniture_item_detail_api_view(request, pk):
         return JsonResponse({"message": "Item code already exists."}, status=400)
     if payload.get("uom_id") not in (None, "") and not uom:
         return JsonResponse({"message": "Selected UOM was not found."}, status=400)
+    if payload.get("item_type_id") not in (None, "") and not item_type:
+        return JsonResponse({"message": "Selected Item Type was not found."}, status=400)
 
     obj.item_name = item_name
     obj.item_category = item_category
     obj.item_code = item_code
     obj.uom = uom
+    obj.item_type = item_type
     obj.length = length
     obj.width = width
     obj.height = height

@@ -5,7 +5,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
 import CutOptimiserListPage from "./pages/CutOptimiserListPage";
 import CostingPage from "./pages/CostingPage";
-import CutOptimiserPage from "./pages/CutOptimiserPage";
 import HomeLayout from "./pages/HomeLayout";
 import LceListPage from "./pages/LceListPage";
 import LayoutDrawingApprovalPage from "./pages/LayoutDrawingApprovalPage";
@@ -19,6 +18,7 @@ import ProjectsPage from "./pages/ProjectsPage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import StockItemsPage from "./pages/StockItemsPage";
+import StockManufacturePage from "./pages/StockManufacturePage.jsx";
 import StockMaintenancePage from "./pages/StockMaintenancePage";
 import StockPurchaseAddPage from "./pages/StockPurchaseAddPage.jsx";
 import StockPurchaseItemTracePage from "./pages/StockPurchaseItemTracePage.jsx";
@@ -154,6 +154,7 @@ function App() {
                         <Route path="/stocks" element={secureRoute(<StocksListPage/>)}/>
                         <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage/>)}/>
                         <Route path="/stock-items" element={secureRoute(<StockItemsPage/>)}/>
+                        <Route path="/stock-manufacture" element={secureRoute(<StockManufacturePage/>)}/>
                         <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage/>)}/>
                         <Route path="/task"
                                element={secureRoute(<TaskPage onNotificationsChanged={triggerNotificationRefresh}/>)}/>
