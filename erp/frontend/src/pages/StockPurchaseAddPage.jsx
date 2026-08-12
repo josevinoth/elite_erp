@@ -204,7 +204,7 @@ function StockPurchaseAddPage() {
         return toCurrency(totalAfterTax);
     }, [computedItemsTotalValue, vendorFormValues.tax]);
 
-    const getItemCodesForSelection = (categoryId) => {
+    const getItemNamesForSelection = (categoryId) => {
         return itemMasterOptions
             .filter(
                 (item) => !categoryId || String(item.item_category_id || "") === String(categoryId || "")
@@ -217,8 +217,17 @@ function StockPurchaseAddPage() {
                 category: String(item.item_category || ""),
                 uomId: item.uom_id ? String(item.uom_id) : "",
             }))
-            .filter((item) => item.id && item.code)
-            .sort((a, b) => a.code.localeCompare(b.code));
+            .filter((item) => item.id && item.name)
+            .sort((a, b) => a.name.localeCompare(b.name));
+    };
+
+    const getItemMasterByCategoryAndName = (categoryId, itemName) => {
+        const name = String(itemName || "").trim().toLowerCase();
+        if (!categoryId || !name) return null;
+        return itemMasterOptions.find(
+            (item) => String(item.item_category_id || "") === String(categoryId)
+                && String(item.item_name || "").trim().toLowerCase() === name
+        ) || null;
     };
 
     const getItemMasterById = (itemId) => {
@@ -241,7 +250,8 @@ function StockPurchaseAddPage() {
 
         setItems((prev) =>
             prev.map((row) => {
-                const masterItem = getItemMasterById(row.item_code_id || row.item_master_id);
+                const masterItem = getItemMasterById(row.item_code_id || row.item_master_id)
+                    || getItemMasterByCategoryAndName(row.item_category_id, row.item_name);
                 if (!masterItem) return row;
                 const patch = dimensionPatchFromMaster(masterItem);
                 if (
@@ -289,17 +299,17 @@ function StockPurchaseAddPage() {
         );
     };
 
-    const handleItemCodeSelect = (rowId, itemCodeId) => {
+    const handleItemNameSelect = (rowId, itemName) => {
         setItems((prev) =>
             prev.map((row) => {
                 if (row.rowId !== rowId) return row;
-                const selected = getItemMasterById(itemCodeId);
+                const selected = getItemMasterByCategoryAndName(row.item_category_id, itemName);
                 return {
                     ...row,
                     item_master_id: selected ? String(selected.id) : "",
                     item_category_id: selected ? String(selected.item_category_id || "") : row.item_category_id,
                     item_category: selected ? String(selected.item_category || "") : row.item_category,
-                    item_name: selected ? String(selected.item_name || "") : row.item_name,
+                    item_name: selected ? String(selected.item_name || "") : String(itemName || ""),
                     item_code: selected ? String(selected.item_code || "") : "",
                     item_code_id: selected ? String(selected.id || "") : "",
                     item_type: selected ? String(selected.item_type || "BUY") : row.item_type,
@@ -665,8 +675,8 @@ function StockPurchaseAddPage() {
                             <thead>
                             <tr>
                                 <th style={{ width: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Category</th>
-                                <th style={{ width: "130px" }}>Item Code</th>
                                 <th style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Name</th>
+                                <th style={{ width: "130px" }}>Item Code</th>
                                 <th style={{ width: "120px" }}>Item Type</th>
                                 <th style={{ width: "120px" }}>GRN No.</th>
                                 <th style={{ width: "140px" }}>UOM</th>
@@ -699,21 +709,21 @@ function StockPurchaseAddPage() {
                                                 ))}
                                             </select>
                                         </td>
-                                        <td style={{ width: "130px" }}>
+                                        <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
                                             <select
                                                 className="auth-input"
-                                                value={row.item_code_id}
-                                                onChange={(e) => handleItemCodeSelect(row.rowId, e.target.value)}
+                                                value={row.item_name}
+                                                onChange={(e) => handleItemNameSelect(row.rowId, e.target.value)}
                                                 disabled={!savedPurchaseDetailId || !row.item_category_id}
                                             >
-                                                <option value="">Select item code</option>
-                                                {getItemCodesForSelection(row.item_category_id).map((item) => (
-                                                    <option key={`${row.rowId}-code-${item.id}`} value={item.id}>{item.code}</option>
+                                                <option value="">Select item name</option>
+                                                {getItemNamesForSelection(row.item_category_id).map((item) => (
+                                                    <option key={`${row.rowId}-name-${item.id}`} value={item.name}>{item.name}</option>
                                                 ))}
                                             </select>
                                         </td>
-                                        <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
-                                            <input className="auth-input auth-input--readonly" value={row.item_name} readOnly disabled />
+                                        <td style={{ width: "130px" }}>
+                                            <input className="auth-input auth-input--readonly" value={row.item_code} readOnly disabled />
                                         </td>
                                         <td style={{ width: "120px" }}>
                                             <select

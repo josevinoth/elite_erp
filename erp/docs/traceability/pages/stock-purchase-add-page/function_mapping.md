@@ -9,3 +9,6 @@
 | UI | `StockPurchasePage.jsx`, `StockPurchaseAddPage.jsx`, `StockPurchaseItemTracePage.jsx`, `useEffect`, `useMemo`, `useState`, `useNavigate`, `useParams`, `BsBoxArrowUpRight`, `BsPlusCircleFill`, `BsTrashFill` | `frontend/src/pages` |
 | CSS / JS | `frontend/src/styles/auth_common.css` | `frontend/src/styles` |
 | API | `/api/stock-purchases/`, `/api/stock-purchases/create/`, `/api/stock-purchases/<int:pk>/`, `/api/stock-purchase-items/<int:item_id>/trace/`, `/api/stock-purchase/status-options/`, `/api/stock-purchase-vendors/create/`, `/api/stock-purchase-vendors/<int:pk>/` | `erp/erp_app/urls.py` |
+
+Selection chain: `item_category_id` -> `item_name` -> `item_code_id` (from Item Master).
+

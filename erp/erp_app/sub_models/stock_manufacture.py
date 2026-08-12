@@ -59,23 +59,46 @@ class StockManufactureItem(models.Model):
     def __str__(self):
         return self.item_name or f"ManufItem #{self.pk}"
 
+    def _resolve_item_master_from_category_and_name(self):
+        if getattr(self, "item_code_id", None):
+            return self.item_code
+
+        item_category_id = getattr(self, "item_category_id", None)
+        if not item_category_id:
+            return None
+
+        normalized_name = normalize_text(self.item_name)
+        if not normalized_name:
+            return None
+
+        matches = LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(
+            item_category_id=item_category_id,
+            item_name__iexact=normalized_name,
+        ).order_by("id")
+
+        # Backward compatible: only auto-assign when mapping is deterministic.
+        if matches.count() == 1:
+            return matches.first()
+        return None
+
     def sync_from_item_master(self):
         """Pull immutable display/core fields from LabFurnitureItem."""
-        if not getattr(self, "item_code_id", None):
+        master = self._resolve_item_master_from_category_and_name()
+        if not master:
             return
 
-        lab = self.item_code
-        self.item_name = normalize_text(lab.item_name)
-        if getattr(lab, "item_category_id", None):
-            self.item_category_id = lab.item_category_id
-        if getattr(lab, "item_type_id", None):
-            self.item_type_id = lab.item_type_id
-        if getattr(lab, "uom_id", None):
-            self.uom_id = lab.uom_id
-        self.length = lab.length
-        self.width = lab.width
-        self.height = lab.height
-        self.volume = lab.volume
+        self.item_code = master
+        self.item_name = normalize_text(master.item_name)
+        if getattr(master, "item_category_id", None):
+            self.item_category_id = master.item_category_id
+        if getattr(master, "item_type_id", None):
+            self.item_type_id = master.item_type_id
+        if getattr(master, "uom_id", None):
+            self.uom_id = master.uom_id
+        self.length = master.length
+        self.width = master.width
+        self.height = master.height
+        self.volume = master.volume
 
     def save(self, *args, **kwargs):
         # Manufacturing records must be unique per item code.

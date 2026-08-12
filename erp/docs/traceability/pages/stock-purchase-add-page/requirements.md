@@ -3,6 +3,10 @@
 ## Page purpose and business requirement
 Create and edit purchase vendor details and purchase item rows.
 
+- Item selection dependency chain: `Item Category -> Item Name -> Item Code`.
+- Item Name options are filtered by selected category from Item Master.
+- Item Code is auto-populated after Item Name selection.
+
 Source file: `frontend/src/pages/StockPurchaseAddPage.jsx`
 
 ## Functions / views used
@@ -22,6 +26,10 @@ Source file: `frontend/src/pages/StockPurchaseAddPage.jsx`
 - `ItemCategory(id, name)`
 - `LabFurnitureItem(id, item_code, item_name, item_category_id, uom_id, length, width, height, volume)`
 - `LCEEstimate(id)`
+
+## Dependency and mapping notes
+- Existing rows are normalized against Item Master to keep category/name/code consistent.
+- If `item_code` is missing in legacy data, backend attempts deterministic resolution using category + item name.
 
 ## UI components / hooks
 - `StockPurchasePage.jsx`

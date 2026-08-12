@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import ItemCategory, LabFurnitureItem, LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import ItemCategory, ItemType_info, LabFurnitureItem, LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -48,25 +48,65 @@ def _resolve_item_master(value):
     if isinstance(value, LabFurnitureItem):
         return value
     if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
-        return LabFurnitureItem.objects.select_related("item_category", "uom").filter(pk=int(value)).first()
+        return LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(pk=int(value)).first()
     raw = normalize_text(value).upper()
     if not raw:
         return None
-    return LabFurnitureItem.objects.select_related("item_category", "uom").filter(item_code__iexact=raw).first()
+    return LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(item_code__iexact=raw).first()
+
+
+def _resolve_item_master_from_category_and_name(item_category, item_name):
+    if not item_category:
+        return None
+    normalized_name = normalize_text(item_name)
+    if not normalized_name:
+        return None
+
+    qs = LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(
+        item_category=item_category,
+        item_name__iexact=normalized_name,
+    ).order_by("id")
+
+    # Keep backward compatibility by auto-resolving only deterministic mappings.
+    if qs.count() == 1:
+        return qs.first()
+    return None
 
 
 def _resolve_item_row_references(row):
     raw_category_id = row.get("item_category_id", row.get("item_category", ""))
+    raw_item_name = row.get("item_name", "")
     raw_item_id = row.get("item_code_id", row.get("item_master_id", row.get("item_code", "")))
     item_category = _resolve_item_category(raw_category_id)
     item_master = _resolve_item_master(raw_item_id)
 
+    if not item_master:
+        item_master = _resolve_item_master_from_category_and_name(item_category, raw_item_name)
+
     if raw_category_id not in (None, "") and not item_category:
         raise ValueError("Selected item category was not found.")
+    if raw_item_name not in (None, "") and not item_master:
+        raise ValueError("Selected item name was not found for the chosen category.")
     if raw_item_id not in (None, "") and not item_master:
         raise ValueError("Selected item code was not found.")
 
+    if item_master and item_category and item_master.item_category_id != item_category.pk:
+        raise ValueError("Selected item name/code does not belong to the chosen category.")
+
     return item_category, item_master
+
+
+def _resolve_item_type(value):
+    if isinstance(value, ItemType_info):
+        return value
+    if value in (None, ""):
+        return ItemType_info.objects.filter(pk=1).first()
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return ItemType_info.objects.filter(pk=int(value)).first() or ItemType_info.objects.filter(pk=1).first()
+    raw = normalize_text(value)
+    if not raw:
+        return ItemType_info.objects.filter(pk=1).first()
+    return ItemType_info.objects.filter(it_name__iexact=raw).first() or ItemType_info.objects.filter(pk=1).first()
 
 
 def _serialize_vendor_detail(vendor_detail):
@@ -90,6 +130,11 @@ def _serialize_item(item, item_master_by_code=None):
         raw_grn = f"GRN{item.id:04d}"
 
     item_master = getattr(item, "item_code", None)
+    if not item_master:
+        item_master = _resolve_item_master_from_category_and_name(
+            getattr(item, "item_category", None),
+            item.item_name,
+        )
     item_category = getattr(item, "item_category", None) or getattr(item_master, "item_category", None)
 
     # Pull item_name from Item Master if available, otherwise use item's item_name

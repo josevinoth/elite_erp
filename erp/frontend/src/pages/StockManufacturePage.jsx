@@ -23,6 +23,7 @@ const emptyAddRow = () => ({
   rowKey: nextKey(),
   item_category_id: "",
   item_code_id: "",
+  item_code: "",
   item_name: "",
   item_type: "",
   item_type_id: "",
@@ -48,8 +49,8 @@ function TableHead({ showAction }) {
     <thead>
       <tr>
         <th style={{ width: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Category</th>
-        <th style={{ width: "130px" }}>Item Code</th>
         <th style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Name</th>
+        <th style={{ width: "130px" }}>Item Code</th>
         <th style={{ width: "120px" }}>Item Type</th>
         <th style={{ width: "120px" }}>GRN No.</th>
         <th style={{ width: "140px" }}>UOM</th>
@@ -138,18 +139,23 @@ function StockManufacturePage() {
   }, []);
 
   // ── helpers ───────────────────────────────────────────────────────────────
-  const getMasterById = (id) => {
-    const nid = String(id || "").trim();
-    return nid ? itemMasterRef.current.find((m) => String(m.id) === nid) || null : null;
-  };
-
-  const getCodesForCategory = (categoryId) =>
+  const getNamesForCategory = (categoryId) =>
     itemMasterRef.current
       .filter((m) => !categoryId || String(m.item_category_id || "") === String(categoryId || ""))
-      .sort((a, b) => (a.item_code || "").localeCompare(b.item_code || ""));
+      .sort((a, b) => (a.item_name || "").localeCompare(b.item_name || ""));
+
+  const getMasterByCategoryAndName = (categoryId, itemName) => {
+    const normalizedName = String(itemName || "").trim().toLowerCase();
+    if (!categoryId || !normalizedName) return null;
+    return itemMasterRef.current.find(
+      (m) => String(m.item_category_id || "") === String(categoryId)
+        && String(m.item_name || "").trim().toLowerCase() === normalizedName
+    ) || null;
+  };
 
   const masterPatch = (master) => master ? {
     item_code_id: String(master.id),
+    item_code: master.item_code || "",
     item_category_id: master.item_category_id ? String(master.item_category_id) : "",
     item_name: master.item_name || "",
     item_type: master.item_type || "",
@@ -159,7 +165,7 @@ function StockManufacturePage() {
     width: toDim(master.width),
     height: toDim(master.height),
   } : {
-    item_code_id: "", item_name: "", item_type: "", item_type_id: "",
+    item_code_id: "", item_code: "", item_name: "", item_type: "", item_type_id: "",
     uom_id: "", length: "0", width: "0", height: "0",
   };
 
@@ -198,10 +204,10 @@ function StockManufacturePage() {
     setAddRows((prev) => prev.map((r) => r.rowKey === rowKey ? calcRow({ ...r, ...patch }) : r));
 
   const handleAddCategory = (rowKey, val) =>
-    patchAddRow(rowKey, { item_category_id: val, item_code_id: "", item_name: "", item_type: "", item_type_id: "", uom_id: "", length: "0", width: "0", height: "0" });
+    patchAddRow(rowKey, { item_category_id: val, item_code_id: "", item_code: "", item_name: "", item_type: "", item_type_id: "", uom_id: "", length: "0", width: "0", height: "0" });
 
-  const handleAddItemCode = (rowKey, val) =>
-    patchAddRow(rowKey, masterPatch(getMasterById(val)));
+  const handleAddItemName = (rowKey, categoryId, val) =>
+    patchAddRow(rowKey, masterPatch(getMasterByCategoryAndName(categoryId, val)));
 
   const handleAddField = (rowKey, key, val) => patchAddRow(rowKey, { [key]: val });
 
@@ -214,7 +220,7 @@ function StockManufacturePage() {
 
   const saveAdd = async () => {
     const valid = addRows.filter((r) => String(r.item_name || "").trim());
-    if (!valid.length) { showStatus("Select an item code for at least one row.", "error"); return; }
+    if (!valid.length) { showStatus("Select an item name for at least one row.", "error"); return; }
 
     const duplicateInDraft = new Set();
     for (const row of valid) {
@@ -261,6 +267,7 @@ function StockManufacturePage() {
     setEditForm(calcRow({
       item_category_id: row.item_category_id ? String(row.item_category_id) : "",
       item_code_id: row.item_code_id ? String(row.item_code_id) : "",
+      item_code: row.item_code || "",
       item_name: row.item_name || "",
       item_type: row.item_type || "",
       item_type_id: row.item_type_id ? String(row.item_type_id) : "",
@@ -280,9 +287,9 @@ function StockManufacturePage() {
   const patchEdit = (patch) => setEditForm((prev) => calcRow({ ...prev, ...patch }));
 
   const handleEditCategory = (val) =>
-    patchEdit({ item_category_id: val, item_code_id: "", item_name: "", item_type: "", item_type_id: "", uom_id: "", length: "0", width: "0", height: "0" });
+    patchEdit({ item_category_id: val, item_code_id: "", item_code: "", item_name: "", item_type: "", item_type_id: "", uom_id: "", length: "0", width: "0", height: "0" });
 
-  const handleEditItemCode = (val) => patchEdit(masterPatch(getMasterById(val)));
+  const handleEditItemName = (categoryId, val) => patchEdit(masterPatch(getMasterByCategoryAndName(categoryId, val)));
 
   const saveEdit = async () => {
     if (!editForm) return;
@@ -327,7 +334,7 @@ function StockManufacturePage() {
   };
 
   // ── Shared editable row renderer ──────────────────────────────────────────
-  const EditableRow = ({ row, onCategoryChange, onItemCodeChange, onFieldChange }) => (
+  const EditableRow = ({ row, onCategoryChange, onItemNameChange, onFieldChange }) => (
     <>
       <td style={{ width: "280px" }}>
         <select className="auth-input" value={row.item_category_id}
@@ -336,17 +343,17 @@ function StockManufacturePage() {
           {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </td>
-      <td style={{ width: "130px" }}>
-        <select className="auth-input" value={row.item_code_id}
-          onChange={(e) => onItemCodeChange(e.target.value)}
+      <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
+        <select className="auth-input" value={row.item_name}
+          onChange={(e) => onItemNameChange(row.item_category_id, e.target.value)}
           disabled={!row.item_category_id}>
-          <option value="">Select code</option>
-          {getCodesForCategory(row.item_category_id).map((m) =>
-            <option key={m.id} value={m.id}>{m.item_code}</option>)}
+          <option value="">Select item name</option>
+          {getNamesForCategory(row.item_category_id).map((m) =>
+            <option key={m.id} value={m.item_name}>{m.item_name}</option>)}
         </select>
       </td>
-      <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
-        <input className="auth-input auth-input--readonly" value={row.item_name} readOnly disabled placeholder="Auto-filled" />
+      <td style={{ width: "130px" }}>
+        <input className="auth-input auth-input--readonly" value={row.item_code} readOnly disabled placeholder="Auto-filled" />
       </td>
       <td style={{ width: "120px" }}>
         <select className="auth-input" value={row.item_type_id} onChange={() => {}} disabled title="Auto-filled">
@@ -434,7 +441,7 @@ function StockManufacturePage() {
                     <EditableRow
                       row={row}
                       onCategoryChange={(v) => handleAddCategory(row.rowKey, v)}
-                      onItemCodeChange={(v) => handleAddItemCode(row.rowKey, v)}
+                      onItemNameChange={(categoryId, v) => handleAddItemName(row.rowKey, categoryId, v)}
                       onFieldChange={(k, v) => handleAddField(row.rowKey, k, v)}
                     />
                     <td style={{ width: "110px", verticalAlign: "middle", textAlign: "center" }}>
@@ -472,7 +479,7 @@ function StockManufacturePage() {
                     <EditableRow
                       row={editForm}
                       onCategoryChange={handleEditCategory}
-                      onItemCodeChange={handleEditItemCode}
+                      onItemNameChange={handleEditItemName}
                       onFieldChange={(k, v) => patchEdit({ [k]: v })}
                     />
                     <td style={{ width: "110px", verticalAlign: "middle", textAlign: "center" }}>
@@ -495,8 +502,8 @@ function StockManufacturePage() {
                 ) : (
                   <>
                     <td style={{ width: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>{row.item_category}</td>
-                    <td style={{ width: "130px" }}>{row.item_code}</td>
                     <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>{row.item_name}</td>
+                    <td style={{ width: "130px" }}>{row.item_code}</td>
                     <td style={{ width: "120px" }}>{row.item_type}</td>
                     <td style={{ width: "120px" }}>Auto</td>
                     <td style={{ width: "140px" }}>{row.uom}</td>

@@ -75,16 +75,39 @@ class StockPurchaseItem(models.Model):
     def __str__(self):
         return self.item_name
 
-    def save(self, *args, **kwargs):
+    def _resolve_item_master_from_category_and_name(self):
         if getattr(self, "item_code_id", None):
-            self.item_name = normalize_text(self.item_code.item_name)
-            if getattr(self.item_code, "item_category_id", None):
-                self.item_category = self.item_code.item_category
+            return self.item_code
+        item_category_id = getattr(self, "item_category_id", None)
+        if not item_category_id:
+            return None
+
+        normalized_name = normalize_text(self.item_name)
+        if not normalized_name:
+            return None
+
+        matches = LabFurnitureItem.objects.filter(
+            item_category_id=item_category_id,
+            item_name__iexact=normalized_name,
+        ).order_by("id")
+
+        # Backward compatible: only auto-assign when mapping is deterministic.
+        if matches.count() == 1:
+            return matches.first()
+        return None
+
+    def save(self, *args, **kwargs):
+        resolved_master = self._resolve_item_master_from_category_and_name()
+        if resolved_master:
+            self.item_code = resolved_master
+            self.item_name = normalize_text(resolved_master.item_name)
+            if getattr(resolved_master, "item_category_id", None):
+                self.item_category = resolved_master.item_category
             # Also pull item_type and uom from Item Master
-            if getattr(self.item_code, "item_type_id", None):
-                self.item_type_id = self.item_code.item_type_id
-            if getattr(self.item_code, "uom_id", None):
-                self.uom_id = self.item_code.uom_id
+            if getattr(resolved_master, "item_type_id", None):
+                self.item_type_id = resolved_master.item_type_id
+            if getattr(resolved_master, "uom_id", None):
+                self.uom_id = resolved_master.uom_id
         self.item_name = normalize_text(self.item_name)
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
 

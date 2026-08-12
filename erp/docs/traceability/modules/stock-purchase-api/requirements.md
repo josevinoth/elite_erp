@@ -5,6 +5,10 @@ Expose stock purchase list, create, detail, and item trace endpoints.
 -stock purchase add/edit page  should contain vendor details
 - 
 
+- Item master resolution chain is supported as `category -> item name -> item code`.
+- API validates category/name/code consistency per row and serializes normalized values.
+- Legacy rows without item_code are backfilled when a deterministic category+name match exists.
+
 Source file: `erp_app/sub_views/stock_purchase_api.py`
 
 ## Functions / views used

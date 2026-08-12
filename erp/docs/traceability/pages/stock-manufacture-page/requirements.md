@@ -3,6 +3,10 @@
 ## Page purpose and business requirement
 Create, list, edit, and delete in-house manufacturing rows on the same page without navigating to a separate add/edit route.
 
+- Dropdown dependency order is strictly `Item Category → Item Name → Item Code`.
+- `Item Name` options are filtered by the selected `Item Category` from `LabFurnitureItem`.
+- `Item Code` is derived from the selected `Item Name` and displayed read-only.
+- Existing `StockManufactureItem` rows must render category, name, and code consistently from the API.
 - Action column uses icon-based Edit/Save controls.
 - Desktop shows icon + label with tooltips; mobile shows compact icon-only buttons.
 - Before save, validate `item_name`, `item_type`, and `uom`; block duplicate `item_code` rows.

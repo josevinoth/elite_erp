@@ -3,6 +3,7 @@
 ## Module purpose and business requirement
 Expose dedicated StockManufactureItem list/create/update/delete APIs and keep item master derived fields (`item_name`, `item_type`, `uom`, and dimensions) in sync.
 
+- Accept the `Item Category → Item Name → Item Code` dependency chain from the UI and resolve `item_code` from `LabFurnitureItem` when needed.
 - Validate required item-master derived fields before save.
 - Enforce uniqueness for manufacturing records by `item_code`.
 

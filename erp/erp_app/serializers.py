@@ -123,10 +123,29 @@ class ItemTypeSerializer(serializers.ModelSerializer):
         fields = ['id', 'it_name']
 
 
+def _resolve_stock_manufacture_master(item_category, item_name):
+    if not item_category:
+        return None
+
+    normalized_name = normalize_text(item_name)
+    if not normalized_name:
+        return None
+
+    qs = LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(
+        item_category=item_category,
+        item_name__iexact=normalized_name,
+    ).order_by("id")
+
+    # Deterministic only: avoid guessing when multiple item masters share the same name.
+    if qs.count() == 1:
+        return qs.first()
+    return None
+
+
 class StockManufactureItemSerializer(serializers.ModelSerializer):
-    item_category = serializers.CharField(source="item_category.name", read_only=True)
-    item_code = serializers.CharField(source="item_code.item_code", read_only=True)
-    item_type = serializers.CharField(source="item_type.it_name", read_only=True)
+    item_category = serializers.SerializerMethodField(read_only=True)
+    item_code = serializers.SerializerMethodField(read_only=True)
+    item_type = serializers.SerializerMethodField(read_only=True)
     uom = serializers.SerializerMethodField(read_only=True)
 
     item_category_id = serializers.PrimaryKeyRelatedField(
@@ -184,14 +203,46 @@ class StockManufactureItemSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "total_price", "volume", "created_at", "updated_at"]
 
     def get_uom(self, obj):
-        if not obj.uom:
+        master = obj.item_code or _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        if obj.uom:
+            return f"{obj.uom.name} ({obj.uom.symbol})"
+        if not master or not master.uom:
             return ""
-        return f"{obj.uom.name} ({obj.uom.symbol})"
+        return f"{master.uom.name} ({master.uom.symbol})"
+
+    def get_item_category(self, obj):
+        if obj.item_category:
+            return obj.item_category.name
+        master = obj.item_code or _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        return master.item_category.name if master and master.item_category else ""
+
+    def get_item_code(self, obj):
+        if obj.item_code:
+            return obj.item_code.item_code
+        master = _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        return master.item_code if master else ""
+
+    def get_item_type(self, obj):
+        if obj.item_type:
+            return obj.item_type.it_name
+        master = obj.item_code or _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        return master.item_type.it_name if master and master.item_type else ""
 
     def validate(self, attrs):
         item_code = attrs.get("item_code")
         if item_code is None and self.instance is not None:
             item_code = self.instance.item_code
+
+        item_category = attrs.get("item_category")
+        if item_category is None and self.instance is not None:
+            item_category = self.instance.item_category
+
+        item_name = attrs.get("item_name")
+        if item_name is None and self.instance is not None:
+            item_name = self.instance.item_name
+
+        if not item_code:
+            item_code = _resolve_stock_manufacture_master(item_category, item_name)
 
         if item_code is not None:
             should_check_duplicate = True
@@ -209,6 +260,12 @@ class StockManufactureItemSerializer(serializers.ModelSerializer):
                         {"item_code_id": "This item code already exists in Stock Manufacture."}
                     )
 
+            if item_category and getattr(item_code, "item_category_id", None) and item_category.id != item_code.item_category_id:
+                raise serializers.ValidationError(
+                    {"item_category_id": "Selected item name/code does not belong to the chosen category."}
+                )
+
+            attrs["item_code"] = item_code
             attrs["item_name"] = normalize_text(item_code.item_name)
             attrs["item_category"] = item_code.item_category
             attrs["item_type"] = item_code.item_type
@@ -217,11 +274,10 @@ class StockManufactureItemSerializer(serializers.ModelSerializer):
             attrs["width"] = item_code.width
             attrs["height"] = item_code.height
         else:
-            name = attrs.get("item_name")
-            if name is None and self.instance is not None:
-                name = self.instance.item_name
-            if not normalize_text(name):
+            if not normalize_text(item_name):
                 raise serializers.ValidationError({"item_name": "Item name is required."})
+            if item_category is None:
+                raise serializers.ValidationError({"item_category_id": "Item category is required."})
 
         quantity = attrs.get("quantity", getattr(self.instance, "quantity", 0))
         unit_price = attrs.get("unit_price", getattr(self.instance, "unit_price", 0))
