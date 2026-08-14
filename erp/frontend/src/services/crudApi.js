@@ -120,6 +120,53 @@ export async function listProjectsMeta() {
   return parseJson(res);
 }
 
+export async function listProjectQuotations() {
+  const res = await fetch("/api/project-quotations/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createProjectQuotationItem(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/project-quotations/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateProjectQuotationItem(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-quotations/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteProjectQuotationItem(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/project-quotations/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function getItemCostPreview(itemCode, qty = 1) {
+  const query = new URLSearchParams({
+    item_code: String(itemCode || ""),
+    qty: String(qty ?? 1),
+  }).toString();
+  const res = await fetch(`/api/itemcosting/cost-preview/?${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function addProjectLifecycleStatusOption(name) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/projects/status-options/add/", {

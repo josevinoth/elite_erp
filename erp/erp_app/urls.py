@@ -2,6 +2,11 @@ from django.urls import path
 
 from .sub_views import list_project_layout_drawings_api_view, save_project_layout_drawings_api_view
 from .sub_views.project_layout_drawing_view import list_project_layout_drawings, upload_project_layout_drawing
+from .sub_views.project_quotation_api import (
+    create_project_quotation_item_api_view,
+    list_project_quotations_api_view,
+    project_quotation_item_detail_api_view,
+)
 from .sub_views.stock_manufacture_api import (
     list_stock_manufacture_items_api_view,
     create_stock_manufacture_item_api_view,
@@ -151,6 +156,9 @@ urlpatterns = [
     path("api/projects/meta/", list_project_lifecycle_meta_api_view, name="api-projects-meta"),
     path("api/projects/create/", create_project_api_view, name="api-projects-create"),
     path("api/projects/<int:project_id>/", project_detail_api_view, name="api-projects-detail"),
+    path("api/project-quotations/", list_project_quotations_api_view, name="api-project-quotations-list"),
+    path("api/project-quotations/create/", create_project_quotation_item_api_view, name="api-project-quotations-create"),
+    path("api/project-quotations/<int:pk>/", project_quotation_item_detail_api_view, name="api-project-quotations-detail"),
     path(
         "api/projects/<int:project_id>/layout-drawings/",
         list_project_layout_drawings_api_view,

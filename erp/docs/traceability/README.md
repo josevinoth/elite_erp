@@ -20,6 +20,7 @@ Generated documentation for React pages and backend API/modules in the ERP works
 | Page | `ModulePage.jsx` | `erp/docs/traceability/pages/module-page/requirements.md` | `erp/docs/traceability/pages/module-page/function_mapping.md` |
 | Page | `PendingApprovalsPage.jsx` | `erp/docs/traceability/pages/pending-approvals-page/requirements.md` | `erp/docs/traceability/pages/pending-approvals-page/function_mapping.md` |
 | Page | `ProjectLayoutDrawingSection.jsx` | `erp/docs/traceability/pages/project-layout-drawing-section/requirements.md` | `erp/docs/traceability/pages/project-layout-drawing-section/function_mapping.md` |
+| Page | `ProjectQuotationPage.jsx` | `erp/docs/traceability/pages/project-quotation-page/requirements.md` | `erp/docs/traceability/pages/project-quotation-page/function_mapping.md` |
 | Page | `ProjectsAddPage.jsx` | `erp/docs/traceability/pages/projects-add-page/requirements.md` | `erp/docs/traceability/pages/projects-add-page/function_mapping.md` |
 | Page | `ProjectsPage.jsx` | `erp/docs/traceability/pages/projects-page/requirements.md` | `erp/docs/traceability/pages/projects-page/function_mapping.md` |
 | Page | `RegisterPage.jsx` | `erp/docs/traceability/pages/register-page/requirements.md` | `erp/docs/traceability/pages/register-page/function_mapping.md` |
@@ -35,6 +36,8 @@ Generated documentation for React pages and backend API/modules in the ERP works
 | Module | `login_page_view.py` | `erp/docs/traceability/modules/login-page-view/requirements.md` | `erp/docs/traceability/modules/login-page-view/function_mapping.md` |
 | Module | `notifications_api.py` | `erp/docs/traceability/modules/notifications-api/requirements.md` | `erp/docs/traceability/modules/notifications-api/function_mapping.md` |
 | Module | `project_layout_drawing_view.py` | `erp/docs/traceability/modules/project-layout-drawing-view/requirements.md` | `erp/docs/traceability/modules/project-layout-drawing-view/function_mapping.md` |
+| Module | `project_quotation_api.py` | `erp/docs/traceability/modules/project-quotation-api/requirements.md` | `erp/docs/traceability/modules/project-quotation-api/function_mapping.md` |
+| Module | `project_quotation_view.py` | `erp/docs/traceability/modules/project-quotation-view/requirements.md` | `erp/docs/traceability/modules/project-quotation-view/function_mapping.md` |
 | Module | `projects_api.py` | `erp/docs/traceability/modules/projects-api/requirements.md` | `erp/docs/traceability/modules/projects-api/function_mapping.md` |
 | Module | `register_view.py` | `erp/docs/traceability/modules/register-view/requirements.md` | `erp/docs/traceability/modules/register-view/function_mapping.md` |
 | Module | `stock_maintenance_api.py` | `erp/docs/traceability/modules/stock-maintenance-api/requirements.md` | `erp/docs/traceability/modules/stock-maintenance-api/function_mapping.md` |
@@ -77,10 +80,13 @@ Generated documentation for React pages and backend API/modules in the ERP works
 | Projects | Page | `ProjectsPage.jsx` | `erp/docs/traceability/pages/projects-page/requirements.md` | `erp/docs/traceability/pages/projects-page/function_mapping.md` |
 | Projects | Page | `ProjectsAddPage.jsx` | `erp/docs/traceability/pages/projects-add-page/requirements.md` | `erp/docs/traceability/pages/projects-add-page/function_mapping.md` |
 | Projects | Page | `ProjectLayoutDrawingSection.jsx` | `erp/docs/traceability/pages/project-layout-drawing-section/requirements.md` | `erp/docs/traceability/pages/project-layout-drawing-section/function_mapping.md` |
+| Projects | Page | `ProjectQuotationPage.jsx` | `erp/docs/traceability/pages/project-quotation-page/requirements.md` | `erp/docs/traceability/pages/project-quotation-page/function_mapping.md` |
 | Projects | Page | `LayoutDrawingApprovalPage.jsx` | `erp/docs/traceability/pages/layout-drawing-approval-page/requirements.md` | `erp/docs/traceability/pages/layout-drawing-approval-page/function_mapping.md` |
 | Projects | Page | `PendingApprovalsPage.jsx` | `erp/docs/traceability/pages/pending-approvals-page/requirements.md` | `erp/docs/traceability/pages/pending-approvals-page/function_mapping.md` |
 | Projects | Module | `projects_api.py` | `erp/docs/traceability/modules/projects-api/requirements.md` | `erp/docs/traceability/modules/projects-api/function_mapping.md` |
 | Projects | Module | `project_layout_drawing_view.py` | `erp/docs/traceability/modules/project-layout-drawing-view/requirements.md` | `erp/docs/traceability/modules/project-layout-drawing-view/function_mapping.md` |
+| Projects | Module | `project_quotation_api.py` | `erp/docs/traceability/modules/project-quotation-api/requirements.md` | `erp/docs/traceability/modules/project-quotation-api/function_mapping.md` |
+| Projects | Module | `project_quotation_view.py` | `erp/docs/traceability/modules/project-quotation-view/requirements.md` | `erp/docs/traceability/modules/project-quotation-view/function_mapping.md` |
 | LCE | Page | `LceListPage.jsx` | `erp/docs/traceability/pages/lce-list-page/requirements.md` | `erp/docs/traceability/pages/lce-list-page/function_mapping.md` |
 | LCE | Page | `CostingPage.jsx` | `erp/docs/traceability/pages/costing-page/requirements.md` | `erp/docs/traceability/pages/costing-page/function_mapping.md` |
 | LCE | Module | `lce_estimate_api.py` | `erp/docs/traceability/modules/lce-estimate-api/requirements.md` | `erp/docs/traceability/modules/lce-estimate-api/function_mapping.md` |

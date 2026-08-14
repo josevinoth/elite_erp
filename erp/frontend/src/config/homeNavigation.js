@@ -37,6 +37,11 @@ export const homeNavItems = [
         icon: "layoutDrawingApproval",
       },
       {
+        label: "Quotation",
+        to: "/projects/quotation",
+        icon: "quotation",
+      },
+      {
         label: "Item Costing",
         to: "/item-costing",
         icon: "itemMaster",

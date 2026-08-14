@@ -15,6 +15,7 @@ import ModulePage from "./pages/ModulePage";
 import PendingApprovalsPage from "./pages/PendingApprovalsPage";
 import ProjectsAddPage from "./pages/ProjectsAddPage";
 import ProjectsPage from "./pages/ProjectsPage";
+import ProjectQuotationPage from "./pages/ProjectQuotationPage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import StockItemsPage from "./pages/StockItemsPage";
@@ -166,14 +167,7 @@ function App() {
                         />
                         <Route
                             path="/projects/quotation"
-                            element={
-                                secureRoute(
-                                    <ModulePage
-                                        title="Quotation"
-                                        description="Create and manage project quotations before order confirmation."
-                                    />
-                                )
-                            }
+                            element={secureRoute(<ProjectQuotationPage />)}
                         />
                         <Route
                             path="/projects/customer-po"
