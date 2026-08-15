@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   BsBarChartFill,
   BsBoxSeam,
@@ -15,11 +15,13 @@ import {
 } from "react-icons/bs";
 import HomeSideNav from "../components/HomeSideNav";
 import { listPendingRegistrations } from "../services/authApi";
-import { listLayoutDrawingApprovals } from "../services/crudApi";
+import { listLayoutDrawingApprovals, listQuotationSummaries } from "../services/crudApi";
 
 function HomeLayout({ currentUser }) {
+  const navigate = useNavigate();
   const [pendingCount, setPendingCount] = useState(0);
   const [layoutApprovalCount, setLayoutApprovalCount] = useState(0);
+  const [quotationRows, setQuotationRows] = useState([]);
   const roleName = String(currentUser?.role || "").toLowerCase();
   const teamName = String(currentUser?.team || "").toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
@@ -45,6 +47,16 @@ function HomeLayout({ currentUser }) {
       .then((data) => setPendingCount(data.count || 0))
       .catch(() => {});
   }, [isAdmin]);
+
+  useEffect(() => {
+    listQuotationSummaries()
+      .then((data) => {
+        setQuotationRows(Array.isArray(data.quotations) ? data.quotations.slice(0, 8) : []);
+      })
+      .catch(() => {
+        setQuotationRows([]);
+      });
+  }, []);
 
   const dashboardCards = [
     ...(isAdmin
@@ -155,6 +167,43 @@ function HomeLayout({ currentUser }) {
                 </Link>
               );
             })}
+          </div>
+
+          <div style={{ marginTop: "1.2rem", background: "#fff", border: "1px solid #d9dee8", borderRadius: "10px", padding: "0.9rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.6rem" }}>
+              <h2 style={{ margin: 0, fontSize: "1rem", color: "#0f172a" }}>Quotation List</h2>
+              <Link to="/projects/quotation" className="crud-add-btn" style={{ textDecoration: "none" }}>View All</Link>
+            </div>
+            <div className="users-table-wrap" style={{ overflowX: "auto" }}>
+              <table className="users-table" style={{ tableLayout: "auto", width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Quotation Number</th>
+                    <th>Project ID</th>
+                    <th>Project Name</th>
+                    <th>Total Quotation Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quotationRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: "center", color: "#64748b" }}>No quotations found.</td>
+                    </tr>
+                  ) : quotationRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      onClick={() => navigate(`/projects/quotation?quotationId=${row.id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>{row.quotation_number || "Auto"}</td>
+                      <td>{row.project_code || row.project_id}</td>
+                      <td>{row.project_name || "-"}</td>
+                      <td style={{ textAlign: "right" }}>{row.total_quotation_cost}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </main>

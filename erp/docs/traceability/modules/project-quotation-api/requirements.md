@@ -14,9 +14,12 @@ Source file: `erp_app/sub_views/project_quotation_api.py`
 - `project_quotation_serializer.py`
 - `ProjectQuotationSerializer`
 
+## Shared helpers
+- `calculate_costs(item_code, requested_qty)` in `erp_app/utils/project_quotation_costs.py`
+
 ## Database tables / columns
 - `CostTypeInfo(id, name, description)`
-- `ProjectQuotationItemInfo(project_id, cost_type_id, level, item_category_id, item_name, item_code_id, requested_qty, purchase_qty, cost_per_qty, total_cost)`
+- `ProjectQuotationItemInfo(quotation_number, project_id, cost_type_id, level, item_category_id, item_name, item_code_id, requested_qty, purchase_qty, cost_per_qty, max_cost, min_cost, actual_cost, total_cost, length, width, height, volume)`
 - `Project(id, project_id, project_name)`
 - `ItemCategory(id, name)`
 - `LabFurnitureItem(id, item_category_id, item_name, item_code)`
@@ -40,4 +43,7 @@ Source file: `erp_app/sub_views/project_quotation_api.py`
 - `/api/project-quotations/create/`
 - `/api/project-quotations/<int:pk>/`
 - `/api/itemcosting/cost-preview/`
+
+
+
 

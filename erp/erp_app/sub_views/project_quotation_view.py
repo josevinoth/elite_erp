@@ -1,12 +1,13 @@
 from decimal import Decimal
 
-from ..project_quotation_serializer import ProjectQuotationSerializer
-from ..sub_models import Project
+from ..project_quotation_items_serializer import ProjectQuotationItemSerializer
+from ..project_quotation_summary_serializer import ProjectQuotationSummarySerializer
 from ..sub_models.CostType_mod import CostTypeInfo
-from ..sub_models.project_quotation_mod import ProjectQuotationItemInfo
+from ..sub_models.project_quotation_items_mod import ProjectQuotationItemInfo
+from ..sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
 
 
-class ProjectQuotationView:
+class ProjectQuotationSummaryView:
     def __init__(self, request=None):
         self.request = request
 
@@ -23,57 +24,70 @@ class ProjectQuotationView:
             for row in CostTypeInfo.objects.order_by("name")
         ]
 
-    def _serialize_project(self, project, rows):
-        serializer_context = self.get_serializer_context()
-        flat_items = ProjectQuotationSerializer(rows, many=True, context=serializer_context).data
-        bom_hierarchy = ProjectQuotationSerializer.build_nested_hierarchy(rows, context=serializer_context)
-        total_cost = sum((Decimal(str(row.total_cost or 0)) for row in rows), Decimal("0"))
+    def _serialize_summary(self, summary):
         return {
-            "project_id": project.id,
-            "project_code": project.project_id,
-            "project_name": project.project_name,
-            "description": project.description,
-            "item_count": len(rows),
-            "total_cost": str(total_cost),
-            "items": flat_items,
-            "bom_hierarchy": bom_hierarchy,
+            **ProjectQuotationSummarySerializer(summary, context=self.get_serializer_context()).data,
+            "total_quotation_cost": str(summary.total_cost_to_elite or 0),
+            "project_code": getattr(summary.project, "project_id", ""),
         }
 
-    def list_payload(self):
-        rows = list(
-            ProjectQuotationItemInfo.objects.select_related(
-                "project",
-                "cost_type",
-                "item_category",
-                "item_code",
-            ).order_by("project_id", "id")
-        )
-        rows_by_project = {}
-        for row in rows:
-            rows_by_project.setdefault(row.project.pk, []).append(row)
-
-        projects_payload = []
-        for project in Project.objects.order_by("project_id", "project_name"):
-            project_rows = rows_by_project.get(project.pk, [])
-            projects_payload.append(self._serialize_project(project, project_rows))
+    def list_payload(self, project_id=None):
+        summaries = ProjectQuotationSummaryInfo.objects.select_related("project").order_by("project__project_id", "id")
+        if project_id not in (None, ""):
+            summaries = summaries.filter(project_id=project_id)
 
         material_cost_type = CostTypeInfo.objects.filter(name__iexact="MATERIAL").first()
+        serialized = [self._serialize_summary(summary) for summary in summaries]
         return {
-            "projects": projects_payload,
+            "quotations": serialized,
             "cost_types": self._serialize_cost_types(),
             "material_cost_type_id": material_cost_type.pk if material_cost_type else None,
         }
 
-    def detail_payload(self, row):
-        project_rows = list(
-            ProjectQuotationItemInfo.objects.filter(project=row.project)
-            .select_related("project", "cost_type", "item_category", "item_code")
+    def detail_payload(self, summary):
+        items = list(
+            ProjectQuotationItemInfo.objects.filter(quotation_number=summary)
+            .select_related("quotation_number", "cost_type", "item_category", "item_code")
             .order_by("id")
         )
         return {
-            "project_quotation_item": ProjectQuotationSerializer(row, context=self.get_serializer_context()).data,
-            "project": self._serialize_project(row.project, project_rows),
+            "quotation": self._serialize_summary(summary),
+            "items": ProjectQuotationItemSerializer(items, many=True, context=self.get_serializer_context()).data,
+            "bom_hierarchy": ProjectQuotationItemSerializer.build_nested_hierarchy(
+                items,
+                context=self.get_serializer_context(),
+            ),
+            "cost_types": self._serialize_cost_types(),
         }
+
+
+class ProjectQuotationItemView:
+    def __init__(self, request=None):
+        self.request = request
+
+    def get_serializer_context(self):
+        return {"request": self.request} if self.request is not None else {}
+
+    def list_payload(self, summary):
+        items = list(
+            ProjectQuotationItemInfo.objects.filter(quotation_number=summary)
+            .select_related("quotation_number", "cost_type", "item_category", "item_code")
+            .order_by("id")
+        )
+        total_cost = sum((Decimal(str(row.total_cost or 0)) for row in items), Decimal("0"))
+        return {
+            "quotation_number": summary.quotation_number,
+            "project_id": summary.project_id,
+            "project_name": summary.project_name,
+            "total_quotation_cost": str(total_cost),
+            "items": ProjectQuotationItemSerializer(items, many=True, context=self.get_serializer_context()).data,
+            "bom_hierarchy": ProjectQuotationItemSerializer.build_nested_hierarchy(items, context=self.get_serializer_context()),
+        }
+
+
+# Compatibility aliases retained for existing imports.
+ProjectQuotationView = ProjectQuotationSummaryView
+ProjectQuotationListView = ProjectQuotationSummaryView
 
 
 

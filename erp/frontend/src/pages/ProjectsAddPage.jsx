@@ -17,6 +17,7 @@ import {
   YESNO_FIELD_CONFIG,
 } from "../utils/projectsAddPageUtils";
 import ProjectLayoutDrawingSection from "./ProjectLayoutDrawingSection";
+import ProjectQuotationPage from "./ProjectQuotationPage";
 const TEXT_FIELD_KEYS = new Set([
   "project_id","project_name","project_location","description",
   "prod_dwg_issued_justification","prod_dwg_issued_sf_justification",
@@ -305,6 +306,26 @@ function ProjectsAddPage() {
             approverOptions={approverOptions}
             approvalStatusOptions={approvalStatusOptions}
           />
+          <details
+            className="costing-selector-details"
+            style={{ background: "#fff", border: "1px solid #d9dee8", borderRadius: "10px", marginTop: "1rem" }}
+          >
+            <summary
+              className="auth-input costing-selector-summary"
+              style={{ cursor: "pointer", listStyle: "none", padding: "0.9rem 1rem", border: "none", fontWeight: 700 }}
+            >
+              Quotation List
+            </summary>
+            <div style={{ padding: "0 1rem 1rem" }}>
+              {isEditMode ? (
+                <ProjectQuotationPage projectId={projectId} embedded />
+              ) : (
+                <p className="users-status" style={{ marginTop: "0.75rem" }}>
+                  Save the project first to add quotation items.
+                </p>
+              )}
+            </div>
+          </details>
         </>
       ) : null}
     </section>

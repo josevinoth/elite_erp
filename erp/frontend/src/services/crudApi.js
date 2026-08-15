@@ -120,8 +120,90 @@ export async function listProjectsMeta() {
   return parseJson(res);
 }
 
-export async function listProjectQuotations() {
-  const res = await fetch("/api/project-quotations/", { credentials: "include" });
+export async function listProjectQuotations(projectId = null) {
+  const query = projectId !== null && projectId !== undefined && String(projectId).trim()
+    ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
+    : "";
+  const res = await fetch(`/api/project-quotations/${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listQuotationSummaries(projectId = null) {
+  const query = projectId !== null && projectId !== undefined && String(projectId).trim()
+    ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
+    : "";
+  const res = await fetch(`/api/quotations/${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createQuotationSummary(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/quotations/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateQuotationSummary(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/quotations/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteQuotationSummary(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/quotations/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function listQuotationItems(quotationId) {
+  const res = await fetch(`/api/quotations/${quotationId}/items/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createQuotationItem(quotationId, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/quotations/${quotationId}/items/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateQuotationItem(quotationId, itemId, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/quotations/${quotationId}/items/${itemId}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteQuotationItem(quotationId, itemId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/quotations/${quotationId}/items/${itemId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
   return parseJson(res);
 }
 

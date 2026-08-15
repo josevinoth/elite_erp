@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BsCheckCircleFill,
   BsPencilSquare,
@@ -7,13 +8,17 @@ import {
   BsXCircleFill,
 } from "react-icons/bs";
 import {
-  createProjectQuotationItem,
-  deleteProjectQuotationItem,
+  createQuotationItem,
+  createQuotationSummary,
+  deleteQuotationItem,
+  deleteQuotationSummary,
   getItemCostPreview,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
-  listProjectQuotations,
-  updateProjectQuotationItem,
+  listQuotationItems,
+  listQuotationSummaries,
+  updateQuotationItem,
+  updateQuotationSummary,
 } from "../services/crudApi";
 
 const MATERIAL_NAME = "MATERIAL";
@@ -23,107 +28,89 @@ const toNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
-const toMoney = (value, decimals = 3) => (Math.round((toNumber(value) + Number.EPSILON) * (10 ** decimals)) / (10 ** decimals)).toFixed(decimals);
+const toMoney = (value, decimals = 2) => (
+  (Math.round((toNumber(value) + Number.EPSILON) * (10 ** decimals)) / (10 ** decimals)).toFixed(decimals)
+);
 
 const normalizeText = (value) => String(value || "").trim();
 
-const calcRow = (row) => ({
-  ...row,
-  total_cost: toMoney(toNumber(row.requested_qty) * toNumber(row.cost_per_qty)),
-});
+const emptyDimensions = {
+  length: "0",
+  width: "0",
+  height: "0",
+  volume: "0",
+};
 
-const createDraft = (projectId, materialCostTypeId) => calcRow({
-  project_id: String(projectId || ""),
+const buildDraftItem = (materialCostTypeId) => ({
   cost_type_id: materialCostTypeId ? String(materialCostTypeId) : "",
   level: "0",
   item_category_id: "",
   item_name: "",
   item_code_id: "",
-  item_code: "",
   requested_qty: "0",
   purchase_qty: "0",
-  cost_per_qty: "0",
-  total_cost: "0.000",
+  max_cost: "0",
+  min_cost: "0",
+  actual_cost: "0",
+  total_cost: "0",
+  ...emptyDimensions,
 });
 
-const flattenHierarchy = (nodes = [], bucket = []) => {
-  nodes.forEach((node) => {
-    bucket.push(node);
-    flattenHierarchy(node.children || [], bucket);
-  });
-  return bucket;
-};
+const SUMMARY_EDITABLE_FIELDS = [
+  "petrol_expenses",
+  "transport_installation_team",
+  "contingency",
+  "transportation",
+  "loading_unloading",
+  "installation",
+  "business_development",
+  "markup",
+];
 
-function QuotationTableHead({ includeActions = true }) {
-  return (
-    <thead>
-      <tr>
-        <th style={{ minWidth: "180px" }}>Cost Type</th>
-        <th style={{ minWidth: "90px" }}>Level</th>
-        <th style={{ minWidth: "180px" }}>Item Category</th>
-        <th style={{ minWidth: "240px" }}>Item Name</th>
-        <th style={{ minWidth: "160px" }}>Item Code</th>
-        <th style={{ minWidth: "130px" }}>Requested Qty</th>
-        <th style={{ minWidth: "130px" }}>Purchase Qty</th>
-        <th style={{ minWidth: "140px" }}>Cost per Qty</th>
-        <th style={{ minWidth: "140px" }}>Total Cost</th>
-        {includeActions ? <th style={{ minWidth: "120px", textAlign: "center" }}>Action</th> : null}
-      </tr>
-    </thead>
-  );
-}
+const SUMMARY_READONLY_FIELDS = [
+  "quotation_number",
+  "project_id",
+  "project_name",
+  "total_material_cost",
+  "final_material_cost",
+  "total_cost_to_elite",
+  "total_markup",
+  "planned_order_value",
+  "discount",
+  "undiscounted_quote_value",
+  "factor",
+];
 
-function ProjectQuotationPage() {
-  const [projects, setProjects] = useState([]);
+function ProjectQuotationPage({ projectId = null, embedded = false }) {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryQuotationId = searchParams.get("quotationId");
+
+  const [quotations, setQuotations] = useState([]);
+  const [selectedQuotationId, setSelectedQuotationId] = useState(() => queryQuotationId || "");
+  const [summary, setSummary] = useState(null);
+  const [items, setItems] = useState([]);
   const [costTypes, setCostTypes] = useState([]);
   const [materialCostTypeId, setMaterialCostTypeId] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState({ message: "", type: "" });
-  const [draftProjectId, setDraftProjectId] = useState(null);
+  const [status, setStatus] = useState({ type: "", message: "" });
+
   const [draftRow, setDraftRow] = useState(null);
-  const [savingDraft, setSavingDraft] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null);
-  const [editingProjectId, setEditingProjectId] = useState(null);
-  const [editRow, setEditRow] = useState(null);
-  const [savingEdit, setSavingEdit] = useState(false);
+  const [editingRow, setEditingRow] = useState(null);
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [savingRow, setSavingRow] = useState(false);
+
   const itemMasterRef = useRef([]);
 
   const showStatus = useCallback((message, type = "success") => {
-    setStatus({ message, type });
+    setStatus({ type, message });
   }, []);
 
   const clearStatus = useCallback(() => {
-    setStatus({ message: "", type: "" });
+    setStatus({ type: "", message: "" });
   }, []);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [quotationData, categoryData, itemData] = await Promise.all([
-        listProjectQuotations(),
-        listLabFurnitureItemCategories(),
-        listLabFurnitureItems(),
-      ]);
-      setProjects(Array.isArray(quotationData.projects) ? quotationData.projects : []);
-      setCostTypes(Array.isArray(quotationData.cost_types) ? quotationData.cost_types : []);
-      setMaterialCostTypeId(quotationData.material_cost_type_id || null);
-      setCategoryOptions(Array.isArray(categoryData.item_categories) ? categoryData.item_categories : []);
-      itemMasterRef.current = Array.isArray(itemData.lab_furniture_items) ? itemData.lab_furniture_items : [];
-    } catch (error) {
-      showStatus(error.message || "Failed to load project quotations.", "error");
-      setProjects([]);
-      setCostTypes([]);
-      setCategoryOptions([]);
-      itemMasterRef.current = [];
-    } finally {
-      setLoading(false);
-    }
-  }, [showStatus]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   const costTypeMap = useMemo(() => {
     const lookup = new Map();
@@ -139,246 +126,404 @@ function ProjectQuotationPage() {
     return String(option?.name || "").trim().toUpperCase() === MATERIAL_NAME;
   }, [costTypeMap, materialCostTypeId]);
 
+  const getMasterById = useCallback((itemId) => (
+    itemMasterRef.current.find((item) => String(item.id) === String(itemId || "")) || null
+  ), []);
+
   const getNamesForCategory = useCallback((categoryId) => {
     const names = itemMasterRef.current
       .filter((item) => String(item.item_category_id || "") === String(categoryId || ""))
       .map((item) => item.item_name)
       .filter(Boolean);
-    return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right));
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
   }, []);
 
-  const getCodesForSelection = useCallback((categoryId, itemName) => itemMasterRef.current
-    .filter((item) => String(item.item_category_id || "") === String(categoryId || ""))
-    .filter((item) => String(item.item_name || "").trim().toLowerCase() === String(itemName || "").trim().toLowerCase())
-    .sort((left, right) => String(left.item_code || "").localeCompare(String(right.item_code || ""))), []);
+  const getCodesForSelection = useCallback((categoryId, itemName) => (
+    itemMasterRef.current
+      .filter((item) => String(item.item_category_id || "") === String(categoryId || ""))
+      .filter((item) => String(item.item_name || "").trim().toLowerCase() === String(itemName || "").trim().toLowerCase())
+      .sort((a, b) => String(a.item_code || "").localeCompare(String(b.item_code || "")))
+  ), []);
 
-  const getMasterById = useCallback((itemId) => itemMasterRef.current.find((item) => String(item.id) === String(itemId || "")) || null, []);
-
-  const hydrateExistingRow = useCallback((item) => calcRow({
-    project_id: String(item.project_id || ""),
-    cost_type_id: String(item.cost_type_id || ""),
-    level: String(item.level ?? 0),
-    item_category_id: String(item.item_category_id || ""),
-    item_name: String(item.item_name || ""),
-    item_code_id: String(item.item_code_id || ""),
-    item_code: String(item.item_code || ""),
-    requested_qty: String(item.requested_qty ?? "0"),
-    purchase_qty: String(item.purchase_qty ?? "0"),
-    cost_per_qty: String(item.cost_per_qty ?? "0"),
-    total_cost: String(item.total_cost ?? "0"),
-  }), []);
-
-  const patchDraft = useCallback((patch) => {
-    setDraftRow((previous) => (previous ? calcRow({ ...previous, ...patch }) : previous));
-  }, []);
-
-  const patchEdit = useCallback((patch) => {
-    setEditRow((previous) => (previous ? calcRow({ ...previous, ...patch }) : previous));
-  }, []);
-
-  const syncCostFromItemCode = useCallback(async (itemCodeId, applyPatch) => {
-    const master = getMasterById(itemCodeId);
-    if (!master?.item_code) {
-      applyPatch({ cost_per_qty: "0" });
+  const loadItemsForSummary = useCallback(async (quotationId) => {
+    if (!quotationId) {
+      setItems([]);
       return;
     }
 
-    try {
-      const preview = await getItemCostPreview(master.item_code, 1);
-      applyPatch({ cost_per_qty: String(preview?.cost ?? "0") });
-    } catch (_error) {
-      applyPatch({ cost_per_qty: "0" });
-      showStatus("Cost per Qty defaulted to 0 because no stock cost preview was found.", "error");
+    const data = await listQuotationItems(quotationId);
+    setItems(Array.isArray(data.items) ? data.items : []);
+  }, []);
+
+  const ensureEmbeddedSummary = useCallback(async (summaryRows) => {
+    if (!embedded || !projectId) return "";
+
+    const matching = (summaryRows || []).find((row) => String(row.project_id) === String(projectId));
+    if (matching) {
+      return String(matching.id);
     }
-  }, [getMasterById, showStatus]);
+
+    const created = await createQuotationSummary({ project_id: projectId });
+    const createdId = String(created?.quotation?.id || "");
+    return createdId;
+  }, [embedded, projectId]);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const activeProjectId = embedded && projectId ? projectId : null;
+      const [summaryData, categoryData, itemData] = await Promise.all([
+        listQuotationSummaries(activeProjectId),
+        listLabFurnitureItemCategories(),
+        listLabFurnitureItems(),
+      ]);
+
+      const summaryRows = Array.isArray(summaryData.quotations) ? summaryData.quotations : [];
+      const summaryIdFromEmbedded = await ensureEmbeddedSummary(summaryRows);
+      const refreshedSummaryRows = summaryIdFromEmbedded && !summaryRows.some((row) => String(row.id) === summaryIdFromEmbedded)
+        ? (await listQuotationSummaries(activeProjectId)).quotations || []
+        : summaryRows;
+
+      setQuotations(refreshedSummaryRows);
+      setCostTypes(Array.isArray(summaryData.cost_types) ? summaryData.cost_types : []);
+      setMaterialCostTypeId(summaryData.material_cost_type_id || null);
+      setCategoryOptions(Array.isArray(categoryData.item_categories) ? categoryData.item_categories : []);
+      itemMasterRef.current = Array.isArray(itemData.lab_furniture_items) ? itemData.lab_furniture_items : [];
+
+      let nextSelectedId = "";
+      if (embedded && projectId) {
+        nextSelectedId = summaryIdFromEmbedded || String(refreshedSummaryRows[0]?.id || "");
+      } else if (selectedQuotationId) {
+        nextSelectedId = String(selectedQuotationId);
+      } else if (queryQuotationId) {
+        nextSelectedId = String(queryQuotationId);
+      }
+
+      if (nextSelectedId) {
+        const selected = refreshedSummaryRows.find((row) => String(row.id) === String(nextSelectedId));
+        setSelectedQuotationId(String(nextSelectedId));
+        setSummary(selected || null);
+        if (selected) {
+          await loadItemsForSummary(selected.id);
+        } else {
+          setItems([]);
+        }
+      } else {
+        setSummary(null);
+        setItems([]);
+      }
+    } catch (error) {
+      showStatus(error.message || "Failed to load quotations.", "error");
+      setQuotations([]);
+      setSummary(null);
+      setItems([]);
+      setCostTypes([]);
+      setCategoryOptions([]);
+      itemMasterRef.current = [];
+    } finally {
+      setLoading(false);
+    }
+  }, [embedded, ensureEmbeddedSummary, loadItemsForSummary, projectId, queryQuotationId, selectedQuotationId, showStatus]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!embedded) {
+      setSelectedQuotationId(queryQuotationId || "");
+    }
+  }, [embedded, queryQuotationId]);
+
+  const refreshSelectedSummary = useCallback(async (quotationId) => {
+    const listData = await listQuotationSummaries(embedded && projectId ? projectId : null);
+    const rows = Array.isArray(listData.quotations) ? listData.quotations : [];
+    setQuotations(rows);
+    const selected = rows.find((row) => String(row.id) === String(quotationId || "")) || null;
+    setSummary(selected);
+    if (selected) {
+      await loadItemsForSummary(selected.id);
+    } else {
+      setItems([]);
+    }
+  }, [embedded, loadItemsForSummary, projectId]);
+
+  const patchSummary = useCallback((field, value) => {
+    setSummary((prev) => (prev ? { ...prev, [field]: value } : prev));
+  }, []);
+
+  const saveSummary = useCallback(async () => {
+    if (!summary?.id) return;
+    setSavingSummary(true);
+    clearStatus();
+    try {
+      const payload = {};
+      SUMMARY_EDITABLE_FIELDS.forEach((field) => {
+        payload[field] = summary[field] ?? 0;
+      });
+      const response = await updateQuotationSummary(summary.id, payload);
+      setSummary(response.quotation || summary);
+      showStatus("Quotation summary updated successfully.");
+      await refreshSelectedSummary(summary.id);
+    } catch (error) {
+      showStatus(error.message || "Failed to update quotation summary.", "error");
+      window.alert(error.message || "Failed to update quotation summary.");
+    } finally {
+      setSavingSummary(false);
+    }
+  }, [clearStatus, refreshSelectedSummary, showStatus, summary]);
+
+  const removeSummary = useCallback(async (quotationId) => {
+    if (!quotationId) return;
+    if (!window.confirm("Delete this quotation and all linked items?")) return;
+
+    clearStatus();
+    try {
+      await deleteQuotationSummary(quotationId);
+      if (!embedded) {
+        setSelectedQuotationId("");
+        setSearchParams({});
+      }
+      setSummary(null);
+      setItems([]);
+      await loadData();
+      showStatus("Quotation deleted successfully.");
+    } catch (error) {
+      const message = error.message || "Failed to delete quotation.";
+      showStatus(message, "error");
+      window.alert(message);
+    }
+  }, [clearStatus, embedded, loadData, setSearchParams, showStatus]);
+
+  const openSummary = useCallback(async (quotationId) => {
+    const selected = quotations.find((row) => String(row.id) === String(quotationId));
+    if (!selected) return;
+
+    setSelectedQuotationId(String(selected.id));
+    setSummary(selected);
+    clearStatus();
+    if (!embedded) {
+      setSearchParams({ quotationId: String(selected.id) });
+    }
+    await loadItemsForSummary(selected.id);
+  }, [clearStatus, embedded, loadItemsForSummary, quotations, setSearchParams]);
 
   const applyMaterialSelection = useCallback(async (itemCodeId, applyPatch) => {
     const master = getMasterById(itemCodeId);
     if (!master) {
-      applyPatch({ item_code_id: "", item_code: "", cost_per_qty: "0" });
+      applyPatch({
+        item_code_id: "",
+        requested_qty: "0",
+        max_cost: "0",
+        min_cost: "0",
+        actual_cost: "0",
+        total_cost: "0",
+        ...emptyDimensions,
+      });
       return;
     }
 
+    const quantity = String(master.available_qty ?? "0");
     applyPatch({
       item_category_id: String(master.item_category_id || ""),
       item_name: master.item_name || "",
       item_code_id: String(master.id),
-      item_code: master.item_code || "",
+      requested_qty: quantity,
+      length: String(master.length ?? "0"),
+      width: String(master.width ?? "0"),
+      height: String(master.height ?? "0"),
+      volume: String(master.volume ?? "0"),
     });
-    await syncCostFromItemCode(master.id, applyPatch);
-  }, [getMasterById, syncCostFromItemCode]);
 
-  const resetMaterialFields = useCallback((applyPatch) => {
-    applyPatch({
-      item_category_id: "",
-      item_name: "",
-      item_code_id: "",
-      item_code: "",
-      cost_per_qty: "0",
+    try {
+      const preview = await getItemCostPreview(master.item_code, 1);
+      const previewCost = String(preview?.cost ?? "0");
+      applyPatch({ max_cost: previewCost, min_cost: previewCost, actual_cost: previewCost });
+    } catch (_error) {
+      applyPatch({ max_cost: "0", min_cost: "0", actual_cost: "0" });
+    }
+  }, [getMasterById]);
+
+  const patchDraftRow = useCallback((patch) => {
+    setDraftRow((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      next.total_cost = toMoney(toNumber(next.requested_qty) * toNumber(next.actual_cost));
+      return next;
     });
   }, []);
 
-  const handleDraftCostTypeChange = async (value) => {
-    const material = isMaterialCostType(value);
-    if (!material) {
-      setDraftRow((previous) => (previous ? calcRow({
-        ...previous,
-        cost_type_id: value,
-        item_category_id: "",
-        item_name: "",
-        item_code_id: "",
-        item_code: "",
-      }) : previous));
-      return;
-    }
-    patchDraft({ cost_type_id: value });
-  };
+  const patchEditingRow = useCallback((patch) => {
+    setEditingRow((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      next.total_cost = toMoney(toNumber(next.requested_qty) * toNumber(next.actual_cost));
+      return next;
+    });
+  }, []);
 
-  const handleEditCostTypeChange = async (value) => {
-    const material = isMaterialCostType(value);
-    if (!material) {
-      setEditRow((previous) => (previous ? calcRow({
-        ...previous,
-        cost_type_id: value,
-        item_category_id: "",
-        item_name: "",
-        item_code_id: "",
-        item_code: "",
-      }) : previous));
-      return;
-    }
-    patchEdit({ cost_type_id: value });
-  };
-
-  const startAdd = useCallback((projectId) => {
-    clearStatus();
+  const startAdd = useCallback(() => {
     setEditingItemId(null);
-    setEditingProjectId(null);
-    setEditRow(null);
-    setDraftProjectId(projectId);
-    setDraftRow(createDraft(projectId, materialCostTypeId));
+    setEditingRow(null);
+    setDraftRow(buildDraftItem(materialCostTypeId));
+    clearStatus();
   }, [clearStatus, materialCostTypeId]);
 
   const cancelAdd = useCallback(() => {
-    setDraftProjectId(null);
     setDraftRow(null);
   }, []);
 
-  const startEdit = useCallback((projectId, item) => {
-    clearStatus();
-    setDraftProjectId(null);
+  const startEdit = useCallback((row) => {
     setDraftRow(null);
-    setEditingProjectId(projectId);
-    setEditingItemId(item.id);
-    setEditRow(hydrateExistingRow(item));
-  }, [clearStatus, hydrateExistingRow]);
+    setEditingItemId(row.id);
+    setEditingRow({
+      ...row,
+      cost_type_id: String(row.cost_type_id || ""),
+      item_category_id: String(row.item_category_id || ""),
+      item_code_id: String(row.item_code_id || ""),
+      level: String(row.level ?? "0"),
+      requested_qty: String(row.requested_qty ?? "0"),
+      purchase_qty: String(row.purchase_qty ?? "0"),
+      actual_cost: String(row.actual_cost ?? "0"),
+      max_cost: String(row.max_cost ?? "0"),
+      min_cost: String(row.min_cost ?? "0"),
+      total_cost: String(row.total_cost ?? "0"),
+      length: String(row.length ?? "0"),
+      width: String(row.width ?? "0"),
+      height: String(row.height ?? "0"),
+      volume: String(row.volume ?? "0"),
+    });
+    clearStatus();
+  }, [clearStatus]);
 
   const cancelEdit = useCallback(() => {
-    setEditingProjectId(null);
     setEditingItemId(null);
-    setEditRow(null);
+    setEditingRow(null);
   }, []);
 
-  const validateClientRow = useCallback((row) => {
-    if (!normalizeText(row.cost_type_id)) return "Cost Type is required.";
-    if (!/^\d+$/.test(String(row.level || ""))) return "Level must be a whole number 0 or greater.";
+  const validateItemRow = useCallback((row) => {
+    if (!normalizeText(row.cost_type_id)) return "Cost type is required.";
     if (toNumber(row.level) < 0) return "Level must be 0 or greater.";
     if (toNumber(row.requested_qty) < 0) return "Requested Qty must be 0 or greater.";
     if (toNumber(row.purchase_qty) < 0) return "Purchase Qty must be 0 or greater.";
-    if (toNumber(row.cost_per_qty) < 0) return "Cost per Qty must be 0 or greater.";
+    if (toNumber(row.actual_cost) < 0) return "Actual cost must be 0 or greater.";
+
     if (isMaterialCostType(row.cost_type_id)) {
-      if (!normalizeText(row.item_category_id)) return "Item Category is required for MATERIAL.";
-      if (!normalizeText(row.item_name)) return "Item Name is required for MATERIAL.";
-      if (!normalizeText(row.item_code_id)) return "Item Code is required for MATERIAL.";
+      if (!normalizeText(row.item_category_id)) return "Item category is required for MATERIAL.";
+      if (!normalizeText(row.item_name)) return "Item name is required for MATERIAL.";
+      if (!normalizeText(row.item_code_id)) return "Item code is required for MATERIAL.";
     }
+
     return "";
   }, [isMaterialCostType]);
 
-  const shouldConfirmPurchaseQty = useCallback((row) => (
-    toNumber(row.requested_qty) < toNumber(row.purchase_qty)
-  ), []);
-
-  const buildPayload = useCallback((row) => ({
-    project_id: row.project_id,
+  const buildItemPayload = useCallback((row) => ({
     cost_type_id: row.cost_type_id,
     level: Number(row.level || 0),
-    item_category_id: isMaterialCostType(row.cost_type_id) ? (row.item_category_id || null) : null,
+    item_category_id: isMaterialCostType(row.cost_type_id) ? row.item_category_id || null : null,
     item_name: isMaterialCostType(row.cost_type_id) ? row.item_name : "",
-    item_code_id: isMaterialCostType(row.cost_type_id) ? (row.item_code_id || null) : null,
+    item_code_id: isMaterialCostType(row.cost_type_id) ? row.item_code_id || null : null,
     requested_qty: row.requested_qty || "0",
     purchase_qty: row.purchase_qty || "0",
-    cost_per_qty: row.cost_per_qty || "0",
+    actual_cost: row.actual_cost || "0",
   }), [isMaterialCostType]);
 
-  const saveDraft = useCallback(async () => {
-    if (!draftRow) return;
-    const error = validateClientRow(draftRow);
-    if (error) {
-      showStatus(error, "error");
-      return;
-    }
-    if (shouldConfirmPurchaseQty(draftRow) && !window.confirm("Requested Qty is less than Purchase Qty. Do you want to continue adding this item?")) {
-      return;
-    }
-
-    setSavingDraft(true);
-    clearStatus();
-    try {
-      await createProjectQuotationItem(buildPayload(draftRow));
-      showStatus("Project quotation item added successfully.");
-      cancelAdd();
-      await loadData();
-    } catch (errorResponse) {
-      const message = errorResponse.message || "Failed to add project quotation item.";
+  const saveDraftItem = useCallback(async () => {
+    if (!summary?.id || !draftRow) return;
+    const message = validateItemRow(draftRow);
+    if (message) {
       showStatus(message, "error");
-      window.alert(message);
-    } finally {
-      setSavingDraft(false);
-    }
-  }, [buildPayload, cancelAdd, clearStatus, draftRow, loadData, shouldConfirmPurchaseQty, showStatus, validateClientRow]);
-
-  const saveEdit = useCallback(async () => {
-    if (!editRow || !editingItemId) return;
-    const error = validateClientRow(editRow);
-    if (error) {
-      showStatus(error, "error");
-      return;
-    }
-    if (shouldConfirmPurchaseQty(editRow) && !window.confirm("Requested Qty is less than Purchase Qty. Do you want to continue updating this item?")) {
       return;
     }
 
-    setSavingEdit(true);
+    setSavingRow(true);
     clearStatus();
     try {
-      await updateProjectQuotationItem(editingItemId, buildPayload(editRow));
-      showStatus("Project quotation item updated successfully.");
-      cancelEdit();
-      await loadData();
-    } catch (errorResponse) {
-      const message = errorResponse.message || "Failed to update project quotation item.";
-      showStatus(message, "error");
-      window.alert(message);
-    } finally {
-      setSavingEdit(false);
-    }
-  }, [buildPayload, cancelEdit, clearStatus, editRow, editingItemId, loadData, shouldConfirmPurchaseQty, showStatus, validateClientRow]);
-
-  const handleDelete = useCallback(async (itemId) => {
-    if (!window.confirm("Delete this quotation item?")) return;
-    clearStatus();
-    try {
-      await deleteProjectQuotationItem(itemId);
-      showStatus("Project quotation item deleted.");
-      await loadData();
+      await createQuotationItem(summary.id, buildItemPayload(draftRow));
+      setDraftRow(null);
+      await refreshSelectedSummary(summary.id);
+      showStatus("Quotation item added successfully.");
     } catch (error) {
-      const message = error.message || "Failed to delete project quotation item.";
-      showStatus(message, "error");
-      window.alert(message);
+      const text = error.message || "Failed to add quotation item.";
+      showStatus(text, "error");
+      window.alert(text);
+    } finally {
+      setSavingRow(false);
     }
-  }, [clearStatus, loadData, showStatus]);
+  }, [buildItemPayload, clearStatus, draftRow, refreshSelectedSummary, showStatus, summary, validateItemRow]);
 
-  const renderEditorRow = (row, onPatch, onCostTypeChange, disabled) => {
+  const saveEditedItem = useCallback(async () => {
+    if (!summary?.id || !editingItemId || !editingRow) return;
+    const message = validateItemRow(editingRow);
+    if (message) {
+      showStatus(message, "error");
+      return;
+    }
+
+    setSavingRow(true);
+    clearStatus();
+    try {
+      await updateQuotationItem(summary.id, editingItemId, buildItemPayload(editingRow));
+      setEditingItemId(null);
+      setEditingRow(null);
+      await refreshSelectedSummary(summary.id);
+      showStatus("Quotation item updated successfully.");
+    } catch (error) {
+      const text = error.message || "Failed to update quotation item.";
+      showStatus(text, "error");
+      window.alert(text);
+    } finally {
+      setSavingRow(false);
+    }
+  }, [buildItemPayload, clearStatus, editingItemId, editingRow, refreshSelectedSummary, showStatus, summary, validateItemRow]);
+
+  const removeItem = useCallback(async (itemId) => {
+    if (!summary?.id) return;
+    if (!window.confirm("Delete this quotation item?")) return;
+
+    clearStatus();
+    try {
+      await deleteQuotationItem(summary.id, itemId);
+      await refreshSelectedSummary(summary.id);
+      showStatus("Quotation item deleted.");
+    } catch (error) {
+      const text = error.message || "Failed to delete quotation item.";
+      showStatus(text, "error");
+      window.alert(text);
+    }
+  }, [clearStatus, refreshSelectedSummary, showStatus, summary]);
+
+  const renderSummaryGrid = () => {
+    if (!summary) return null;
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(180px, 1fr))",
+          gap: "0.75rem",
+          marginBottom: "1rem",
+        }}
+      >
+        {[...SUMMARY_READONLY_FIELDS, ...SUMMARY_EDITABLE_FIELDS].map((field) => {
+          const readOnly = SUMMARY_READONLY_FIELDS.includes(field);
+          return (
+            <label key={field} style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+              <span style={{ fontSize: "0.83rem", color: "#334155", textTransform: "capitalize" }}>{field.replaceAll("_", " ")}</span>
+              <input
+                className={`auth-input${readOnly ? " auth-input--readonly" : ""}`}
+                value={summary[field] ?? ""}
+                onChange={(event) => patchSummary(field, event.target.value)}
+                readOnly={readOnly}
+                disabled={readOnly || savingSummary}
+              />
+            </label>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderItemEditorCells = (row, patchFn, disabled) => {
     const material = isMaterialCostType(row.cost_type_id);
     const itemNames = material ? getNamesForCategory(row.item_category_id) : [];
     const itemCodes = material ? getCodesForSelection(row.item_category_id, row.item_name) : [];
@@ -386,35 +531,20 @@ function ProjectQuotationPage() {
     return (
       <>
         <td>
-          <select
-            className="auth-input"
-            value={row.cost_type_id}
-            onChange={(event) => onCostTypeChange(event.target.value)}
-            disabled={disabled}
-          >
+          <select className="auth-input" value={row.cost_type_id} disabled={disabled} onChange={(event) => patchFn({ cost_type_id: event.target.value })}>
             <option value="">Select cost type</option>
             {costTypes.map((option) => (
               <option key={option.id} value={String(option.id)}>{option.name}</option>
             ))}
           </select>
         </td>
-        <td>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            className="auth-input"
-            value={row.level}
-            onChange={(event) => onPatch({ level: event.target.value })}
-            disabled={disabled}
-          />
-        </td>
+        <td><input className="auth-input" type="number" min="0" step="1" value={row.level} disabled={disabled} onChange={(event) => patchFn({ level: event.target.value })} /></td>
         <td>
           <select
             className="auth-input"
             value={row.item_category_id}
-            onChange={(event) => onPatch({ item_category_id: event.target.value, item_name: "", item_code_id: "", item_code: "", cost_per_qty: material ? row.cost_per_qty : "0" })}
             disabled={disabled || !material}
+            onChange={(event) => patchFn({ item_category_id: event.target.value, item_name: "", item_code_id: "", ...emptyDimensions })}
           >
             <option value="">Select category</option>
             {categoryOptions.map((option) => (
@@ -426,15 +556,8 @@ function ProjectQuotationPage() {
           <select
             className="auth-input"
             value={row.item_name}
-            onChange={async (event) => {
-              const nextItemName = event.target.value;
-              const matchingCodes = getCodesForSelection(row.item_category_id, nextItemName);
-              onPatch({ item_name: nextItemName, item_code_id: "", item_code: "", cost_per_qty: "0" });
-              if (matchingCodes.length === 1) {
-                await applyMaterialSelection(matchingCodes[0].id, onPatch);
-              }
-            }}
             disabled={disabled || !material || !row.item_category_id}
+            onChange={(event) => patchFn({ item_name: event.target.value, item_code_id: "", ...emptyDimensions })}
           >
             <option value="">Select item name</option>
             {itemNames.map((name) => (
@@ -446,10 +569,8 @@ function ProjectQuotationPage() {
           <select
             className="auth-input"
             value={row.item_code_id}
-            onChange={async (event) => {
-              await applyMaterialSelection(event.target.value, onPatch);
-            }}
             disabled={disabled || !material || !row.item_name}
+            onChange={async (event) => applyMaterialSelection(event.target.value, patchFn)}
           >
             <option value="">Select item code</option>
             {itemCodes.map((option) => (
@@ -457,42 +578,16 @@ function ProjectQuotationPage() {
             ))}
           </select>
         </td>
-        <td>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            className="auth-input"
-            value={row.requested_qty}
-            onChange={(event) => onPatch({ requested_qty: event.target.value })}
-            disabled={disabled}
-          />
-        </td>
-        <td>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            className="auth-input"
-            value={row.purchase_qty}
-            onChange={(event) => onPatch({ purchase_qty: event.target.value })}
-            disabled={disabled}
-          />
-        </td>
-        <td>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            className="auth-input"
-            value={row.cost_per_qty}
-            onChange={(event) => onPatch({ cost_per_qty: event.target.value })}
-            disabled={disabled}
-          />
-        </td>
-        <td>
-          <input className="auth-input auth-input--readonly" value={row.total_cost} readOnly disabled />
-        </td>
+        <td><input className="auth-input auth-input--readonly" value={row.requested_qty} readOnly disabled /></td>
+        <td><input className="auth-input" type="number" min="0" step="any" value={row.purchase_qty} disabled={disabled} onChange={(event) => patchFn({ purchase_qty: event.target.value })} /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.max_cost} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.min_cost} readOnly disabled /></td>
+        <td><input className="auth-input" type="number" min="0" step="any" value={row.actual_cost} disabled={disabled} onChange={(event) => patchFn({ actual_cost: event.target.value })} /></td>
+        <td><input className="auth-input auth-input--readonly" value={toMoney(toNumber(row.requested_qty) * toNumber(row.actual_cost))} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.length} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.width} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.height} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.volume} readOnly disabled /></td>
       </>
     );
   };
@@ -501,188 +596,195 @@ function ProjectQuotationPage() {
     <section className="module-page">
       <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
         <div>
-          <h1 className="module-page__title" style={{ margin: 0 }}>Project Quotation</h1>
+          <h1 className="module-page__title" style={{ margin: 0 }}>{embedded ? "Quotation" : "Project Quotation"}</h1>
           <p className="module-page__description" style={{ marginTop: "0.35rem" }}>
-            Prepare project quotations with BOM level hierarchy, cost type routing, and item-linked material costing.
+            Manage quotation summary constants with linked item-level costing in one accordion flow.
           </p>
         </div>
+        {!embedded ? (
+          <button
+            type="button"
+            className="crud-add-btn"
+            onClick={() => (selectedQuotationId ? setSearchParams({}) : navigate("/projects"))}
+          >
+            {selectedQuotationId ? "Back to Quotation List" : "Back to Projects"}
+          </button>
+        ) : null}
       </div>
 
       {status.message ? (
-        <p
-          className={`users-status${status.type === "error" ? " users-status--error" : " users-status--success"}`}
-          style={status.type === "error" ? { whiteSpace: "pre-wrap" } : undefined}
-        >
+        <p className={`users-status${status.type === "error" ? " users-status--error" : " users-status--success"}`}>
           {status.message}
         </p>
       ) : null}
 
-      {loading ? <p className="users-status">Loading project quotations...</p> : null}
+      {loading ? <p className="users-status">Loading quotations...</p> : null}
 
-      {!loading && projects.length === 0 ? (
-        <p className="users-status">No projects found.</p>
+      {!loading && !embedded && !selectedQuotationId ? (
+        <div className="users-table-wrap" style={{ overflowX: "auto", marginBottom: "1rem" }}>
+          <table className="users-table">
+            <thead>
+              <tr>
+                <th>Quotation Number</th>
+                <th>Project ID</th>
+                <th>Project Name</th>
+                <th>Total Quotation Cost</th>
+                <th style={{ textAlign: "center" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotations.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: "center", color: "#64748b", padding: "1rem" }}>
+                    No quotations found.
+                  </td>
+                </tr>
+              ) : quotations.map((row) => (
+                <tr key={row.id}>
+                  <td style={{ cursor: "pointer" }} onClick={() => openSummary(row.id)}>{row.quotation_number || "Auto"}</td>
+                  <td>{row.project_code || row.project_id}</td>
+                  <td>{row.project_name || "-"}</td>
+                  <td style={{ textAlign: "right" }}>{row.total_quotation_cost}</td>
+                  <td style={{ textAlign: "center" }}>
+                    <div style={{ display: "inline-flex", gap: "0.35rem" }}>
+                      <button type="button" className="users-action users-action--edit" onClick={() => openSummary(row.id)} title="Edit">
+                        <BsPencilSquare aria-hidden="true" />
+                      </button>
+                      <button type="button" className="users-action users-action--delete" onClick={() => removeSummary(row.id)} title="Delete">
+                        <BsTrashFill aria-hidden="true" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
-      {!loading ? projects.map((project) => {
-        const projectId = project.project_id;
-        const flattenedRows = flattenHierarchy(project.bom_hierarchy || [], []);
-        const addMode = String(draftProjectId || "") === String(projectId);
+      {!loading && (embedded || selectedQuotationId) && summary ? (
+        <details open className="costing-selector-details" style={{ background: "#fff", border: "1px solid #d9dee8", borderRadius: "10px", marginBottom: "1rem" }}>
+          <summary className="auth-input costing-selector-summary" style={{ cursor: "pointer", listStyle: "none", display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", padding: "0.9rem 1rem", border: "none" }}>
+            <span style={{ fontWeight: 700 }}>{summary.quotation_number || "Auto"} - {summary.project_name || "Project"}</span>
+            <span style={{ color: "#475569", fontSize: "0.92rem" }}>Total OMR {toMoney(summary.total_quotation_cost || summary.total_cost_to_elite)}</span>
+          </summary>
 
-        return (
-          <details
-            key={projectId}
-            className="costing-selector-details"
-            style={{ background: "#fff", border: "1px solid #d9dee8", borderRadius: "10px", marginBottom: "1rem" }}
-          >
-            <summary
-              className="auth-input costing-selector-summary"
-              style={{ cursor: "pointer", listStyle: "none", display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", padding: "0.9rem 1rem", border: "none" }}
-            >
-              <span style={{ fontWeight: 700 }}>{project.project_code || `Project ${projectId}`} {project.project_name ? `- ${project.project_name}` : ""}</span>
-              <span style={{ color: "#475569", fontSize: "0.92rem" }}>{project.item_count} item(s) • Total OMR {toMoney(project.total_cost)}</span>
-            </summary>
-
-            <div style={{ padding: "0 1rem 1rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", margin: "0.9rem 0" }}>
-                <div style={{ color: "#475569", fontSize: "0.95rem" }}>
-                  Add quotation items one by one. Level indentation reflects the BOM hierarchy.
-                </div>
-                {!addMode ? (
-                  <button type="button" className="crud-add-btn" onClick={() => startAdd(projectId)}>
-                    <BsPlusCircleFill aria-hidden="true" /> Add Item
-                  </button>
-                ) : null}
-              </div>
-
-              {addMode && draftRow ? (
-                <div className="users-table-wrap" style={{ overflowX: "auto", marginBottom: "1rem" }}>
-                  <table className="users-table users-table--sp-items">
-                    <QuotationTableHead includeActions />
-                    <tbody>
-                      <tr>
-                        {renderEditorRow(draftRow, patchDraft, handleDraftCostTypeChange, savingDraft)}
-                        <td style={{ textAlign: "center", verticalAlign: "middle" }}>
-                          <div style={{ display: "flex", gap: "0.35rem", justifyContent: "center" }}>
-                            <button
-                              type="button"
-                              className="modal-btn modal-btn--save"
-                              style={{ padding: "3px 10px", fontSize: "0.78rem" }}
-                              onClick={saveDraft}
-                              disabled={savingDraft}
-                              title="Save"
-                            >
-                              <BsCheckCircleFill aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              className="modal-btn modal-btn--cancel"
-                              style={{ padding: "3px 10px", fontSize: "0.78rem" }}
-                              onClick={cancelAdd}
-                              disabled={savingDraft}
-                              title="Cancel"
-                            >
-                              <BsXCircleFill aria-hidden="true" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-
-              <div className="users-table-wrap" style={{ overflowX: "auto" }}>
-                <table className="users-table users-table--sp-items">
-                  <QuotationTableHead includeActions />
-                  <tbody>
-                    {flattenedRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} style={{ textAlign: "center", color: "#64748b", padding: "1rem" }}>
-                          No quotation items yet.
-                        </td>
-                      </tr>
-                    ) : flattenedRows.map((item) => {
-                      const inEditMode = editingItemId === item.id && String(editingProjectId || "") === String(projectId) && editRow;
-                      return (
-                        <tr key={item.id}>
-                          {inEditMode ? (
-                            <>
-                              {renderEditorRow(editRow, patchEdit, handleEditCostTypeChange, savingEdit)}
-                              <td style={{ textAlign: "center", verticalAlign: "middle" }}>
-                                <div style={{ display: "flex", gap: "0.35rem", justifyContent: "center" }}>
-                                  <button
-                                    type="button"
-                                    className="modal-btn modal-btn--save"
-                                    style={{ padding: "3px 10px", fontSize: "0.78rem" }}
-                                    onClick={saveEdit}
-                                    disabled={savingEdit}
-                                    title="Save"
-                                  >
-                                    <BsCheckCircleFill aria-hidden="true" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="modal-btn modal-btn--cancel"
-                                    style={{ padding: "3px 10px", fontSize: "0.78rem" }}
-                                    onClick={cancelEdit}
-                                    disabled={savingEdit}
-                                    title="Cancel"
-                                  >
-                                    <BsXCircleFill aria-hidden="true" />
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td>{item.cost_type || "—"}</td>
-                              <td style={{ textAlign: "center" }}>{item.level}</td>
-                              <td>{item.item_category || "—"}</td>
-                              <td>
-                                <div style={{ paddingLeft: `${Math.max(Number(item.level || 0), 0) * 18}px`, display: "flex", alignItems: "center", gap: "0.45rem" }}>
-                                  {Number(item.level || 0) > 0 ? <span aria-hidden="true" style={{ color: "#94a3b8" }}>↳</span> : null}
-                                  <span>{item.item_name || "—"}</span>
-                                </div>
-                              </td>
-                              <td>{item.item_code || "—"}</td>
-                              <td style={{ textAlign: "right" }}>{item.requested_qty}</td>
-                              <td style={{ textAlign: "right" }}>{item.purchase_qty}</td>
-                              <td style={{ textAlign: "right" }}>{item.cost_per_qty}</td>
-                              <td style={{ textAlign: "right" }}>{item.total_cost}</td>
-                              <td style={{ textAlign: "center", verticalAlign: "middle" }}>
-                                <div style={{ display: "flex", gap: "0.35rem", justifyContent: "center" }}>
-                                  <button
-                                    type="button"
-                                    className="users-action users-action--edit"
-                                    onClick={() => startEdit(projectId, item)}
-                                    title="Edit"
-                                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                                  >
-                                    <BsPencilSquare aria-hidden="true" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="users-action users-action--delete"
-                                    onClick={() => handleDelete(item.id)}
-                                    title="Delete"
-                                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                                  >
-                                    <BsTrashFill aria-hidden="true" />
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          <div style={{ padding: "0 1rem 1rem" }}>
+            {renderSummaryGrid()}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
+              <button type="button" className="crud-add-btn" onClick={saveSummary} disabled={savingSummary}>
+                {savingSummary ? "Saving..." : "Save Summary"}
+              </button>
             </div>
-          </details>
-        );
-      }) : null}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.8rem" }}>
+              <strong>Quotation Items</strong>
+              {!draftRow ? (
+                <button type="button" className="crud-add-btn" onClick={startAdd}>
+                  <BsPlusCircleFill aria-hidden="true" /> Add Item
+                </button>
+              ) : null}
+            </div>
+
+            <div className="users-table-wrap users-table-wrap--fit" style={{ overflowX: "auto" }}>
+              <table className="users-table users-table--quotation" style={{ tableLayout: "auto", width: "max-content", minWidth: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Cost Type</th>
+                    <th>Level</th>
+                    <th>Item Category</th>
+                    <th>Item Name</th>
+                    <th>Item Code</th>
+                    <th>Requested Qty</th>
+                    <th>Purchase Qty</th>
+                    <th>Max Cost</th>
+                    <th>Min Cost</th>
+                    <th>Actual Cost</th>
+                    <th>Total Cost</th>
+                    <th>Length</th>
+                    <th>Width</th>
+                    <th>Height</th>
+                    <th>Volume</th>
+                    <th style={{ textAlign: "center" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {draftRow ? (
+                    <tr>
+                      {renderItemEditorCells(draftRow, patchDraftRow, savingRow)}
+                      <td style={{ textAlign: "center" }}>
+                        <div style={{ display: "inline-flex", gap: "0.35rem" }}>
+                          <button type="button" className="modal-btn modal-btn--save" onClick={saveDraftItem} disabled={savingRow}>
+                            <BsCheckCircleFill aria-hidden="true" />
+                          </button>
+                          <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelAdd} disabled={savingRow}>
+                            <BsXCircleFill aria-hidden="true" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+
+                  {items.length === 0 ? (
+                    <tr>
+                      <td colSpan={16} style={{ textAlign: "center", color: "#64748b", padding: "1rem" }}>No quotation items yet.</td>
+                    </tr>
+                  ) : items.map((row) => {
+                    const inEditMode = editingItemId === row.id && editingRow;
+                    return (
+                      <tr key={row.id}>
+                        {inEditMode ? (
+                          <>
+                            {renderItemEditorCells(editingRow, patchEditingRow, savingRow)}
+                            <td style={{ textAlign: "center" }}>
+                              <div style={{ display: "inline-flex", gap: "0.35rem" }}>
+                                <button type="button" className="modal-btn modal-btn--save" onClick={saveEditedItem} disabled={savingRow}>
+                                  <BsCheckCircleFill aria-hidden="true" />
+                                </button>
+                                <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelEdit} disabled={savingRow}>
+                                  <BsXCircleFill aria-hidden="true" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{row.cost_type || "-"}</td>
+                            <td style={{ textAlign: "center" }}>{row.level}</td>
+                            <td>{row.item_category || "-"}</td>
+                            <td>{row.item_name || "-"}</td>
+                            <td>{row.item_code || "-"}</td>
+                            <td style={{ textAlign: "right" }}>{row.requested_qty}</td>
+                            <td style={{ textAlign: "right" }}>{row.purchase_qty}</td>
+                            <td style={{ textAlign: "right" }}>{row.max_cost}</td>
+                            <td style={{ textAlign: "right" }}>{row.min_cost}</td>
+                            <td style={{ textAlign: "right" }}>{row.actual_cost}</td>
+                            <td style={{ textAlign: "right" }}>{row.total_cost}</td>
+                            <td style={{ textAlign: "right" }}>{row.length}</td>
+                            <td style={{ textAlign: "right" }}>{row.width}</td>
+                            <td style={{ textAlign: "right" }}>{row.height}</td>
+                            <td style={{ textAlign: "right" }}>{row.volume}</td>
+                            <td style={{ textAlign: "center" }}>
+                              <div style={{ display: "inline-flex", gap: "0.35rem" }}>
+                                <button type="button" className="users-action users-action--edit" onClick={() => startEdit(row)} title="Edit">
+                                  <BsPencilSquare aria-hidden="true" />
+                                </button>
+                                <button type="button" className="users-action users-action--delete" onClick={() => removeItem(row.id)} title="Delete">
+                                  <BsTrashFill aria-hidden="true" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+      ) : null}
     </section>
   );
 }

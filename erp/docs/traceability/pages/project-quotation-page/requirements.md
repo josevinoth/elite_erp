@@ -4,12 +4,15 @@
 Create, list, edit, and delete project quotation rows inside a project-wise accordion while preserving BOM level hierarchy.
 
 - Accordion cards are collapsed by default and grouped per project.
+- Standalone mode supports quotation summary list view with actions (Edit/Delete).
 - Add flow inserts quotation items one by one on the same page.
 - BOM display uses `level` indentation so parent/child relationships are visible.
 - Item dependency order is strictly `Item Category → Item Name → Item Code` when `cost_type = MATERIAL`.
 - `Item Category`, `Item Name`, and `Item Code` must stay disabled when `cost_type != MATERIAL`.
-- `cost_per_qty` is auto-fetched from stock/item costing preview after choosing an item code.
-- `total_cost` is calculated client-side as `requested_qty × cost_per_qty` and revalidated on the backend.
+- `Length`, `Width`, `Height`, and `Volume` are read-only fields and must auto-populate from Item Master based on `item_code`.
+- `Max Cost` and `Min Cost` are read-only and derived from vendor purchase costs for the selected `item_code`.
+- `Actual Cost` is editable, defaults to `Max Cost`, and can be overridden by the user.
+- `total_cost` is calculated client-side as `requested_qty × actual_cost` and revalidated on the backend.
 - If `requested_qty < purchase_qty`, show a confirmation prompt before save.
 - BOM hierarchy validation errors from the backend must be surfaced to the user.
 
@@ -30,7 +33,7 @@ Source file: `frontend/src/pages/ProjectQuotationPage.jsx`
 ## Database tables / columns
 - `Project(id, project_id, project_name, description)`
 - `CostTypeInfo(id, name, description)`
-- `ProjectQuotationItemInfo(project_id, cost_type_id, level, item_category_id, item_name, item_code_id, requested_qty, purchase_qty, cost_per_qty, total_cost)`
+- `ProjectQuotationItemInfo(quotation_number, project_id, cost_type_id, level, item_category_id, item_name, item_code_id, requested_qty, purchase_qty, cost_per_qty, max_cost, min_cost, actual_cost, total_cost, length, width, height, volume)`
 - `ItemCategory(id, name)`
 - `LabFurnitureItem(id, item_category_id, item_name, item_code)`
 
@@ -59,4 +62,7 @@ Source file: `frontend/src/pages/ProjectQuotationPage.jsx`
 - `/api/lab-furniture-item-categories/`
 - `/api/lab-furniture-items/`
 - `/api/itemcosting/cost-preview/`
+
+## Shared helpers
+- `erp_app/utils/project_quotation_costs.py` (`calculate_costs`)
 

@@ -819,6 +819,10 @@ select.auth-input option {
   overflow-x: auto;
 }
 
+.users-table-wrap--fit {
+  overflow-x: hidden;
+}
+
 .users-table-wrap--sticky {
   overflow-y: auto;
   max-height: 60vh;
@@ -853,6 +857,27 @@ select.auth-input option {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+}
+
+.users-table--quotation {
+  width: 100%;
+  table-layout: auto;
+}
+
+.users-table--quotation th,
+.users-table--quotation td {
+  width: auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.users-table--quotation th:nth-child(5),
+.users-table--quotation td:nth-child(5) {
+  white-space: normal;
+}
+
+.users-table--quotation .auth-input {
+  min-width: 88px;
 }
 
 .crud-page .users-table {

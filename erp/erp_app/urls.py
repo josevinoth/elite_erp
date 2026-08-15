@@ -5,6 +5,10 @@ from .sub_views.project_layout_drawing_view import list_project_layout_drawings,
 from .sub_views.project_quotation_api import (
     create_project_quotation_item_api_view,
     list_project_quotations_api_view,
+    quotation_detail_api_view,
+    quotation_item_detail_api_view,
+    quotation_items_api_view,
+    quotations_api_view,
     project_quotation_item_detail_api_view,
 )
 from .sub_views.stock_manufacture_api import (
@@ -159,6 +163,14 @@ urlpatterns = [
     path("api/project-quotations/", list_project_quotations_api_view, name="api-project-quotations-list"),
     path("api/project-quotations/create/", create_project_quotation_item_api_view, name="api-project-quotations-create"),
     path("api/project-quotations/<int:pk>/", project_quotation_item_detail_api_view, name="api-project-quotations-detail"),
+    path("api/quotations/", quotations_api_view, name="api-quotations-list-create"),
+    path("api/quotations/<int:pk>/", quotation_detail_api_view, name="api-quotations-detail"),
+    path("api/quotations/<int:pk>/items/", quotation_items_api_view, name="api-quotations-items-list-create"),
+    path(
+        "api/quotations/<int:quotation_pk>/items/<int:item_pk>/",
+        quotation_item_detail_api_view,
+        name="api-quotations-items-detail",
+    ),
     path(
         "api/projects/<int:project_id>/layout-drawings/",
         list_project_layout_drawings_api_view,

@@ -1,6 +1,8 @@
 import json
 from decimal import Decimal, InvalidOperation
 
+from django.db.models import DecimalField, Sum, Value
+from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -86,6 +88,7 @@ def _serialize(obj):
         "width": str(obj.width),
         "height": str(obj.height),
         "volume": str(obj.volume),
+        "available_qty": str(getattr(obj, "available_qty", 0) or 0),
     }
 
 
@@ -170,7 +173,16 @@ def list_lab_furniture_items_api_view(request):
     if not_allowed:
         return not_allowed
 
-    rows = LabFurnitureItem.objects.select_related("item_category").order_by("item_category__name", "item_name")
+    rows = (
+        LabFurnitureItem.objects.select_related("item_category")
+        .annotate(
+            available_qty=Coalesce(
+                Sum("stock_purchase_items__quantity"),
+                Value(Decimal("0"), output_field=DecimalField(max_digits=14, decimal_places=2)),
+            )
+        )
+        .order_by("item_category__name", "item_name")
+    )
     return JsonResponse({"lab_furniture_items": [_serialize(row) for row in rows]})
 
 

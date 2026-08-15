@@ -83,9 +83,18 @@ from .projects_api import (
 from .project_quotation_api import (
     create_project_quotation_item_api_view,
     list_project_quotations_api_view,
+    quotation_detail_api_view,
+    quotation_item_detail_api_view,
+    quotation_items_api_view,
+    quotations_api_view,
     project_quotation_item_detail_api_view,
 )
-from .project_quotation_view import ProjectQuotationView
+from .project_quotation_view import (
+    ProjectQuotationItemView,
+    ProjectQuotationSummaryView,
+    ProjectQuotationView,
+    ProjectQuotationListView,
+)
 from .register_view import RegisterView
 from .stock_maintenance_api import (
     create_stock_maintenance_type_option_api_view,
@@ -153,7 +162,11 @@ __all__ = [
     "create_project_api_view", "project_detail_api_view",
     "create_project_lifecycle_status_option_api_view",
     "list_project_quotations_api_view", "create_project_quotation_item_api_view", "project_quotation_item_detail_api_view",
+    "quotations_api_view", "quotation_detail_api_view", "quotation_items_api_view", "quotation_item_detail_api_view",
+    "ProjectQuotationSummaryView",
+    "ProjectQuotationItemView",
     "ProjectQuotationView",
+    "ProjectQuotationListView",
     "list_project_layout_drawings_api_view", "save_project_layout_drawings_api_view",
     "list_layout_drawing_approvals_api_view",
     "list_stock_purchases_api_view", "create_stock_purchase_api_view", "stock_purchase_detail_api_view",
