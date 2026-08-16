@@ -10,6 +10,7 @@ import {
   updateProject,
 } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
+import "../styles/project_quotation.css";
 
 const COLUMNS = [
   { key: "project_id", label: "Project ID" },
@@ -108,7 +109,7 @@ function ProjectsPage() {
           className="crud-add-btn"
           onClick={() => navigate("/projects/quotation")}
         >
-          Quotation
+          Quotation List
         </button>
       )}
     />

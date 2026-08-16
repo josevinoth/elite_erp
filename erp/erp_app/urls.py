@@ -4,17 +4,24 @@ from .sub_views import list_project_layout_drawings_api_view, save_project_layou
 from .sub_views.project_layout_drawing_view import list_project_layout_drawings, upload_project_layout_drawing
 from .sub_views.project_quotation_api import (
     create_project_quotation_item_api_view,
+    download_quotation_items_import_template_api_view,
+    import_quotation_items_excel_api_view,
     list_project_quotations_api_view,
     quotation_detail_api_view,
     quotation_item_detail_api_view,
     quotation_items_api_view,
     quotations_api_view,
     project_quotation_item_detail_api_view,
+    stock_planning_api_view,
 )
 from .sub_views.stock_manufacture_api import (
     list_stock_manufacture_items_api_view,
     create_stock_manufacture_item_api_view,
     stock_manufacture_item_detail_api_view,
+)
+from .sub_views.room_data_api import (
+    list_rooms_api_view,
+    add_room_api_view,
 )
 from .views import (
     approve_registration_api_view,
@@ -164,8 +171,11 @@ urlpatterns = [
     path("api/project-quotations/create/", create_project_quotation_item_api_view, name="api-project-quotations-create"),
     path("api/project-quotations/<int:pk>/", project_quotation_item_detail_api_view, name="api-project-quotations-detail"),
     path("api/quotations/", quotations_api_view, name="api-quotations-list-create"),
+    path("api/quotations/stock-planning/", stock_planning_api_view, name="api-quotations-stock-planning"),
     path("api/quotations/<int:pk>/", quotation_detail_api_view, name="api-quotations-detail"),
     path("api/quotations/<int:pk>/items/", quotation_items_api_view, name="api-quotations-items-list-create"),
+    path("api/quotations/<int:pk>/items/import/", import_quotation_items_excel_api_view, name="api-quotations-items-import"),
+    path("api/quotations/items/import/template/", download_quotation_items_import_template_api_view, name="api-quotations-items-import-template"),
     path(
         "api/quotations/<int:quotation_pk>/items/<int:item_pk>/",
         quotation_item_detail_api_view,
@@ -382,6 +392,11 @@ urlpatterns = [
     path("api/stock-manufacture/", list_stock_manufacture_items_api_view, name="api-stock-manufacture-list"),
     path("api/stock-manufacture/create/", create_stock_manufacture_item_api_view, name="api-stock-manufacture-create"),
     path("api/stock-manufacture/<int:pk>/", stock_manufacture_item_detail_api_view, name="api-stock-manufacture-detail"),
+    # room data
+    path("rooms/", list_rooms_api_view, name="rooms-list"),
+    path("rooms/add/", add_room_api_view, name="rooms-add"),
+    path("api/rooms/", list_rooms_api_view, name="api-rooms-list"),
+    path("api/rooms/add/", add_room_api_view, name="api-rooms-add"),
     # project layout
     path(
         "api/projects/<int:project_id>/layout-drawings/",

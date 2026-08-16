@@ -18,6 +18,7 @@ import {
 } from "../utils/projectsAddPageUtils";
 import ProjectLayoutDrawingSection from "./ProjectLayoutDrawingSection";
 import ProjectQuotationPage from "./ProjectQuotationPage";
+import "../styles/project_quotation.css";
 const TEXT_FIELD_KEYS = new Set([
   "project_id","project_name","project_location","description",
   "prod_dwg_issued_justification","prod_dwg_issued_sf_justification",
@@ -42,6 +43,7 @@ function ProjectsAddPage() {
   const [savingProject, setSavingProject] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [projectStatus, setProjectStatus] = useState("");
+  const [quotationStatus, setQuotationStatus] = useState({ type: "", message: "" });
   const mapOptions = useCallback((values = []) => {
     const unique = Array.from(new Set(values.filter(Boolean).map((v) => String(v).trim())));
     return unique.map((v) => ({ value: v, label: v }));
@@ -242,10 +244,14 @@ function ProjectsAddPage() {
       setSavingProject(false);
     }
   };
+
+  const handleQuotationSummaryStatus = useCallback((nextStatus) => {
+    setQuotationStatus(nextStatus || { type: "", message: "" });
+  }, []);
   return (
     <section className="module-page">
-      <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
-        <h1 className="module-page__title" style={{ margin: 0 }}>{isEditMode ? "Project Edit" : "Project Add"}</h1>
+      <div className="crud-page__header pq-header">
+        <h1 className="module-page__title pq-title">{isEditMode ? "Project Edit" : "Project Add"}</h1>
         <button type="button" className="crud-add-btn" onClick={() => navigate("/projects")} disabled={savingProject}>Back to List</button>
       </div>
       {projectError ? <p className="users-status users-status--error">{projectError}</p> : null}
@@ -254,7 +260,7 @@ function ProjectsAddPage() {
       {!loading ? (
         <>
           <form className="modal-form projects-detail-form" onSubmit={handleSubmit}>
-            <div className="projects-detail-form__full-row projects-detail-card-grid" style={{ backgroundColor: "#fff", borderRadius: "10px", border: "1px solid #d9dee8", boxShadow: "0 1px 3px rgba(15, 23, 42, 0.08)", padding: "1rem", marginBottom: "1rem" }}>
+            <div className="projects-detail-form__full-row projects-detail-card-grid pq-project-form-card">
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-id">Project ID *</label><input id="project-id" name="project_id" type="text" className="auth-input" value={formValues.project_id} onChange={handleChange} required /></div>
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-name">Project Name *</label><input id="project-name" name="project_name" type="text" className="auth-input" value={formValues.project_name} onChange={handleChange} required /></div>
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-location">Project Location</label><input id="project-location" name="project_location" type="text" className="auth-input" value={formValues.project_location} onChange={handleChange} /></div>
@@ -292,7 +298,7 @@ function ProjectsAddPage() {
                 </div>
               </div>
               <div className="modal-form__row projects-detail-form__full-row"><label className="modal-form__label" htmlFor="description">Description *</label><textarea id="description" name="description" className="auth-input modal-form__textarea" value={formValues.description} onChange={handleChange} required /></div>
-              <div className="modal-form__actions projects-detail-form__actions" style={{ marginTop: "0.75rem", marginBottom: "1rem" }}>
+              <div className="modal-form__actions projects-detail-form__actions pq-project-form-actions">
                 <button type="button" className="modal-btn modal-btn--cancel" onClick={() => navigate("/projects")} disabled={savingProject}>Cancel</button>
                 <button type="submit" className="modal-btn modal-btn--save" disabled={savingProject}>{savingProject ? "Saving..." : "Save"}</button>
               </div>
@@ -307,20 +313,24 @@ function ProjectsAddPage() {
             approvalStatusOptions={approvalStatusOptions}
           />
           <details
-            className="costing-selector-details"
-            style={{ background: "#fff", border: "1px solid #d9dee8", borderRadius: "10px", marginTop: "1rem" }}
+            open
+            className="costing-selector-details pq-details-card pq-project-quotation-panel"
           >
+            {quotationStatus.message ? (
+              <p className={`${quotationStatus.type === "error" ? "users-status users-status--error" : "users-status users-status--success"} pq-disabled-note`} style={{ marginTop: 0 }}>
+                {quotationStatus.message}
+              </p>
+            ) : null}
             <summary
-              className="auth-input costing-selector-summary"
-              style={{ cursor: "pointer", listStyle: "none", padding: "0.9rem 1rem", border: "none", fontWeight: 700 }}
+              className="auth-input costing-selector-summary pq-details-summary pq-project-quotation-summary"
             >
               Quotation List
             </summary>
-            <div style={{ padding: "0 1rem 1rem" }}>
+            <div className="pq-details-content">
               {isEditMode ? (
-                <ProjectQuotationPage projectId={projectId} embedded />
+                <ProjectQuotationPage projectId={projectId} embedded onSummaryStatusChange={handleQuotationSummaryStatus} />
               ) : (
-                <p className="users-status" style={{ marginTop: "0.75rem" }}>
+                <p className="users-status pq-disabled-note" style={{ marginTop: 0 }}>
                   Save the project first to add quotation items.
                 </p>
               )}

@@ -2,14 +2,19 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import DecimalField, Sum, Value
+from django.db.models.functions import Coalesce
 
 from ..utils import calculate_costs, normalize_text
 from .CostType_mod import CostTypeInfo
 from .item_category import ItemCategory
 from .item_costing_mod import ItemCostingInfo
+from .item_type_mod import ItemType_info
 from .lab_furniture_item import LabFurnitureItem
 from .project_quotation_summary_mod import ProjectQuotationSummaryInfo
+from .room_data_mod import RoomDataInfo
 from .stock_purchase import StockPurchaseItem
+from .stock_status_mod import StockStatusInfo
 
 
 BOM_HIERARCHY_ERROR = "Invalid BOM hierarchy: children must be linked to immediate parent level."
@@ -75,6 +80,59 @@ def _resolve_cost_per_qty(item_code):
     return Decimal("0")
 
 
+def _resolve_purchase_qty(item_code, fallback=0):
+    normalized_code = normalize_text(getattr(item_code, "item_code", item_code)).upper()
+    if not normalized_code:
+        return _as_decimal(fallback)
+
+    aggregate = StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).aggregate(
+        total_qty=Coalesce(
+            Sum("quantity"),
+            Value(Decimal("0"), output_field=DecimalField(max_digits=14, decimal_places=2)),
+        )
+    )
+    resolved_qty = _as_decimal(aggregate.get("total_qty", 0))
+    if resolved_qty <= Decimal("0"):
+        return _as_decimal(fallback)
+    return resolved_qty
+
+
+def _has_purchase_history(item_code):
+    normalized_code = normalize_text(getattr(item_code, "item_code", item_code)).upper()
+    if not normalized_code:
+        return False
+    return StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).exists()
+
+
+def _resolve_stock_status_name(item_code, requested_qty, purchase_qty):
+    if not item_code:
+        return StockStatusInfo.STATUS_IN_STOCK
+
+    requested = _as_decimal(requested_qty)
+    purchased = _as_decimal(purchase_qty)
+    has_history = _has_purchase_history(item_code)
+
+    if not has_history:
+        return StockStatusInfo.STATUS_NOT_PURCHASED
+    if purchased <= Decimal("0"):
+        return StockStatusInfo.STATUS_NO_STOCK
+    if purchased < requested:
+        return StockStatusInfo.STATUS_PARTIAL_STOCK
+    return StockStatusInfo.STATUS_IN_STOCK
+
+
+def _resolve_stock_status(status_name):
+    normalized = normalize_text(status_name)
+    if not normalized:
+        normalized = StockStatusInfo.STATUS_IN_STOCK
+
+    existing = StockStatusInfo.objects.filter(status_name__iexact=normalized).order_by("id").first()
+    if existing:
+        return existing
+
+    return StockStatusInfo.objects.create(status_name=normalized)
+
+
 def _sync_dimensions_from_item_master(instance, item_master=None):
     if not item_master:
         instance.length = Decimal("0")
@@ -90,26 +148,8 @@ def _sync_dimensions_from_item_master(instance, item_master=None):
 
 
 def build_project_quotation_hierarchy(items):
-    tree = []
-    stack = []
-
-    for item in items:
-        level = int(getattr(item, "level", 0) or 0)
-        node = {"item": item, "children": []}
-
-        while stack and int(getattr(stack[-1]["item"], "level", 0) or 0) >= level:
-            stack.pop()
-
-        if level == 0:
-            tree.append(node)
-        else:
-            if not stack or int(getattr(stack[-1]["item"], "level", 0) or 0) != level - 1:
-                raise ValidationError(BOM_HIERARCHY_ERROR)
-            stack[-1]["children"].append(node)
-
-        stack.append(node)
-
-    return tree
+    # Level-based hierarchy was removed; keep flat nodes for response compatibility.
+    return [{"item": item, "children": []} for item in items]
 
 
 def validate_project_quotation_hierarchy(quotation, candidate=None, delete_pk=None):
@@ -118,7 +158,8 @@ def validate_project_quotation_hierarchy(quotation, candidate=None, delete_pk=No
 
     existing_items = list(
         ProjectQuotationItemInfo.objects.filter(quotation_number=quotation)
-        .select_related("quotation_number", "cost_type", "item_category", "item_code")
+        .select_related("quotation_number", "cost_type", "item_category", "item_code__item_type")
+        .defer("item_type")
         .order_by("id")
     )
 
@@ -150,7 +191,6 @@ class ProjectQuotationItemInfo(models.Model):
         related_name="quotation_items",
     )
     cost_type = models.ForeignKey(CostTypeInfo, on_delete=models.PROTECT, related_name="project_quotation_items")
-    level = models.IntegerField(default=0)
     item_category = models.ForeignKey(
         ItemCategory,
         on_delete=models.PROTECT,
@@ -166,6 +206,16 @@ class ProjectQuotationItemInfo(models.Model):
         blank=True,
         related_name="project_quotation_items",
     )
+    item_type = models.ForeignKey(ItemType_info, on_delete=models.PROTECT, default=1,related_name="item_type",)
+    room_name = models.ForeignKey(
+        RoomDataInfo,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="quotation_items",
+    )
+    stock_status = models.ForeignKey(StockStatusInfo, on_delete=models.PROTECT, null=True, blank=True)
+
     requested_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     purchase_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     cost_per_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -184,6 +234,7 @@ class ProjectQuotationItemInfo(models.Model):
         ordering = ["quotation_number", "id"]
         verbose_name = "Project Quotation Item"
         verbose_name_plural = "Project Quotation Items"
+        unique_together = (("quotation_number", "item_code"),)
 
     def __str__(self):
         quote_key = getattr(self, "quotation_number_id", None) or getattr(self, "quotation_number", None)
@@ -201,8 +252,6 @@ class ProjectQuotationItemInfo(models.Model):
             raise ValidationError({"quotation_number": "Quotation number is required."})
         if getattr(self, "cost_type", None) is None:
             raise ValidationError({"cost_type": "Cost type is required."})
-        if self.level is None or int(self.level) < 0:
-            raise ValidationError({"level": "Level must be 0 or greater."})
 
         self.requested_qty = _as_decimal(self.requested_qty)
         self.purchase_qty = _as_decimal(self.purchase_qty)
@@ -217,8 +266,6 @@ class ProjectQuotationItemInfo(models.Model):
 
         if self.requested_qty < 0:
             raise ValidationError({"requested_qty": "Requested Qty must be 0 or greater."})
-        if self.purchase_qty < 0:
-            raise ValidationError({"purchase_qty": "Purchase Qty must be 0 or greater."})
         if self.cost_per_qty < 0:
             raise ValidationError({"cost_per_qty": "Cost per Qty must be 0 or greater."})
         if self.actual_cost < 0:
@@ -248,6 +295,11 @@ class ProjectQuotationItemInfo(models.Model):
             self.item_category = resolved_master.item_category
             self.item_name = normalize_text(resolved_master.item_name)
             self.item_code = resolved_master
+            # Keep existing purchase_qty for legacy rows if no stock quantity exists yet.
+            self.purchase_qty = _resolve_purchase_qty(resolved_master, fallback=self.purchase_qty)
+            allow_over_request = bool(getattr(self, "_allow_requested_qty_override", False))
+            if self.requested_qty > self.purchase_qty and not allow_over_request:
+                raise ValidationError({"requested_qty": "Requested Qty cannot be greater than Purchase Qty."})
             _sync_dimensions_from_item_master(self, resolved_master)
 
             actual_override = None if self.actual_cost == 0 else self.actual_cost
@@ -257,10 +309,17 @@ class ProjectQuotationItemInfo(models.Model):
             self.actual_cost = costs["actual_cost"]
             self.cost_per_qty = costs["cost_per_qty"]
             self.total_cost = costs["total_cost"]
+            status_name = _resolve_stock_status_name(
+                resolved_master,
+                requested_qty=self.requested_qty,
+                purchase_qty=self.purchase_qty,
+            )
+            self.stock_status = _resolve_stock_status(status_name)
         else:
             self.item_category = None
             self.item_name = ""
             self.item_code = None
+            self.purchase_qty = Decimal("0")
             _sync_dimensions_from_item_master(self)
             costs = calculate_costs(None, self.requested_qty, actual_cost=self.actual_cost)
             self.max_cost = costs["max_cost"]
@@ -268,6 +327,7 @@ class ProjectQuotationItemInfo(models.Model):
             self.actual_cost = costs["actual_cost"]
             self.cost_per_qty = costs["cost_per_qty"]
             self.total_cost = costs["total_cost"]
+            self.stock_status = _resolve_stock_status(StockStatusInfo.STATUS_IN_STOCK)
 
         validate_project_quotation_hierarchy(self.quotation_number, candidate=self)
 

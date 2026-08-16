@@ -17,6 +17,10 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
+      "/rooms": {
+        target: backendTarget,
+        changeOrigin: true,
+      },
     },
   },
 });

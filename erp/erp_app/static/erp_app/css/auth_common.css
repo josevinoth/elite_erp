@@ -10,13 +10,25 @@
     --success-bg: #e8f5e9;
 }
 
+html,
+body,
+button,
+input,
+select,
+textarea,
+table,
+th,
+td {
+    font-family: "Roboto", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
 * {
     box-sizing: border-box;
 }
 
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
+    font-family: "Roboto", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     color: var(--text);
     background: var(--bg);
 }

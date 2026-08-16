@@ -13,6 +13,7 @@ from .lce_cost_detail import LCECostDetail
 from .lce_estimate import LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
+from .room_data_mod import RoomDataInfo
 from .project import Project
 from .project_quotation_items_mod import ProjectQuotationItemInfo
 from .project_quotation_summary_mod import ProjectQuotationSummaryInfo
@@ -21,6 +22,7 @@ from .stock_maintenance_type_option import StockMaintenanceTypeOption
 from .stock_maintenance import StockMaintenance
 from .stock_manufacture import StockManufactureItem
 from .stock_purchase import StockPurchaseItem, StockPurchaseVendorDetail
+from .stock_status_mod import StockStatusInfo
 from .task import Task
 from .task_status_option import TaskStatusOption
 from .team import Team
@@ -55,9 +57,11 @@ __all__ = [
     "ProjectQuotationItemInfo",
     "ProjectLayoutDrawing",
     "ProjectLifecycleStatusOption",
+    "RoomDataInfo",
     "StockManufactureItem",
     "StockPurchaseItem",
     "StockPurchaseVendorDetail",
+    "StockStatusInfo",
     "StockMaintenance",
     "StockMaintenanceTypeOption",
     "Task",

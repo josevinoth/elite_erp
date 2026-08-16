@@ -136,6 +136,14 @@ export async function listQuotationSummaries(projectId = null) {
   return parseJson(res);
 }
 
+export async function listStockPlanningItems(projectId = null) {
+  const query = projectId !== null && projectId !== undefined && String(projectId).trim()
+    ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
+    : "";
+  const res = await fetch(`/api/quotations/stock-planning/${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function createQuotationSummary(payload) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/quotations/", {
@@ -203,6 +211,54 @@ export async function deleteQuotationItem(quotationId, itemId) {
     method: "DELETE",
     credentials: "include",
     headers,
+  });
+  return parseJson(res);
+}
+
+export async function importQuotationItemsExcel(quotationId, file) {
+  await ensureCsrfCookie();
+  const token = getCookie("csrftoken");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`/api/quotations/${quotationId}/items/import/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-CSRFToken": token },
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function downloadQuotationItemsImportTemplate() {
+  const res = await fetch("/api/quotations/items/import/template/", { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || `Request failed (${res.status}).`);
+  }
+  const blob = await res.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = "quotation_items_import_template.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
+export async function listRooms() {
+  const res = await fetch("/api/rooms/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function addRoom(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/rooms/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
   });
   return parseJson(res);
 }

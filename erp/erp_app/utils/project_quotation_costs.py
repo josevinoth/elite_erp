@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from .text import normalize_text
 
@@ -37,11 +37,11 @@ def calculate_costs(item_code, requested_qty, actual_cost=None):
     total_cost = requested_qty_decimal * effective_actual_cost
 
     return {
-        "max_cost": max_cost,
-        "min_cost": min_cost,
-        "actual_cost": effective_actual_cost,
-        "total_cost": total_cost,
-        "cost_per_qty": effective_actual_cost,
+        "max_cost": _quantize(max_cost, "0.01"),
+        "min_cost": _quantize(min_cost, "0.01"),
+        "actual_cost": _quantize(effective_actual_cost, "0.01"),
+        "total_cost": _quantize(total_cost, "0.01"),
+        "cost_per_qty": _quantize(effective_actual_cost, "0.01"),
     }
 
 
@@ -50,11 +50,17 @@ def _as_percent(value):
     return decimal_value / Decimal("100") if decimal_value > Decimal("1") else decimal_value
 
 
+def _quantize(value, precision):
+    return _as_decimal(value).quantize(Decimal(precision), rounding=ROUND_HALF_UP)
+
+
 def calculate_summary_totals(
     total_material_cost,
     contingency,
     transportation,
-    loading_unloading,
+    food_accomodation,
+    loading,
+    unloading,
     installation,
     business_development,
     markup,
@@ -63,11 +69,13 @@ def calculate_summary_totals(
     contingency_ratio = _as_percent(contingency)
     markup_ratio = _as_percent(markup)
 
-    final_material_cost = material_total * (Decimal("1") + contingency_ratio)
+    final_material_cost = material_total * contingency_ratio
     total_cost_to_elite = (
         final_material_cost
         + _as_decimal(transportation)
-        + _as_decimal(loading_unloading)
+        + _as_decimal(food_accomodation)
+        + _as_decimal(loading)
+        + _as_decimal(unloading)
         + _as_decimal(installation)
         + _as_decimal(business_development)
     )
@@ -81,13 +89,13 @@ def calculate_summary_totals(
     factor = Decimal("0") if material_total == 0 else undiscounted_quote_value / material_total
 
     return {
-        "final_material_cost": final_material_cost,
-        "total_cost_to_elite": total_cost_to_elite,
-        "total_markup": total_markup,
-        "planned_order_value": planned_order_value,
-        "discount": discount,
-        "undiscounted_quote_value": undiscounted_quote_value,
-        "factor": factor,
+        "final_material_cost": _quantize(final_material_cost, "0.01"),
+        "total_cost_to_elite": _quantize(total_cost_to_elite, "0.01"),
+        "total_markup": _quantize(total_markup, "0.01"),
+        "planned_order_value": _quantize(planned_order_value, "0.01"),
+        "discount": _quantize(discount, "0.01"),
+        "undiscounted_quote_value": _quantize(undiscounted_quote_value, "0.01"),
+        "factor": _quantize(factor, "0.0001"),
     }
 
 

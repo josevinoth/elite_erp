@@ -42,6 +42,11 @@ export const homeNavItems = [
         icon: "quotation",
       },
       {
+        label: "Stock Planning",
+        to: "/stock-planning",
+        icon: "stocks",
+      },
+      {
         label: "Item Costing",
         to: "/item-costing",
         icon: "itemMaster",
