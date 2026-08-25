@@ -51,6 +51,11 @@ export const homeNavItems = [
         to: "/item-costing",
         icon: "itemMaster",
       },
+      {
+        label: "Project Costing",
+        to: "/projects/project-costing",
+        icon: "costing",
+      },
     ],
   },
   { label: "LCE", to: "/projects/costing", icon: "costing" },
@@ -73,6 +78,11 @@ export const homeNavItems = [
         icon: "stockPurchase",
       },
       {
+        label: "Place Stock Order",
+        to: "/stock-purchase/place-order",
+        icon: "stockPurchase",
+      },
+      {
         label: "Stock Maintenance",
         to: "/stock-maintenance",
         icon: "stockMaintenance",
@@ -81,6 +91,16 @@ export const homeNavItems = [
         label: "Stock Manufacture",
         to: "/stock-manufacture",
         icon: "itemMaster",
+      },
+      {
+        label: "Stock Retrieval",
+        to: "/stock-retrieval",
+        icon: "stocks",
+      },
+      {
+        label: "Stock Return",
+        to: "/stock-return",
+        icon: "stocks",
       },
       {
         label: "Item Master",

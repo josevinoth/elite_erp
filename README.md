@@ -218,6 +218,57 @@ Prepare project quotations per project with BOM hierarchy validation and cost-ty
   `Invalid BOM hierarchy: children must be linked to immediate parent level.`
 - `cost_per_qty` auto-resolves from Item Costing first, then the latest stock purchase costs
 
+---
+
+## Project Costing Module
+
+Clone approved quotation summaries and items into project costing records, then track retrieval workflow using the same database schema.
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Summary model | `erp/erp_app/sub_models/project_costing_summary_mod.py` | Stores cloned quotation summary values plus generated `costing_id` |
+| Item model | `erp/erp_app/sub_models/project_costing_items_mod.py` | Stores cloned quotation item rows plus `retrieval_status` |
+| Retrieval status model | `erp/erp_app/sub_models/retrieval_status_mod.py` | Defines allowed costing retrieval workflow statuses |
+| Summary serializer | `erp/erp_app/project_costing_summary_serializer.py` | Exposes costing summary display/edit fields |
+| Item serializer | `erp/erp_app/project_costing_items_serializer.py` | Exposes costing items with nested `retrieval_status` |
+| View helpers | `erp/erp_app/sub_views/project_costing_view.py` | Clone/list/detail payload logic for costing summaries and items |
+| API views | `erp/erp_app/sub_views/project_costing_api.py` | List, generate, edit, import, retrieval, and return endpoints |
+| URL registration | `erp/erp_app/urls.py` | Registers costing summary/item API routes |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/ProjectCostingPage.jsx` | Costing list and costing summary edit page |
+| Styles | `erp/frontend/src/styles/ProjectCosting.css` | All costing page styling and status badge classes |
+| Service API | `erp/frontend/src/services/crudApi.js` | Fetch helpers for costing CRUD, item import, and template download |
+
+### Key API routes
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/project-costing/` | List project costing summaries with quotation number and project code |
+| `POST` | `/api/project-costing/generate/` | Clone a quotation summary and its items into project costing |
+| `GET` | `/api/project-costing/<id>/` | Load costing summary detail and linked items |
+| `PATCH` | `/api/project-costing/<id>/` | Update costing summary fields |
+| `GET/PATCH` | `/api/project-costing/<id>/edit/` | Compatibility edit endpoint for summary + linked item updates |
+| `GET/POST` | `/api/project-costing/<id>/items/` | List or create costing items for a summary |
+| `PATCH/DELETE` | `/api/project-costing/<costing_id>/items/<item_id>/` | Update or delete a costing item |
+| `GET` | `/api/stock-retrieval/` | List costing items with retrieval status `Item Requested` |
+| `GET` | `/api/stock-return/` | List costing items with retrieval status `Item Return` |
+
+### UI behavior
+
+- `Generate Project Costing` clones quotation summary financial fields and quotation item rows.
+- New costing item rows default `retrieval_status` to `No Action`.
+- Rows marked `Item Accepted` are frozen for non-admin users.
+- Rows marked `Item Return` flow into the Stock Return module.
+- `ProjectCostingPage.jsx` keeps all styles in `ProjectCosting.css` with badge/popup classes only.
+- `StockRetrievalPage.jsx` now displays `purchase_qty`, `length`, `width`, `height`, and `volume`.
+- In Stock Retrieval, `retrieval_status` is read-only when `stock_status = Not Purchased` (enforced on every load/render).
+
 ### Django API Routes
 
 Registered in `erp/erp_app/urls.py` — view files: `erp/erp_app/sub_views/project_quotation_api.py` and `erp/erp_app/sub_views/project_quotation_view.py`
@@ -244,4 +295,68 @@ The schema and default quotation cost types are created by:
 Set-Location "C:\Users\BVM\PycharmProjects\elite_erp_v1.0\erp"
 python manage.py migrate erp_app
 ```
+
+---
+
+## Vendor Module
+
+Manage master vendor records with generated vendor codes and validation.
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Vendor model | `erp/erp_app/sub_models/vendor.py` | Stores vendor master records with auto-generated `vendor_code` (`VC_` + `10000 + id`) |
+| Vendor proxy class | `erp/erp_app/sub_models/vendor_mod.py` | Exposes `VendorInfo` naming convention |
+| Serializer | `erp/erp_app/vendor_serializer.py` | Validates duplicates and email (`@` required), returns legacy + new field aliases |
+| API views | `erp/erp_app/sub_views/vendor_api.py` | Vendor CRUD endpoints |
+| URL registration | `erp/erp_app/urls.py` | Registers vendor API routes |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/VendorsPage.jsx` | Add/edit/delete vendors with inline validation |
+| Styles | `erp/frontend/src/styles/Vendor.css` | Vendor page layout and table styles (no inline JSX styles) |
+
+### Vendor behavior
+
+- Vendor code auto-generates in format `VC_XXXXX` from record id.
+- Duplicate `vendor_name` is rejected at UI + API.
+- `email_id` must contain `@`.
+- Address input uses a 3-row textarea with vertical resize.
+
+---
+
+## Place Stock Order Module
+
+Separate stock-purchase workflow to place vendor orders for not-purchased costing items.
+
+### Routing and navigation
+
+- Route: `/stock-purchase/place-order`
+- Navigation: **Home Page -> Stocks -> Stock Purchase -> Place Stock Order**
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Order models | `erp/erp_app/sub_models/place_stock_order_mod.py` | Stores order header (`PlaceStockOrderInfo`) and selected items (`PlaceStockOrderItem`) |
+| API views | `erp/erp_app/sub_views/place_stock_order_api.py` | Meta endpoint (vendors + items) and create endpoint |
+| URL registration | `erp/erp_app/urls.py` | Registers `/api/stock-purchase/place-order/meta/` and `/api/stock-purchase/place-order/` |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/PlaceStockOrderPage.jsx` | Vendor auto-fill + multi-item selection + save order |
+| Service helpers | `erp/frontend/src/services/crudApi.js` | `listPlaceStockOrderMeta`, `createPlaceStockOrder` |
+| Styles | `erp/frontend/src/styles/PlaceStockOrder.css` | All page/table styles (no inline JSX styles) |
+
+### Place Stock Order behavior
+
+- Vendor dropdown auto-populates `vendor_code`, `address`, `phone_number`, `email_id`, and `contact_person`.
+- Order item list includes only Project Costing rows with `stock_status = Not Purchased`.
+- Multi-select item table includes: category, name, code, type, purchase qty, requested qty, size, volume, stock status.
+- Save persists linkages to both `costing_id` and `vendor_id`.
 

@@ -1,0 +1,529 @@
+.project-costing-page {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.project-costing-toolbar,
+.project-costing-summary-toolbar,
+.project-costing-filters,
+.project-costing-actions,
+.project-costing-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.project-costing-card,
+.project-costing-table-wrap,
+.project-costing-status-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  min-width: 0;
+}
+
+.project-costing-card {
+  padding: 1rem;
+}
+
+.project-costing-actions {
+  justify-content: flex-start;
+}
+
+.project-costing-actions .auth-input {
+  min-width: 320px;
+  max-width: 520px;
+}
+
+.project-costing-items-header,
+.project-costing-items-header-actions,
+.project-costing-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.project-costing-items-header {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+  gap: 0.75rem;
+}
+
+.project-costing-items-header-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.project-costing-items-header__title {
+  font-weight: 700;
+}
+
+.project-costing-section-title--no-margin {
+  margin: 0;
+}
+
+.project-costing-hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-costing-title {
+  margin: 0;
+}
+
+.project-costing-description {
+  margin: 0.25rem 0 0;
+  color: #6b7280;
+}
+
+.project-costing-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.project-costing-table-wrap--items {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+/* Keep wide costing table scroll inside wrapper even when shared utility classes are present. */
+.users-table-wrap.project-costing-table-wrap--items {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.project-costing-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1100px;
+}
+
+.project-costing-table--quotation {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+}
+
+.project-costing-table th,
+.project-costing-table td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.project-costing-table th {
+  background: #f8fafc;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.project-costing-table td {
+  white-space: nowrap;
+}
+
+.project-costing-table td:last-child,
+.project-costing-table th:last-child {
+  white-space: nowrap;
+}
+
+.project-costing-table__right {
+  text-align: right;
+}
+
+.project-costing-table__center {
+  text-align: center;
+}
+
+.project-costing-input[disabled],
+.project-costing-select[disabled] {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.project-costing-input--numeric {
+  text-align: right;
+}
+
+.project-costing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.project-costing-stock-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.project-costing-stock-badge--in-stock {
+  background: rgba(34, 197, 94, 0.15);
+  color: #166534;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.project-costing-stock-badge--partial {
+  background: rgba(255, 193, 7, 0.15);
+  color: #b26a00;
+  border: 1px solid rgba(255, 193, 7, 0.45);
+}
+
+.project-costing-stock-badge--no-stock {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.project-costing-stock-badge--not-purchased {
+  background: rgba(100, 116, 139, 0.14);
+  color: #475569;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+}
+
+.project-costing-badge--warning {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.project-costing-badge--success {
+  background: #ecfdf5;
+  color: #15803d;
+}
+
+.project-costing-badge--error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.project-costing-badge--neutral {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.project-costing-popup {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border-radius: 10px;
+}
+
+.popup-warning {
+  background-color: orange;
+  color: #fff;
+}
+
+.popup-success {
+  background-color: green;
+  color: #fff;
+}
+
+.popup-error {
+  background-color: red;
+  color: #fff;
+}
+
+.project-costing-popup--warning {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+}
+
+.project-costing-popup--success {
+  background: #ecfdf5;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.project-costing-popup--error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.project-costing-muted {
+  color: #64748b;
+}
+
+.project-costing-frozen {
+  opacity: 0.72;
+}
+
+.project-costing-status-cell {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.project-costing-table .crud-add-btn,
+.project-costing-table .users-action {
+  min-height: 2.25rem;
+}
+
+.project-costing-empty {
+  text-align: center;
+  color: #64748b;
+  padding: 1rem;
+}
+
+.project-costing-import-summary {
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.8rem;
+  background: #f8fafc;
+}
+
+.project-costing-import-summary__title {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+}
+
+.project-costing-import-summary__line {
+  margin: 0 0 0.55rem;
+  color: #334155;
+}
+
+.project-costing-import-report-wrap {
+  overflow: auto;
+}
+
+.project-costing-import-report-table {
+  min-width: 720px;
+}
+
+.project-costing-inline-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.project-costing-import-report-table th,
+.project-costing-import-report-table td {
+  white-space: nowrap;
+}
+
+/* ── Section title inside cards ─────────────────────────── */
+.project-costing-section-title {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* ── Summary info grid ───────────────────────────────────── */
+.project-costing-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem 1.5rem;
+}
+
+.project-costing-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.project-costing-field__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.project-costing-field__value {
+  font-size: 0.925rem;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+/* ── Items table wider min-width ─────────────────────────── */
+.project-costing-items-table {
+  min-width: 1880px;
+  width: max-content;
+  max-width: none;
+  table-layout: fixed;
+}
+
+.project-costing-items-table th,
+.project-costing-items-table td {
+  min-width: 0;
+}
+
+/* Column widths for the items table */
+.project-costing-items-table th:nth-child(1),
+.project-costing-items-table td:nth-child(1) { width: 110px; min-width: 110px; }   /* Cost Type */
+.project-costing-items-table th:nth-child(2),
+.project-costing-items-table td:nth-child(2) { width: 120px; min-width: 120px; }   /* Item Category */
+.project-costing-items-table th:nth-child(3),
+.project-costing-items-table td:nth-child(3) { width: 150px; min-width: 150px; }   /* Item Name */
+.project-costing-items-table th:nth-child(4),
+.project-costing-items-table td:nth-child(4) { width: 110px; min-width: 110px; }   /* Item Code */
+.project-costing-items-table th:nth-child(5),
+.project-costing-items-table td:nth-child(5) { width: 100px; min-width: 100px; }   /* Item Type */
+.project-costing-items-table th:nth-child(6),
+.project-costing-items-table td:nth-child(6) { width: 100px; min-width: 100px; }   /* Room */
+.project-costing-items-table th:nth-child(7),
+.project-costing-items-table td:nth-child(7) { width: 90px; min-width: 90px; }    /* Purchase Qty */
+.project-costing-items-table th:nth-child(8),
+.project-costing-items-table td:nth-child(8) { width: 100px; min-width: 100px; }   /* Requested Qty */
+.project-costing-items-table th:nth-child(9),
+.project-costing-items-table td:nth-child(9) { width: 80px; min-width: 80px; }    /* Cost/Qty */
+.project-costing-items-table th:nth-child(10),
+.project-costing-items-table td:nth-child(10) { width: 80px; min-width: 80px; }   /* Max Cost */
+.project-costing-items-table th:nth-child(11),
+.project-costing-items-table td:nth-child(11) { width: 80px; min-width: 80px; }   /* Min Cost */
+.project-costing-items-table th:nth-child(12),
+.project-costing-items-table td:nth-child(12) { width: 90px; min-width: 90px; }   /* Actual Cost */
+.project-costing-items-table th:nth-child(13),
+.project-costing-items-table td:nth-child(13) { width: 90px; min-width: 90px; }   /* Total Cost */
+.project-costing-items-table th:nth-child(14),
+.project-costing-items-table td:nth-child(14) { width: 120px; min-width: 120px; }  /* Stock Status */
+.project-costing-items-table th:nth-child(15),
+.project-costing-items-table td:nth-child(15) { width: 130px; min-width: 130px; }  /* Retrieval Status */
+.project-costing-items-table th:nth-child(16),
+.project-costing-items-table td:nth-child(16) { width: 60px; min-width: 60px; }   /* L */
+.project-costing-items-table th:nth-child(17),
+.project-costing-items-table td:nth-child(17) { width: 60px; min-width: 60px; }   /* W */
+.project-costing-items-table th:nth-child(18),
+.project-costing-items-table td:nth-child(18) { width: 60px; min-width: 60px; }   /* H */
+.project-costing-items-table th:nth-child(19),
+.project-costing-items-table td:nth-child(19) { width: 60px; min-width: 60px; }   /* Vol */
+.project-costing-items-table th:nth-child(20),
+.project-costing-items-table td:nth-child(20) { width: 90px; min-width: 90px; }   /* Actions */
+
+/* Override white-space for items table - keep cells nowrap */
+.project-costing-items-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Editing row cells should allow overflow for inputs */
+.project-costing-items-table .project-costing-row--editing td {
+  overflow: visible;
+}
+
+/* ── Editing row highlight ───────────────────────────────── */
+.project-costing-row--editing {
+  background: #f0f9ff;
+}
+
+.project-costing-row--editing td {
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.project-costing-select,
+.project-costing-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.4rem 0.5rem;
+  background: #fff;
+  box-sizing: border-box;
+  font-size: 0.8rem;
+}
+
+/* ── Summary form sections ───────────────────────────────── */
+.project-costing-form-section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.project-costing-form-section__title {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.project-costing-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.65rem 1.25rem;
+}
+
+.project-costing-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.project-costing-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Calculated value styling */
+.project-costing-field__value--calc {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.project-costing-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.project-costing-modal {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.24);
+}
+
+.project-costing-modal__title {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.project-costing-modal-actions {
+  justify-content: flex-end;
+}

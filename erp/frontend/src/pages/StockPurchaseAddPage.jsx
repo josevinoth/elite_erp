@@ -550,7 +550,7 @@ function StockPurchaseAddPage() {
                         >
                             <option value="">Select vendor</option>
                             {vendorOptions.map((vendor) => (
-                                <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                                <option key={vendor.id} value={vendor.id}>{vendor.vendor_name || vendor.name}</option>
                             ))}
                         </select>
                     </div>

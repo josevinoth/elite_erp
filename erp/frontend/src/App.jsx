@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from "react";
+import {lazy, Suspense, useCallback, useEffect, useState} from "react";
 import {Navigate, Route, Routes, useNavigate} from "react-router-dom";
 import ProjectHeader from "./components/ProjectHeader";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -24,6 +24,9 @@ import StockMaintenancePage from "./pages/StockMaintenancePage";
 import StockPurchaseAddPage from "./pages/StockPurchaseAddPage.jsx";
 import StockPurchaseItemTracePage from "./pages/StockPurchaseItemTracePage.jsx";
 import StockPurchasePage from "./pages/StockPurchasePage";
+import PlaceStockOrderPage from "./pages/PlaceStockOrderPage";
+import StockRetrievalPage from "./pages/StockRetrievalPage";
+import StockReturnPage from "./pages/StockReturnPage";
 import StocksListPage from "./pages/StocksListPage";
 import TaskPage from "./pages/TaskPage";
 import TimesheetPage from "./pages/TimesheetPage";
@@ -33,6 +36,8 @@ import {logoutUser} from "./services/authApi";
 import {listHeaderNotifications} from "./services/crudApi";
 import {clearSessionUser, getSessionUser} from "./services/sessionUser";
 import CutSheetOptimiser from "./pages/CutSheetOptimiser";
+
+const ProjectCostingPage = lazy(() => import("./pages/ProjectCostingPage"));
 
 function App() {
     const navigate = useNavigate();
@@ -122,6 +127,7 @@ function App() {
 
             <div className="app-content">
                 <ErrorBoundary>
+                    <Suspense fallback={<p className="users-status">Loading module...</p>}>
                     <Routes>
                         <Route path="/" element={<Navigate to={homePath} replace/>}/>
                         <Route path="/login" element={<LoginPage onLoginSuccess={setCurrentUser}/>}/>
@@ -152,6 +158,7 @@ function App() {
                                element={secureRoute(<StockPurchaseAddPage/>)}/>
                         <Route path="/stock-purchase/item-trace/:itemId"
                                element={secureRoute(<StockPurchaseItemTracePage/>)}/>
+                        <Route path="/stock-purchase/place-order" element={secureRoute(<PlaceStockOrderPage/>)} />
                         <Route path="/stocks" element={secureRoute(<StocksListPage/>)}/>
                         <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage/>)}/>
                         <Route path="/stock-items" element={secureRoute(<StockItemsPage/>)}/>
@@ -181,6 +188,18 @@ function App() {
                             }
                         />
                         <Route
+                            path="/projects/project-costing"
+                            element={secureRoute(<ProjectCostingPage />)}
+                        />
+                        <Route
+                            path="/stock-retrieval"
+                            element={secureRoute(<StockRetrievalPage />)}
+                        />
+                        <Route
+                            path="/stock-return"
+                            element={secureRoute(<StockReturnPage />)}
+                        />
+                        <Route
                             path="/projects/costing"
                             element={
                                 secureRoute(<LceListPage/>)
@@ -203,6 +222,7 @@ function App() {
 
                         <Route path="*" element={<Navigate to={homePath} replace/>}/>
                     </Routes>
+                    </Suspense>
                 </ErrorBoundary>
             </div>
         </div>
