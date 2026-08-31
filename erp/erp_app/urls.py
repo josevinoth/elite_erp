@@ -23,6 +23,7 @@ from .sub_views.room_data_api import (
     list_rooms_api_view,
     add_room_api_view,
 )
+from .sub_views.stock_acceptance_api import stock_acceptance_api_view, stock_acceptance_edit_api_view
 from .views import (
     approve_registration_api_view,
     bulk_save_lce_cost_details_api_view,
@@ -127,6 +128,7 @@ from .views import (
     mark_message_notifications_read_api_view,
     mark_task_notifications_read_api_view,
     project_detail_api_view,
+    project_edit_api_view,
     register_api_view,
     register_meta_api_view,
     reset_password_api_view,
@@ -181,6 +183,7 @@ urlpatterns = [
     path("api/projects/meta/", list_project_lifecycle_meta_api_view, name="api-projects-meta"),
     path("api/projects/create/", create_project_api_view, name="api-projects-create"),
     path("api/projects/<int:project_id>/", project_detail_api_view, name="api-projects-detail"),
+    path("api/projects/<int:project_id>/edit/", project_edit_api_view, name="api-projects-edit"),
     path("api/project-quotations/", list_project_quotations_api_view, name="api-project-quotations-list"),
     path("api/project-quotations/create/", create_project_quotation_item_api_view, name="api-project-quotations-create"),
     path("api/project-quotations/<int:pk>/", project_quotation_item_detail_api_view, name="api-project-quotations-detail"),
@@ -217,6 +220,8 @@ urlpatterns = [
     ),
     path("api/stock-retrieval/", stock_retrieval_api_view, name="api-stock-retrieval-list"),
     path("api/stock-retrieval/<int:item_pk>/", stock_retrieval_item_detail_api_view, name="api-stock-retrieval-detail"),
+    path("api/stock-acceptance/", stock_acceptance_api_view, name="api-stock-acceptance-list"),
+    path("api/stock-acceptance/edit/", stock_acceptance_edit_api_view, name="api-stock-acceptance-edit"),
     path("api/stock-return/", stock_return_api_view, name="api-stock-return-list"),
     path("api/stock-return/<int:item_pk>/", stock_return_item_detail_api_view, name="api-stock-return-detail"),
     path(

@@ -4,6 +4,7 @@ from io import BytesIO
 
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -27,6 +28,7 @@ ALLOWED_RETRIEVAL_STATUSES = {
     RetrievalStatusInfo.STATUS_NO_ACTION,
     RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
     RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+    RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
     RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
     RetrievalStatusInfo.STATUS_ITEM_RETURN,
     RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
@@ -65,6 +67,8 @@ def _can_edit_stock_retrieval(user):
 
 def _status_obj(name):
     normalized_name = str(name or "").strip()
+    if normalized_name.lower() in {"request rejected", "item rejected"}:
+        normalized_name = RetrievalStatusInfo.STATUS_REQUEST_REJECTED
     canonical_name = next((row for row in ALLOWED_RETRIEVAL_STATUSES if row.lower() == normalized_name.lower()), None)
     if not canonical_name:
         return None
@@ -85,13 +89,14 @@ def _is_valid_status_transition(current_name, target_name, source):
             RetrievalStatusInfo.STATUS_NO_ACTION,
             RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
             RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+            RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
             RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
             RetrievalStatusInfo.STATUS_ITEM_RETURN,
         },
         "retrieval": {
+            RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
             RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
-            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
-            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+            RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
         },
         "return": {
             RetrievalStatusInfo.STATUS_ITEM_RETURN,
@@ -99,6 +104,22 @@ def _is_valid_status_transition(current_name, target_name, source):
         },
     }
     return target_name in source_transition_map.get(source, set())
+
+
+def _apply_request_tracking(payload, item, status_obj, user):
+    if not status_obj:
+        return
+    current_name = getattr(getattr(item, "retrieval_status", None), "status_name", "")
+    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+        if current_name != RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+            payload["requested_by_id"] = user.pk
+            payload["requested_on"] = timezone.now()
+        payload["rejection_comment"] = ""
+    elif status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
+        payload["requested_by_id"] = getattr(item, "requested_by_id", None)
+        payload["requested_on"] = getattr(item, "requested_on", None)
+    else:
+        payload["rejection_comment"] = ""
 
 
 def _summary_not_found():
@@ -161,6 +182,7 @@ def _update_costing_items_from_payload(request, summary, items_payload):
                     status=400,
                 )
             payload["retrieval_status_id"] = status_obj.pk
+            _apply_request_tracking(payload, item, status_obj, request.user)
 
         if not payload:
             continue
@@ -331,7 +353,7 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
         return _summary_not_found()
 
     try:
-        item = ProjectCostingItemInfo.objects.select_related("item_category", "item_code__item_type", "stock_status", "retrieval_status", "costing_id").get(pk=item_pk, costing_id=summary)
+        item = ProjectCostingItemInfo.objects.select_related("item_category", "item_code__item_type", "stock_status", "retrieval_status", "costing_id", "requested_by").get(pk=item_pk, costing_id=summary)
     except ProjectCostingItemInfo.DoesNotExist:
         return _item_not_found()
 
@@ -367,6 +389,7 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
         if not _is_valid_status_transition(current_name, status_obj.status_name, "costing"):
             return Response({"status": "error", "message": "Invalid retrieval status transition from Project Costing."}, status=400)
         payload["retrieval_status_id"] = status_obj.pk
+        _apply_request_tracking(payload, item, status_obj, request.user)
 
     serializer = ProjectCostingItemSerializer(item, data=payload, partial=True)
     if not serializer.is_valid():
@@ -393,7 +416,7 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
     if not_allowed:
         return not_allowed
     try:
-        item = ProjectCostingItemInfo.objects.select_related("costing_id", "retrieval_status").get(pk=item_pk)
+        item = ProjectCostingItemInfo.objects.select_related("costing_id", "retrieval_status", "requested_by").get(pk=item_pk)
     except ProjectCostingItemInfo.DoesNotExist:
         return _item_not_found()
 
@@ -412,7 +435,23 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
     current_name = getattr(item.retrieval_status, "status_name", "")
     if not _is_valid_status_transition(current_name, status_obj.status_name, "retrieval"):
         return Response({"status": "error", "message": "Invalid status transition from Stock Retrieval."}, status=400)
+
+    rejection_comment = ""
+    if status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
+        rejection_comment = normalize_text(request.data.get("rejection_comment"))
+        if not rejection_comment:
+            return Response({"status": "error", "message": "Rejection comment is required when status is Item Rejected."}, status=400)
+
+    was_requested = current_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED
     item.retrieval_status = status_obj
+    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED and not was_requested:
+        item.requested_by = request.user
+        item.requested_on = timezone.now()
+        item.rejection_comment = ""
+    if status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
+        item.rejection_comment = rejection_comment
+    elif status_obj.status_name != RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+        item.rejection_comment = ""
     item.save()
     return Response({"success": True, "item": ProjectCostingItemSerializer(item).data}, status=status.HTTP_200_OK)
 

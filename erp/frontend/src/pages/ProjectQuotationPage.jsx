@@ -158,10 +158,10 @@ const getStockStatusBadgeClassName = (statusName) => {
   if (normalized === "partial stock") {
     return "pq-stock-badge--partial";
   }
-  if (normalized === "no stock") {
+  if (normalized === "no stock" || normalized === "not purchased") {
     return "pq-stock-badge--no-stock";
   }
-  return "pq-stock-badge--not-purchased";
+  return "pq-stock-badge--no-stock";
 };
 
 const normalizeValidationMessages = (messages) => {
@@ -312,7 +312,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     }
 
     if (toNumber(row.purchase_qty) <= 0) {
-      return { type: "warning", message: "Purchase data is missing. Item not yet purchased. You can enter custom cost." };
+      return { type: "warning", message: "No stock available. You can enter custom cost." };
     }
 
     if (toNumber(row.requested_qty) > toNumber(row.purchase_qty)) {
@@ -635,7 +635,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       applyPatch({
         item_code_id: "",
         item_type: "",
-        stock_status_name: "Not Purchased",
+        stock_status_name: "No Stock",
         purchase_qty: "0",
         requested_qty: "0",
         max_cost: "0",
@@ -656,12 +656,12 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       item_name: master.item_name || "",
       item_code_id: String(master.id),
       item_type: master.item_type || "",
-      stock_status_name: hasNoPurchaseData ? "Not Purchased" : (toNumber(quantity) <= 0 ? "No Stock" : "In-Stock"),
+      stock_status_name: hasNoPurchaseData ? "No Stock" : (toNumber(quantity) <= 0 ? "No Stock" : "In-Stock"),
       purchase_qty: quantity,
       requested_qty: "0",
       max_cost: "0",
       min_cost: "0",
-      actual_cost: "0", // User must enter cost manually if item not purchased
+      actual_cost: "0", // User must enter cost manually if purchase data is missing
       total_cost: "0",
       length: String(master.length ?? "0"),
       width: String(master.width ?? "0"),
@@ -670,7 +670,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     });
 
     if (hasNoPurchaseData) {
-      showStatus("Item not yet purchased. Please enter Actual Cost manually.", "warning");
+      showStatus("No stock available. Please enter Actual Cost manually.", "warning");
     } else {
       showStatus("Requested Qty is within Purchase Qty.", "success");
     }

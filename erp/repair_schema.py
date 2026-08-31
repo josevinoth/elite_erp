@@ -11,6 +11,7 @@ from erp_app.sub_models import (  # noqa: E402
     ExpenseItem,
     ExpenseSession,
     ExpenseStatusOption,
+    ProjectCostingItemInfo,
     Project,
 )
 
@@ -32,6 +33,7 @@ with connection.schema_editor() as editor:
     required_project_fields = [
         "proposal_date",
         "updated_by",
+        "project_owner",
         "order_value_omr",
         "expected_customer_need_date",
         "created_at",
@@ -48,4 +50,25 @@ with connection.schema_editor() as editor:
             project_columns.add(column)
 
 print("Schema repair check complete.")
+
+project_costing_item_table = ProjectCostingItemInfo._meta.db_table
+project_costing_item_columns = {
+    c.name for c in connection.introspection.get_table_description(connection.cursor(), project_costing_item_table)
+}
+required_project_costing_item_fields = [
+    "requested_by",
+    "requested_on",
+    "rejection_comment",
+]
+
+with connection.schema_editor() as editor:
+    for field_name in required_project_costing_item_fields:
+        field = ProjectCostingItemInfo._meta.get_field(field_name)
+        column = field.column
+        if column not in project_costing_item_columns:
+            print("[ADD COLUMN]", f"{project_costing_item_table}.{column}")
+            editor.add_field(ProjectCostingItemInfo, field)
+            project_costing_item_columns.add(column)
+
+print("Project costing item schema repair check complete.")
 

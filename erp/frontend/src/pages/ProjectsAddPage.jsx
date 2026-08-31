@@ -36,6 +36,7 @@ function ProjectsAddPage() {
   const [standardLabOptions, setStandardLabOptions] = useState([]);
   const [nonStandardLabOptions, setNonStandardLabOptions] = useState([]);
   const [nonMoeProductSeriesOptions, setNonMoeProductSeriesOptions] = useState([]);
+  const [projectOwnerOptions, setProjectOwnerOptions] = useState([]);
   const [approvalStatusOptions, setApprovalStatusOptions] = useState([]);
   const [approverOptions, setApproverOptions] = useState([]);
   const [formValues, setFormValues] = useState(() => ({ ...EMPTY_FORM }));
@@ -64,6 +65,7 @@ function ProjectsAddPage() {
     setStandardLabOptions(Array.isArray(data.standard_labs) ? data.standard_labs : []);
     setNonStandardLabOptions(Array.isArray(data.non_standard_labs) ? data.non_standard_labs : []);
     setNonMoeProductSeriesOptions(Array.isArray(data.non_moe_product_series) ? data.non_moe_product_series : []);
+    setProjectOwnerOptions(Array.isArray(data.project_owners) ? data.project_owners : []);
     setApprovalStatusOptions(Array.isArray(data.approval_statuses) ? data.approval_statuses : []);
     setApproverOptions(Array.isArray(data.approvers) ? data.approvers : []);
     if (!isEditMode && !formValues.status) {
@@ -86,6 +88,7 @@ function ProjectsAddPage() {
         setStandardLabOptions(Array.isArray(data.standard_labs) ? data.standard_labs : []);
         setNonStandardLabOptions(Array.isArray(data.non_standard_labs) ? data.non_standard_labs : []);
         setNonMoeProductSeriesOptions(Array.isArray(data.non_moe_product_series) ? data.non_moe_product_series : []);
+        setProjectOwnerOptions(Array.isArray(data.project_owners) ? data.project_owners : []);
         setApprovalStatusOptions(Array.isArray(data.approval_statuses) ? data.approval_statuses : []);
         setApproverOptions(Array.isArray(data.approvers) ? data.approvers : []);
         if (!isEditMode && !formValues.status) {
@@ -107,7 +110,7 @@ function ProjectsAddPage() {
         if (alive) {
           setStatusOptions([]); setYesNoOptions([]); setProjectCategoryOptions([]);
           setProjectSubCategoryOptions([]); setStandardLabOptions([]); setNonStandardLabOptions([]);
-          setNonMoeProductSeriesOptions([]); setApprovalStatusOptions([]); setApproverOptions([]);
+          setNonMoeProductSeriesOptions([]); setProjectOwnerOptions([]); setApprovalStatusOptions([]); setApproverOptions([]);
         }
       }
     };
@@ -148,6 +151,7 @@ function ProjectsAddPage() {
           standard_lab: String(record.standard_lab ?? ""),
           non_standard_lab: String(record.non_standard_lab ?? ""),
           non_moe_product_series: String(record.non_moe_product_series ?? ""),
+          project_owner: String(record.project_owner ?? ""),
           order_value_omr: String(record.order_value_omr ?? ""),
           description: String(record.description || ""),
           status: String(record.status || ""),
@@ -264,6 +268,7 @@ function ProjectsAddPage() {
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-id">Project ID *</label><input id="project-id" name="project_id" type="text" className="auth-input" value={formValues.project_id} onChange={handleChange} required /></div>
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-name">Project Name *</label><input id="project-name" name="project_name" type="text" className="auth-input" value={formValues.project_name} onChange={handleChange} required /></div>
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-location">Project Location</label><input id="project-location" name="project_location" type="text" className="auth-input" value={formValues.project_location} onChange={handleChange} /></div>
+              <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-owner">Project Owner</label><select id="project-owner" name="project_owner" className="auth-input" value={formValues.project_owner} onChange={handleChange}><option value="">Select Project Owner</option>{projectOwnerOptions.map((opt) => <option key={`project-owner-${opt.value}`} value={opt.value}>{opt.label}</option>)}</select></div>
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="proposal-date">Date of Proposal *</label><input id="proposal-date" name="proposal_date" type="date" className="auth-input" value={formValues.proposal_date} onChange={handleChange} required /></div>
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="material-required-date">Material Required Date</label><input id="material-required-date" name="material_required_date" type="date" className="auth-input" value={formValues.material_required_date} onChange={handleChange} /></div>
               <div className="modal-form__row"><label className="modal-form__label" htmlFor="project-completion-date">Project Completion Date</label><input id="project-completion-date" name="project_completion_date" type="date" className="auth-input" value={formValues.project_completion_date} onChange={handleChange} /></div>

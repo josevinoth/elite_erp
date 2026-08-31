@@ -26,6 +26,7 @@
 .stock-retrieval-table {
   width: max-content;
   min-width: 100%;
+  min-width: 1900px;
   table-layout: auto;
 }
 

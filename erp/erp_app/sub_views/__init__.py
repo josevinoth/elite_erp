@@ -77,6 +77,7 @@ from .projects_api import (
     list_projects_api_view,
     list_project_layout_drawings_api_view,
     list_project_lifecycle_meta_api_view,
+    project_edit_api_view,
     project_detail_api_view,
     save_project_layout_drawings_api_view,
 )
@@ -164,6 +165,7 @@ from .stock_manufacture_api import (
     stock_manufacture_item_detail_api_view,
 )
 from .stock_purchase_status_option_api import list_stock_purchase_status_options_api_view
+from .stock_acceptance_api import stock_acceptance_api_view, stock_acceptance_edit_api_view
 from .views_cut_optimiser import list_cut_optimiser, create_cut_optimiser, cut_optimiser_detail
 from .views_cut_optimiser import list_cut_sizes, cut_size_detail
 
@@ -176,6 +178,7 @@ __all__ = [
     "list_vendors_api_view", "create_vendor_api_view", "vendor_detail_api_view",
     "list_projects_api_view", "list_project_lifecycle_meta_api_view",
     "create_project_api_view", "project_detail_api_view",
+    "project_edit_api_view",
     "create_project_lifecycle_status_option_api_view",
     "list_project_quotations_api_view", "create_project_quotation_item_api_view", "project_quotation_item_detail_api_view",
     "quotations_api_view", "quotation_detail_api_view", "quotation_items_api_view", "quotation_item_detail_api_view",
@@ -267,6 +270,8 @@ __all__ = [
     "list_stock_manufacture_items_api_view",
     "create_stock_manufacture_item_api_view",
     "stock_manufacture_item_detail_api_view",
+    "stock_acceptance_api_view",
+    "stock_acceptance_edit_api_view",
 ]
 
 

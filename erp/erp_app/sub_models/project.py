@@ -55,6 +55,13 @@ class Project(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User,on_delete=models.PROTECT,related_name="updated_projects")
+    project_owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_projects",
+    )
 
     class Meta:
         ordering = ['-created_at']

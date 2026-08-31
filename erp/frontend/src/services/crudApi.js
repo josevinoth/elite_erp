@@ -95,7 +95,7 @@ export async function createProject(payload) {
 
 export async function updateProject(id, payload) {
   const headers = await csrfHeaders();
-  const res = await fetch(`/api/projects/${id}/`, {
+  const res = await fetch(`/api/projects/${id}/edit/`, {
     method: "PATCH",
     credentials: "include",
     headers,
@@ -377,13 +377,16 @@ export async function listStockRetrievalItems() {
   return parseJson(res);
 }
 
-export async function updateStockRetrievalItem(itemId, retrievalStatusName) {
+export async function updateStockRetrievalItem(itemId, retrievalStatusName, rejectionComment = "") {
   const headers = await csrfHeaders();
   const res = await fetch(`/api/stock-retrieval/${itemId}/`, {
     method: "PATCH",
     credentials: "include",
     headers,
-    body: JSON.stringify({ retrieval_status_name: retrievalStatusName }),
+    body: JSON.stringify({
+      retrieval_status_name: retrievalStatusName,
+      rejection_comment: rejectionComment,
+    }),
   });
   return parseJson(res);
 }

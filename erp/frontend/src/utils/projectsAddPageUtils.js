@@ -38,6 +38,7 @@ export const EMPTY_FORM = {
   standard_lab: "",
   non_standard_lab: "",
   non_moe_product_series: "",
+  project_owner: "",
   order_value_omr: "",
   description: "",
   status: "",

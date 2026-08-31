@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -78,6 +79,15 @@ class ProjectCostingItemInfo(models.Model):
         blank=True,
         related_name="project_costing_items",
     )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_project_costing_items",
+    )
+    requested_on = models.DateTimeField(null=True, blank=True)
+    rejection_comment = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

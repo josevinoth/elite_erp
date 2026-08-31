@@ -113,7 +113,7 @@ def _resolve_stock_status_name(item_code, requested_qty, purchase_qty):
     has_history = _has_purchase_history(item_code)
 
     if not has_history:
-        return StockStatusInfo.STATUS_NOT_PURCHASED
+        return StockStatusInfo.STATUS_NO_STOCK
     if purchased <= Decimal("0"):
         return StockStatusInfo.STATUS_NO_STOCK
     if purchased < requested:

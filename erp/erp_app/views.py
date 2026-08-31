@@ -40,6 +40,7 @@ from .sub_views import (
     login_api_view,
     logout_api_view,
     project_detail_api_view,
+    project_edit_api_view,
     save_project_layout_drawings_api_view,
     register_api_view,
     register_meta_api_view,
@@ -116,6 +117,8 @@ from .sub_views import (
     stock_retrieval_item_detail_api_view,
     stock_return_api_view,
     stock_return_item_detail_api_view,
+    stock_acceptance_api_view,
+    stock_acceptance_edit_api_view,
     place_stock_order_api_view,
     place_stock_order_meta_api_view,
 )
@@ -162,6 +165,7 @@ __all__ = [
     "create_project_api_view",
     "create_project_lifecycle_status_option_api_view",
     "project_detail_api_view",
+    "project_edit_api_view",
     "save_project_layout_drawings_api_view",
     "list_stock_purchases_api_view",
     "create_stock_purchase_api_view",
@@ -247,4 +251,6 @@ __all__ = [
     "project_layout_drawing_view",
     "place_stock_order_api_view",
     "place_stock_order_meta_api_view",
+    "stock_acceptance_api_view",
+    "stock_acceptance_edit_api_view",
 ]

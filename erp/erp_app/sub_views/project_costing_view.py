@@ -1,7 +1,4 @@
-from decimal import Decimal
-
 from django.db import transaction
-from rest_framework import serializers
 
 from ..project_costing_items_serializer import ProjectCostingItemSerializer
 from ..project_costing_summary_serializer import ProjectCostingSummarySerializer
@@ -10,7 +7,6 @@ from ..sub_models.CostType_mod import CostTypeInfo
 from ..sub_models.project_costing_items_mod import ProjectCostingItemInfo
 from ..sub_models.project_costing_summary_mod import ProjectCostingSummaryInfo
 from ..sub_models.project_quotation_items_mod import ProjectQuotationItemInfo
-from ..sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
 from ..sub_models.retrieval_status_mod import RetrievalStatusInfo
 
 
@@ -23,10 +19,22 @@ class ProjectCostingSummaryView:
 
     @staticmethod
     def ensure_retrieval_statuses_seeded():
+        legacy_labels = ["Request Rejected", "item Rejected"]
+        canonical = RetrievalStatusInfo.STATUS_REQUEST_REJECTED
+        canonical_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=canonical).first()
+        if canonical_obj:
+            RetrievalStatusInfo.objects.filter(status_name__in=legacy_labels).exclude(pk=canonical_obj.pk).delete()
+        else:
+            legacy_obj = RetrievalStatusInfo.objects.filter(status_name__in=legacy_labels).order_by("id").first()
+            if legacy_obj:
+                legacy_obj.status_name = canonical
+                legacy_obj.save(update_fields=["status_name"])
+
         for status_name in [
             RetrievalStatusInfo.STATUS_NO_ACTION,
             RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
             RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+            RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
             RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
             RetrievalStatusInfo.STATUS_ITEM_RETURN,
             RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
@@ -64,7 +72,7 @@ class ProjectCostingSummaryView:
     def detail_payload(self, summary):
         items = list(
             ProjectCostingItemInfo.objects.filter(costing_id=summary)
-            .select_related("cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status")
+            .select_related("cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")
             .order_by("id")
         )
         ct = self._cost_types_payload()
@@ -153,7 +161,7 @@ class ProjectCostingItemView:
     def list_payload(self, summary):
         items = list(
             ProjectCostingItemInfo.objects.filter(costing_id=summary)
-            .select_related("cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status")
+            .select_related("cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")
             .order_by("id")
         )
         return {
@@ -166,10 +174,18 @@ class ProjectCostingItemView:
         }
 
     def stock_retrieval_payload(self):
-        status_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED).first()
-        queryset = ProjectCostingItemInfo.objects.select_related("costing_id", "cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status")
-        if status_obj:
-            queryset = queryset.filter(retrieval_status=status_obj)
+        ProjectCostingSummaryView.ensure_retrieval_statuses_seeded()
+        allowed_status_ids = list(
+            RetrievalStatusInfo.objects.filter(
+                status_name__in=[
+                    RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
+                    RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+                    RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
+                ]
+            ).values_list("id", flat=True)
+        )
+        queryset = ProjectCostingItemInfo.objects.select_related("costing_id", "cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")
+        queryset = queryset.filter(retrieval_status_id__in=allowed_status_ids)
         items = list(queryset.order_by("id"))
         return {
             "items": ProjectCostingItemSerializer(items, many=True, context=self.get_serializer_context()).data,

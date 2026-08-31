@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
@@ -13,6 +14,19 @@ from .sub_models.stock_status_mod import StockStatusInfo
 
 
 class ProjectCostingItemSerializer(serializers.ModelSerializer):
+    requested_by_id = serializers.PrimaryKeyRelatedField(
+        source="requested_by",
+        queryset=get_user_model().objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    requested_by_name = serializers.SerializerMethodField(read_only=True)
+    costing_ref = serializers.CharField(source="costing_id.costing_id", read_only=True)
+    quotation_number = serializers.CharField(source="costing_id.quotation_number.quotation_number", read_only=True)
+    project_code = serializers.CharField(source="costing_id.project.project_id", read_only=True)
+    project_name = serializers.CharField(source="costing_id.project_name", read_only=True)
+    project_owner_id = serializers.IntegerField(source="costing_id.project.project_owner_id", read_only=True)
+    project_owner_name = serializers.CharField(source="costing_id.project.project_owner.username", read_only=True)
     costing_id = serializers.PrimaryKeyRelatedField(queryset=ProjectCostingSummaryInfo.objects.all())
     item_category_id = serializers.PrimaryKeyRelatedField(
         source="item_category",
@@ -64,6 +78,12 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "costing_id",
+            "costing_ref",
+            "quotation_number",
+            "project_code",
+            "project_name",
+            "project_owner_id",
+            "project_owner_name",
             "cost_type_id",
             "cost_type",
             "item_category_id",
@@ -85,6 +105,10 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             "stock_status_id",
             "retrieval_status",
             "retrieval_status_id",
+            "requested_by_id",
+            "requested_by_name",
+            "requested_on",
+            "rejection_comment",
             "length",
             "width",
             "height",
@@ -123,6 +147,15 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             return None
         return {"id": status_obj.pk, "status_name": status_obj.status_name}
 
+    def get_requested_by_name(self, obj):
+        user = getattr(obj, "requested_by", None)
+        if not user:
+            return ""
+        full_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+        if full_name:
+            return full_name
+        return getattr(user, "username", "") or getattr(user, "email", "")
+
     def validate(self, attrs):
         source = self.instance or ProjectCostingItemInfo()
         candidate = ProjectCostingItemInfo()
@@ -151,6 +184,9 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             "volume",
             "stock_status",
             "retrieval_status",
+            "requested_by",
+            "requested_on",
+            "rejection_comment",
         ]
         for field_name in field_names:
             value = attrs[field_name] if field_name in attrs else getattr(source, field_name, None)

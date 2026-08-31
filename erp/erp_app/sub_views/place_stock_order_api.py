@@ -14,7 +14,8 @@ def _ensure_authenticated(request):
 
 
 def _is_not_purchased(item):
-    return str(getattr(getattr(item, "stock_status", None), "status_name", "")).strip().lower() == "not purchased"
+    normalized = str(getattr(getattr(item, "stock_status", None), "status_name", "")).strip().lower()
+    return normalized in {"no stock", "not purchased"}
 
 
 def _serialize_vendor(vendor):
@@ -106,7 +107,7 @@ def place_stock_order_api_view(request):
 
     invalid_stock = [row for row in rows if not _is_not_purchased(row)]
     if invalid_stock:
-        return Response({"status": "error", "message": "Only 'Not Purchased' items can be ordered."}, status=400)
+        return Response({"status": "error", "message": "Only 'No Stock' items can be ordered."}, status=400)
 
     costing_ids = {row.costing_id_id for row in rows}
     if len(costing_ids) != 1:

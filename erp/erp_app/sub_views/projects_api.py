@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from ..serializers import ProjectSerializer
+from ..project_serializer import ProjectSerializer
 from ..sub_models import Project, ProjectStatusOption
 from ..sub_models.approval_status_mod import ApprovalStatus_info
 from ..sub_models.non_moe_product_series_mod import NonMOEProductSeries_info
@@ -85,6 +85,8 @@ def _serialize(project):
         'non_standard_lab': project.non_standard_lab_id,
         'non_moe_product_series': project.non_moe_product_series_id,
         'updated_by': project.updated_by.id if project.updated_by else None,
+        'project_owner': project.project_owner_id,
+        'project_owner_name': project.project_owner.username if project.project_owner else '',
         'order_value_omr': '' if project.order_value_omr is None else str(project.order_value_omr),
         'status': project.status.name if project.status else '',
         'expected_customer_need_date': str(
@@ -217,6 +219,10 @@ def list_project_lifecycle_meta_api_view(request):
         {"value": str(user.id), "label": user.username}
         for user in User.objects.filter(is_active=True).order_by('username')
     ]
+    project_owners = [
+        {"value": str(user.id), "label": user.username}
+        for user in User.objects.filter(is_active=True).order_by('username')
+    ]
     return Response(
         {
             "statuses": statuses,
@@ -229,6 +235,7 @@ def list_project_lifecycle_meta_api_view(request):
             "non_moe_product_series": non_moe_product_series,
             "approval_statuses": approval_statuses,
             "approvers": approvers,
+            "project_owners": project_owners,
         },
         status=status.HTTP_200_OK,
     )
@@ -502,6 +509,7 @@ def create_project_api_view(request):
         standard_lab = _resolve_fk_option(StandardLab_info, payload.get('standard_lab'), 'Invalid standard lab.')
         non_standard_lab = _resolve_fk_option(NonStandardLab_info, payload.get('non_standard_lab'), 'Invalid non-standard lab.')
         non_moe_product_series = _resolve_fk_option(NonMOEProductSeries_info, payload.get('non_moe_product_series'), 'Invalid non-MOE product series.')
+        project_owner = _resolve_fk_option(User, payload.get('project_owner'), 'Invalid project owner.')
     except ValueError as exc:
         return Response({'message': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -547,6 +555,8 @@ def create_project_api_view(request):
         create_kwargs['non_standard_lab'] = non_standard_lab
     if non_moe_product_series is not None:
         create_kwargs['non_moe_product_series'] = non_moe_product_series
+    if project_owner is not None:
+        create_kwargs['project_owner'] = project_owner
 
     project = Project.objects.create(
         **create_kwargs,
@@ -612,6 +622,7 @@ def project_detail_api_view(request, project_id):
         'standard_lab': (StandardLab_info, 'Invalid standard lab.'),
         'non_standard_lab': (NonStandardLab_info, 'Invalid non-standard lab.'),
         'non_moe_product_series': (NonMOEProductSeries_info, 'Invalid non-MOE product series.'),
+        'project_owner': (User, 'Invalid project owner.'),
     }
     for field_name, (model_cls, error_message) in fk_field_map.items():
         if field_name in payload and payload.get(field_name) not in (None, ''):
@@ -630,5 +641,14 @@ def project_detail_api_view(request, project_id):
     project.expected_customer_need_date = _to_date(
         payload.get('expected_customer_need_date', project.expected_customer_need_date)
     )
+    if 'project_owner' in payload and payload.get('project_owner') in (None, ''):
+        project.project_owner = None
     project.save()
     return Response({'success': True, 'project': _serialize(project)}, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def project_edit_api_view(request, project_id):
+    return project_detail_api_view(request, project_id)
+

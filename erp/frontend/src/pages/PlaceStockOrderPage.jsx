@@ -165,7 +165,7 @@ function PlaceStockOrderPage() {
 
       <div className="place-stock-order-card">
         <div className="place-stock-order-items-header">
-          <h2 className="place-stock-order-card__title">Not Purchased Items</h2>
+          <h2 className="place-stock-order-card__title">No Stock Items</h2>
           <button type="button" className="crud-add-btn" onClick={handleSave} disabled={saving || loading}>
             {saving ? "Saving..." : "Save Order"}
           </button>
@@ -196,7 +196,7 @@ function PlaceStockOrderPage() {
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="place-stock-order-empty">No Not Purchased items found.</td>
+                    <td colSpan={11} className="place-stock-order-empty">No 'No Stock' items found.</td>
                   </tr>
                 ) : items.map((row) => {
                   const checked = selectedItemIds.includes(String(row.id));

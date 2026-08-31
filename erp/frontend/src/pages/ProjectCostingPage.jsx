@@ -87,8 +87,8 @@ const getStockStatusBadgeClass = (statusName) => {
   const normalized = String(statusName || "").trim().toLowerCase();
   if (normalized === "in-stock") return "project-costing-stock-badge--in-stock";
   if (normalized === "partial stock") return "project-costing-stock-badge--partial";
-  if (normalized === "no stock") return "project-costing-stock-badge--no-stock";
-  return "project-costing-stock-badge--not-purchased";
+  if (normalized === "no stock" || normalized === "not purchased") return "project-costing-stock-badge--no-stock";
+  return "project-costing-stock-badge--no-stock";
 };
 
 const EMPTY_SUMMARY_FORM = {
@@ -552,7 +552,6 @@ function ProjectCostingPage() {
 
   const resolveDraftStockStatus = useCallback((row) => {
     const current = String(row?.stock_status_name || "In-Stock").trim();
-    if (current.toLowerCase() === "not purchased") return "Not Purchased";
     const purchaseQty = toNumber(row?.purchase_qty);
     const requestedQty = toNumber(row?.requested_qty);
     if (purchaseQty <= 0) return current || "No Stock";
@@ -566,7 +565,7 @@ function ProjectCostingPage() {
       applyPatch({
         item_code_id: "",
         item_type: "",
-        stock_status_name: "Not Purchased",
+        stock_status_name: "No Stock",
         purchase_qty: "0",
         cost_per_qty: "0",
         max_cost: "0",
@@ -586,7 +585,7 @@ function ProjectCostingPage() {
       item_name: master.item_name || "",
       item_code_id: String(master.id),
       item_type: master.item_type || "",
-      stock_status_name: hasNoPurchaseData ? "Not Purchased" : "In-Stock",
+      stock_status_name: hasNoPurchaseData ? "No Stock" : "In-Stock",
       purchase_qty: quantity,
       length: String(master.length ?? "0"),
       width: String(master.width ?? "0"),
@@ -595,7 +594,7 @@ function ProjectCostingPage() {
     });
 
     if (hasNoPurchaseData) {
-      setStatus({ type: "warning", message: "Item not yet purchased. Please enter Actual Cost manually." });
+      setStatus({ type: "warning", message: "No stock available. Please enter Actual Cost manually." });
       return;
     }
 
@@ -824,6 +823,7 @@ function ProjectCostingPage() {
             <span className={getRetrievalBadgeClass(row.retrieval_status_name || "No Action")}>{row.retrieval_status_name || "No Action"}</span>
           )}
         </td>
+        <td className="project-costing-comment-cell">{row.rejection_comment || "-"}</td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.length || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.width || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.height || "0"} readOnly disabled /></td>
@@ -1052,6 +1052,7 @@ function ProjectCostingPage() {
                   <th className="project-costing-table__right">Total Cost</th>
                   <th>Stock Status</th>
                   <th>Retrieval Status</th>
+                  <th>Rejection Comments</th>
                   <th className="project-costing-table__right">L</th>
                   <th className="project-costing-table__right">W</th>
                   <th className="project-costing-table__right">H</th>
@@ -1078,7 +1079,7 @@ function ProjectCostingPage() {
 
                 {editingItems.length === 0 ? (
                   <tr>
-                    <td colSpan={20} className="project-costing-empty">No costing items found.</td>
+                    <td colSpan={21} className="project-costing-empty">No costing items found.</td>
                   </tr>
                 ) : editingItems.map((item) => {
                   const frozen = isFrozen(item);
@@ -1128,6 +1129,7 @@ function ProjectCostingPage() {
                       <td>
                         <span className={getRetrievalBadgeClass(retrievalName)}>{retrievalName}</span>
                       </td>
+                      <td className="project-costing-comment-cell">{item.rejection_comment || "-"}</td>
                       <td className="project-costing-table__right">{item.length}</td>
                       <td className="project-costing-table__right">{item.width}</td>
                       <td className="project-costing-table__right">{item.height}</td>

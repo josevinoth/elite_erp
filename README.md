@@ -267,7 +267,7 @@ Clone approved quotation summaries and items into project costing records, then 
 - Rows marked `Item Return` flow into the Stock Return module.
 - `ProjectCostingPage.jsx` keeps all styles in `ProjectCosting.css` with badge/popup classes only.
 - `StockRetrievalPage.jsx` now displays `purchase_qty`, `length`, `width`, `height`, and `volume`.
-- In Stock Retrieval, `retrieval_status` is read-only when `stock_status = Not Purchased` (enforced on every load/render).
+- In Stock Retrieval, `retrieval_status` is read-only when `stock_status = No Stock` (legacy `Not Purchased` rows are still recognized).
 
 ### Django API Routes
 
@@ -356,7 +356,8 @@ Separate stock-purchase workflow to place vendor orders for not-purchased costin
 ### Place Stock Order behavior
 
 - Vendor dropdown auto-populates `vendor_code`, `address`, `phone_number`, `email_id`, and `contact_person`.
-- Order item list includes only Project Costing rows with `stock_status = Not Purchased`.
+- Order item list includes only Project Costing rows with `stock_status = No Stock`.
 - Multi-select item table includes: category, name, code, type, purchase qty, requested qty, size, volume, stock status.
 - Save persists linkages to both `costing_id` and `vendor_id`.
+
 
