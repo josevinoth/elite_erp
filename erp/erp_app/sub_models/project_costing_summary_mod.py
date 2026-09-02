@@ -76,6 +76,8 @@ class ProjectCostingSummaryInfo(models.Model):
             installation=self.installation,
             business_development=self.business_development,
             markup=self.markup,
+            petrol_expenses=self.petrol_expenses,
+            transport_installation_team=self.transport_installation_team,
         )
         self.final_material_cost = totals["final_material_cost"]
         self.total_cost_to_elite = totals["total_cost_to_elite"]

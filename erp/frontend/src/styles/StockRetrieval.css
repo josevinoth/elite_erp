@@ -39,6 +39,16 @@
   text-align: right;
 }
 
+.stock-retrieval-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.stock-retrieval-action-btn {
+  min-width: 88px;
+  padding: 0.35rem 0.6rem;
+}
+
 .stock-retrieval-empty {
   text-align: center;
   color: #64748b;

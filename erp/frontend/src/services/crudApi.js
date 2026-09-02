@@ -377,7 +377,7 @@ export async function listStockRetrievalItems() {
   return parseJson(res);
 }
 
-export async function updateStockRetrievalItem(itemId, retrievalStatusName, rejectionComment = "") {
+export async function updateStockRetrievalItem(itemId, retrievalStatusName, rejectionComment = "", action = "") {
   const headers = await csrfHeaders();
   const res = await fetch(`/api/stock-retrieval/${itemId}/`, {
     method: "PATCH",
@@ -386,6 +386,26 @@ export async function updateStockRetrievalItem(itemId, retrievalStatusName, reje
     body: JSON.stringify({
       retrieval_status_name: retrievalStatusName,
       rejection_comment: rejectionComment,
+      action,
+    }),
+  });
+  return parseJson(res);
+}
+
+export async function listStockAcceptanceItems() {
+  const res = await fetch("/api/stock-acceptance/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function updateStockAcceptanceItem(itemId, stockStatusName) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/stock-acceptance/edit/", {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({
+      item_id: itemId,
+      stock_status_name: stockStatusName,
     }),
   });
   return parseJson(res);

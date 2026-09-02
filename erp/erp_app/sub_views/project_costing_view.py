@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 
 from ..project_costing_items_serializer import ProjectCostingItemSerializer
 from ..project_costing_summary_serializer import ProjectCostingSummarySerializer
@@ -23,7 +24,16 @@ class ProjectCostingSummaryView:
         canonical = RetrievalStatusInfo.STATUS_REQUEST_REJECTED
         canonical_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=canonical).first()
         if canonical_obj:
-            RetrievalStatusInfo.objects.filter(status_name__in=legacy_labels).exclude(pk=canonical_obj.pk).delete()
+            legacy_qs = RetrievalStatusInfo.objects.filter(status_name__in=legacy_labels).exclude(pk=canonical_obj.pk)
+            legacy_ids = list(legacy_qs.values_list("id", flat=True))
+            if legacy_ids:
+                # Re-point legacy references first so cleanup does not violate PROTECT FKs.
+                ProjectCostingItemInfo.objects.filter(retrieval_status_id__in=legacy_ids).update(retrieval_status=canonical_obj)
+                try:
+                    legacy_qs.delete()
+                except ProtectedError:
+                    # Keep legacy rows if any other protected references still exist.
+                    pass
         else:
             legacy_obj = RetrievalStatusInfo.objects.filter(status_name__in=legacy_labels).order_by("id").first()
             if legacy_obj:

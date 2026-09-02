@@ -64,12 +64,14 @@ def calculate_summary_totals(
     installation,
     business_development,
     markup,
+    petrol_expenses=0,
+    transport_installation_team=0,
 ):
     material_total = _as_decimal(total_material_cost)
     contingency_ratio = _as_percent(contingency)
     markup_ratio = _as_percent(markup)
 
-    final_material_cost = material_total * contingency_ratio
+    final_material_cost = material_total + (material_total * contingency_ratio)
     total_cost_to_elite = (
         final_material_cost
         + _as_decimal(transportation)
@@ -78,12 +80,17 @@ def calculate_summary_totals(
         + _as_decimal(unloading)
         + _as_decimal(installation)
         + _as_decimal(business_development)
+        + _as_decimal(petrol_expenses)
+        + _as_decimal(transport_installation_team)
     )
-    total_markup = markup_ratio * material_total
+    total_markup = total_cost_to_elite * markup_ratio
     planned_order_value = total_cost_to_elite + total_markup
 
-    denominator = (Decimal("1") - markup_ratio) - planned_order_value
-    discount = Decimal("0") if denominator == 0 else planned_order_value / denominator
+    denominator = Decimal("1") - markup_ratio
+    if denominator <= 0:
+        discount = Decimal("0")
+    else:
+        discount = planned_order_value * (markup_ratio / denominator)
 
     undiscounted_quote_value = planned_order_value + discount
     factor = Decimal("0") if material_total == 0 else undiscounted_quote_value / material_total

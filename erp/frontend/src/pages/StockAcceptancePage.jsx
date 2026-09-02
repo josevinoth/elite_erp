@@ -11,6 +11,14 @@ const getPopupClassName = (type) => {
   return "popup-success";
 };
 
+const formatSize = (row) => {
+  const length = String(row?.length ?? "").trim();
+  const width = String(row?.width ?? "").trim();
+  const height = String(row?.height ?? "").trim();
+  if (!length && !width && !height) return "-";
+  return `${length || "0"} x ${width || "0"} x ${height || "0"}`;
+};
+
 function StockAcceptancePage() {
   const currentUser = useMemo(() => getSessionUser(), []);
   const roleName = String(currentUser?.role || "").trim().toLowerCase();
@@ -25,7 +33,6 @@ function StockAcceptancePage() {
   const mapRows = useCallback((rows = []) => (
     rows.map((row) => ({
       ...row,
-      acceptance_status: "Stock Supplied",
       can_edit: isAdmin || String(row?.project_owner_id || "") === currentUserId,
     }))
   ), [currentUserId, isAdmin]);
@@ -56,6 +63,7 @@ function StockAcceptancePage() {
   }, [loadItems]);
 
   const onUpdateStatus = useCallback(async (row, nextStatus) => {
+    if (!nextStatus) return;
     setSavingId(String(row.id));
     try {
       await updateStockAcceptanceItem(row.id, nextStatus);
@@ -76,6 +84,9 @@ function StockAcceptancePage() {
       {status.message ? (
         <p className={`users-status stock-acceptance-status ${getPopupClassName(status.type)}`}>{status.message}</p>
       ) : null}
+      {!isAdmin ? (
+        <p className="users-status popup-warning stock-acceptance-status">Only your owned projects are visible here.</p>
+      ) : null}
       {loading ? <p className="users-status">Loading stock acceptance items...</p> : null}
       {!loading ? (
         <div className="users-table-wrap project-costing-table-wrap stock-acceptance-wrap">
@@ -83,32 +94,28 @@ function StockAcceptancePage() {
             <thead>
               <tr>
                 <th>Quotation Number</th>
-                <th>Costing ID</th>
                 <th>Project ID</th>
                 <th>Project Name</th>
                 <th>Item Category</th>
                 <th>Item Name</th>
                 <th>Item Code</th>
                 <th>Item Type</th>
-                <th className="project-costing-table__right">Available Qty</th>
+                <th className="project-costing-table__right">Purchase Qty</th>
                 <th className="project-costing-table__right">Requested Qty</th>
-                <th className="project-costing-table__right">L</th>
-                <th className="project-costing-table__right">W</th>
-                <th className="project-costing-table__right">H</th>
+                <th>Size (L x W x H)</th>
                 <th className="project-costing-table__right">Volume</th>
                 <th>Stock Status</th>
-                <th>Acceptance Status</th>
+                <th>Update Status</th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={16} className="project-costing-empty">No stock supplied items found.</td>
+                  <td colSpan={13} className="project-costing-empty">No stock supplied items found.</td>
                 </tr>
               ) : items.map((row) => (
                 <tr key={row.id}>
                   <td>{row.quotation_number || "-"}</td>
-                  <td>{row.costing_ref || row.costing_id || "-"}</td>
                   <td>{row.project_code || "-"}</td>
                   <td>{row.project_name || "-"}</td>
                   <td>{row.item_category || "-"}</td>
@@ -117,19 +124,17 @@ function StockAcceptancePage() {
                   <td>{row.item_type || "-"}</td>
                   <td className="project-costing-table__right">{row.purchase_qty}</td>
                   <td className="project-costing-table__right">{row.requested_qty}</td>
-                  <td className="project-costing-table__right">{row.length}</td>
-                  <td className="project-costing-table__right">{row.width}</td>
-                  <td className="project-costing-table__right">{row.height}</td>
+                  <td>{formatSize(row)}</td>
                   <td className="project-costing-table__right">{row.volume}</td>
-                  <td>{row?.stock_status?.status_name || "-"}</td>
+                  <td>{row?.retrieval_status?.status_name || "Stock Supplied"}</td>
                   <td>
                     <select
                       className="auth-input"
-                      value={row.acceptance_status}
+                      value=""
                       disabled={!row.can_edit || savingId === String(row.id)}
                       onChange={(event) => onUpdateStatus(row, event.target.value)}
                     >
-                      <option value="Stock Supplied">Stock Supplied</option>
+                      <option value="">Select status</option>
                       {EDIT_OPTIONS.map((option) => (
                         <option key={option} value={option}>{option}</option>
                       ))}
@@ -146,4 +151,5 @@ function StockAcceptancePage() {
 }
 
 export default StockAcceptancePage;
+
 

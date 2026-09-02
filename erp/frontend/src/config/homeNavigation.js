@@ -98,6 +98,11 @@ export const homeNavItems = [
         icon: "stocks",
       },
       {
+        label: "Stock Acceptance",
+        to: "/stock-acceptance",
+        icon: "stocks",
+      },
+      {
         label: "Stock Return",
         to: "/stock-return",
         icon: "stocks",

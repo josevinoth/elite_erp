@@ -26,6 +26,7 @@ import StockPurchaseItemTracePage from "./pages/StockPurchaseItemTracePage.jsx";
 import StockPurchasePage from "./pages/StockPurchasePage";
 import PlaceStockOrderPage from "./pages/PlaceStockOrderPage";
 import StockRetrievalPage from "./pages/StockRetrievalPage";
+import StockAcceptancePage from "./pages/StockAcceptancePage";
 import StockReturnPage from "./pages/StockReturnPage";
 import StocksListPage from "./pages/StocksListPage";
 import TaskPage from "./pages/TaskPage";
@@ -194,6 +195,10 @@ function App() {
                         <Route
                             path="/stock-retrieval"
                             element={secureRoute(<StockRetrievalPage />)}
+                        />
+                        <Route
+                            path="/stock-acceptance"
+                            element={secureRoute(<StockAcceptancePage />)}
                         />
                         <Route
                             path="/stock-return"

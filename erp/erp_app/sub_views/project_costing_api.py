@@ -62,7 +62,12 @@ def _can_edit_costing_retrieval(user):
 
 
 def _can_edit_stock_retrieval(user):
-    return _is_admin_user(user) or _user_team_name(user) in {"stock team", "stock", "stores team"}
+    if _is_admin_user(user):
+        return True
+    team_name = _user_team_name(user)
+    if team_name in {"stock team", "stock", "stores team"}:
+        return True
+    return bool({g.name.strip().lower() for g in user.groups.all()}.intersection({"stock team", "stock", "stores team"}))
 
 
 def _status_obj(name):
@@ -436,18 +441,24 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
     if not _is_valid_status_transition(current_name, status_obj.status_name, "retrieval"):
         return Response({"status": "error", "message": "Invalid status transition from Stock Retrieval."}, status=400)
 
-    rejection_comment = ""
-    if status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
-        rejection_comment = normalize_text(request.data.get("rejection_comment"))
-        if not rejection_comment:
-            return Response({"status": "error", "message": "Rejection comment is required when status is Item Rejected."}, status=400)
+    action_name = normalize_text(request.data.get("action")).lower()
+    rejection_comment = normalize_text(request.data.get("rejection_comment"))
+    if action_name == "reject" and not rejection_comment:
+        return Response(
+            {"status": "error", "message": "Rejection comment is required when action is Reject."},
+            status=400,
+        )
+    if action_name != "reject":
+        # Only reject action is allowed to persist a rejection reason.
+        rejection_comment = ""
 
     was_requested = current_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED
     item.retrieval_status = status_obj
     if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED and not was_requested:
         item.requested_by = request.user
         item.requested_on = timezone.now()
-        item.rejection_comment = ""
+    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+        item.rejection_comment = rejection_comment
     if status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
         item.rejection_comment = rejection_comment
     elif status_obj.status_name != RetrievalStatusInfo.STATUS_ITEM_REQUESTED:

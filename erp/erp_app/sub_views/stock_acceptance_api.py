@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.views.decorators.csrf import csrf_protect
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -20,6 +21,12 @@ def _resolve_target_retrieval_status(value):
     return mapping.get(normalized)
 
 
+def _is_stock_supplied_item(item):
+    retrieval_name = str(getattr(getattr(item, "retrieval_status", None), "status_name", "") or "").strip().lower()
+    stock_name = str(getattr(getattr(item, "stock_status", None), "status_name", "") or "").strip().lower()
+    return retrieval_name == RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower() or stock_name == "stock supplied"
+
+
 @api_view(["GET"])
 def stock_acceptance_api_view(request):
     not_allowed = _ensure_authenticated(request)
@@ -29,11 +36,6 @@ def stock_acceptance_api_view(request):
     supplied_status = RetrievalStatusInfo.objects.filter(
         status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
     ).first()
-    if not supplied_status:
-        return Response(
-            {"items": [], "status": "success", "message": "Stock acceptance items loaded successfully."},
-            status=status.HTTP_200_OK,
-        )
 
     queryset = ProjectCostingItemInfo.objects.select_related(
         "costing_id",
@@ -45,12 +47,19 @@ def stock_acceptance_api_view(request):
         "room_name",
         "stock_status",
         "retrieval_status",
-    ).filter(retrieval_status=supplied_status)
+    )
+
+    if supplied_status:
+        queryset = queryset.filter(
+            Q(retrieval_status=supplied_status) | Q(stock_status__status_name__iexact="Stock Supplied")
+        )
+    else:
+        queryset = queryset.filter(stock_status__status_name__iexact="Stock Supplied")
 
     if not _is_admin_user(request.user):
         queryset = queryset.filter(costing_id__project__project_owner=request.user)
 
-    items = list(queryset.order_by("id"))
+    items = [row for row in queryset.order_by("id") if _is_stock_supplied_item(row)]
     data = ProjectCostingItemSerializer(items, many=True, context={"request": request}).data
     return Response(
         {"items": data, "status": "success", "message": "Stock acceptance items loaded successfully."},
@@ -72,6 +81,7 @@ def stock_acceptance_edit_api_view(request):
     try:
         item = ProjectCostingItemInfo.objects.select_related(
             "costing_id__project",
+            "stock_status",
             "retrieval_status",
         ).get(pk=item_id)
     except ProjectCostingItemInfo.DoesNotExist:
@@ -85,8 +95,7 @@ def stock_acceptance_edit_api_view(request):
             status=403,
         )
 
-    current_status = str(getattr(item.retrieval_status, "status_name", "") or "")
-    if current_status.lower() != RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower():
+    if not _is_stock_supplied_item(item):
         return Response(
             {"status": "error", "message": "Only Stock Supplied items can be updated from Stock Acceptance."},
             status=400,
@@ -116,4 +125,3 @@ def stock_acceptance_edit_api_view(request):
         {"success": True, "item": serialized, "message": "Stock acceptance status updated."},
         status=status.HTTP_200_OK,
     )
-

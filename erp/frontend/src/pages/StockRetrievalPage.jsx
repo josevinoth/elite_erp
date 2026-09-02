@@ -2,7 +2,6 @@
 import { listStockRetrievalItems, updateStockRetrievalItem } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
 import "../styles/StockRetrieval.css";
-const RETRIEVAL_OPTIONS = ["Item Requested", "Item Supplied", "Item Rejected"];
 
 const normalizeRejectedOption = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -21,7 +20,8 @@ function StockRetrievalPage() {
   const roleName = String(currentUser?.role || "").trim().toLowerCase();
   const teamName = String(currentUser?.team || "").trim().toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
-  const canEdit = isAdmin || ["stock team", "stock", "stores team"].includes(teamName);
+  const isStockRole = ["stock team", "stock", "stores team"].includes(roleName);
+  const canEdit = isAdmin || isStockRole || ["stock team", "stock", "stores team"].includes(teamName);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState("");
   const [status, setStatus] = useState({ type: "", message: "" });
@@ -54,10 +54,10 @@ function StockRetrievalPage() {
       alive = false;
     };
   }, [loadItems]);
-  const submitStatusUpdate = useCallback(async (itemId, retrievalStatusName, rejectionComment = "") => {
+  const submitStatusUpdate = useCallback(async (itemId, retrievalStatusName, rejectionComment = "", action = "") => {
     setSavingId(String(itemId));
     try {
-      const response = await updateStockRetrievalItem(itemId, retrievalStatusName, rejectionComment);
+      const response = await updateStockRetrievalItem(itemId, retrievalStatusName, rejectionComment, action);
       const updatedItem = response?.item || null;
       setItems((prev) => {
         return prev.map((row) => (row.id === itemId ? { ...row, ...updatedItem } : row));
@@ -82,13 +82,13 @@ function StockRetrievalPage() {
     setRejectionDialog({ open: false, itemId: null, comment: "" });
   }, []);
 
-  const updateStatus = useCallback(async (row, retrievalStatusName) => {
-    if (normalizeRejectedOption(retrievalStatusName) === "Item Rejected") {
-      openRejectionDialog(row.id, row?.rejection_comment || "");
-      return;
-    }
-    await submitStatusUpdate(row.id, normalizeRejectedOption(retrievalStatusName), "");
-  }, [openRejectionDialog, submitStatusUpdate]);
+  const acceptItem = useCallback(async (row) => {
+    await submitStatusUpdate(row.id, "Item Supplied", "", "accept");
+  }, [submitStatusUpdate]);
+
+  const rejectItem = useCallback((row) => {
+    openRejectionDialog(row.id, row?.rejection_comment || "");
+  }, [openRejectionDialog]);
 
   const submitRejectionComment = useCallback(async () => {
     const rejectionComment = String(rejectionDialog.comment || "").trim();
@@ -98,7 +98,7 @@ function StockRetrievalPage() {
     }
     const targetId = rejectionDialog.itemId;
     closeRejectionDialog();
-    await submitStatusUpdate(targetId, "Item Rejected", rejectionComment);
+    await submitStatusUpdate(targetId, "Item Requested", rejectionComment, "reject");
   }, [closeRejectionDialog, rejectionDialog.comment, rejectionDialog.itemId, submitStatusUpdate]);
   return (
     <section className="module-page stock-retrieval-page">
@@ -133,13 +133,14 @@ function StockRetrievalPage() {
                 <th className="stock-retrieval-table__right">H</th>
                 <th className="stock-retrieval-table__right">Volume</th>
                 <th>Retrieval Status</th>
+                <th>Action</th>
                 <th>Rejection Comments</th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={17} className="stock-retrieval-empty">No retrieval items found.</td>
+                  <td colSpan={18} className="stock-retrieval-empty">No retrieval items found.</td>
                 </tr>
               ) : items.map((row) => (
                 <tr key={row.id}>
@@ -158,17 +159,26 @@ function StockRetrievalPage() {
                   <td className="stock-retrieval-table__right">{row.width}</td>
                   <td className="stock-retrieval-table__right">{row.height}</td>
                   <td className="stock-retrieval-table__right">{row.volume}</td>
+                  <td>{normalizeRejectedOption(row?.retrieval_status?.status_name || "Item Requested")}</td>
                   <td>
-                    <select
-                      className="auth-input"
-                      value={normalizeRejectedOption(row?.retrieval_status?.status_name || "Item Requested")}
-                      disabled={!canEdit || savingId === String(row.id) || isNotPurchased(row)}
-                      onChange={(event) => updateStatus(row, event.target.value)}
-                    >
-                      {RETRIEVAL_OPTIONS.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
+                    <div className="stock-retrieval-actions">
+                      <button
+                        type="button"
+                        className="modal-btn modal-btn--save stock-retrieval-action-btn"
+                        disabled={!canEdit || savingId === String(row.id) || isNotPurchased(row)}
+                        onClick={() => acceptItem(row)}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="modal-btn modal-btn--cancel stock-retrieval-action-btn"
+                        disabled={!canEdit || savingId === String(row.id)}
+                        onClick={() => rejectItem(row)}
+                      >
+                        Reject
+                      </button>
+                    </div>
                   </td>
                   <td>{row?.rejection_comment || "-"}</td>
                 </tr>
@@ -186,7 +196,7 @@ function StockRetrievalPage() {
               rows={4}
               value={rejectionDialog.comment}
               onChange={(event) => setRejectionDialog((prev) => ({ ...prev, comment: event.target.value }))}
-              placeholder="Enter reason for rejection"
+              placeholder="Enter reason for rejection (item will move to Item Requested)"
             />
             <div className="stock-retrieval-modal__actions">
               <button type="button" className="modal-btn modal-btn--cancel" onClick={closeRejectionDialog}>Cancel</button>

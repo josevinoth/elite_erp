@@ -361,3 +361,48 @@ Separate stock-purchase workflow to place vendor orders for not-purchased costin
 - Save persists linkages to both `costing_id` and `vendor_id`.
 
 
+
+## Stock Acceptance Module
+
+Handle post-supply stock acceptance decisions for Project Costing items.
+
+### Routing and navigation
+
+- Route: `/stock-acceptance`
+- Navigation: **Home Page -> Stocks -> Stock Acceptance**
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| API views | `erp/erp_app/sub_views/stock_acceptance_api.py` | Lists supplied items and enforces owner/admin-only status updates |
+| URL registration | `erp/erp_app/urls.py` | Registers `/api/stock-acceptance/` and `/api/stock-acceptance/edit/` |
+| Item serializer | `erp/erp_app/project_costing_items_serializer.py` | Exposes project and owner fields used by Stock Acceptance UI |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/StockAcceptancePage.jsx` | Shows only supplied rows and supports allowed status changes |
+| Service API | `erp/frontend/src/services/crudApi.js` | `listStockAcceptanceItems`, `updateStockAcceptanceItem` |
+| Route registration | `erp/frontend/src/App.jsx` | Registers `/stock-acceptance` page route |
+| Home navigation | `erp/frontend/src/config/homeNavigation.js` | Adds **Stock Acceptance** under Stocks menu |
+
+### Rules and behavior
+
+- Stock Acceptance list includes only rows in supplied state (`Stock Supplied` / `Item Supplied`).
+- Non-admin users only see rows where the linked project's `project_owner` matches the logged-in user.
+- Only project owner or admin can update status.
+- Allowed transitions are restricted to:
+  - `Stock Supplied -> Stock Accepted`
+  - `Stock Supplied -> Stock Returned`
+- After update, the row no longer appears in Stock Acceptance list.
+
+### Project owner integration
+
+- `Project` model includes `project_owner` FK (`erp/erp_app/sub_models/project.py`), surfaced by proxy `ProjectInfo` in `erp/erp_app/sub_models/project_mod.py`.
+- Project APIs support `project_owner` create/edit via `erp/erp_app/sub_views/projects_api.py` (`/api/projects/<id>/edit/`).
+- Project serializer exposes `project_owner` fields in `erp/erp_app/project_serializer.py`.
+- Project add/edit page (`erp/frontend/src/pages/ProjectsAddPage.jsx`) includes **Project Owner** dropdown populated by `/api/projects/meta/`.
+
+---
