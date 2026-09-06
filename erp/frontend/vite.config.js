@@ -3,10 +3,12 @@ import react from "@vitejs/plugin-react";
 
 // Local Django dev server runs on 8000.
 const backendTarget = "http://127.0.0.1:8000";
+const publicBase = "/static/";
 
 export default defineConfig({
   plugins: [react()],
-  base: "/static/",   // built asset URLs will be /static/assets/... matching Django's STATIC_URL
+  // Single deployment mode: serve frontend under /static/.
+  base: publicBase,
   build: {
     outDir: "dist",
   },

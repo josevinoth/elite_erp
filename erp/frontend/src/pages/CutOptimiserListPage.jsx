@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BsPencilSquare, BsTrashFill } from "react-icons/bs";
 import { Link, useNavigate } from "react-router-dom";
 import {
   listCutOptimiserRecords,
   deleteCutOptimiserRecord,
 } from "../services/crudApi";
+import TableSearchAndDownload from "../components/TableSearchAndDownload";
 
 function formatCutId(cut_optimiser_id) {
   return cut_optimiser_id || "-";
@@ -21,6 +22,42 @@ function CutOptimiserListPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [columnFilters, setColumnFilters] = useState({});
+
+  const filteredRows = useMemo(() => {
+    // Global search first
+    const searchLower = searchText.trim().toLowerCase();
+    const globalSearched = searchLower
+      ? rows.filter((row) =>
+          Object.values(row).some((value) =>
+            String(value || "").toLowerCase().includes(searchLower)
+          )
+        )
+      : rows;
+
+    // Then apply per-column filters
+    const activeFilters = Object.entries(columnFilters).filter(
+      ([, value]) => String(value || "").trim()
+    );
+
+    if (!activeFilters.length) return globalSearched;
+
+    return globalSearched.filter((row) =>
+      activeFilters.every(([key, filterValue]) =>
+        String(row[key] || "")
+          .toLowerCase()
+          .includes(String(filterValue).trim().toLowerCase())
+      )
+    );
+  }, [rows, searchText, columnFilters]);
+
+  const tableColumns = [
+    { key: "cut_optimiser_id", label: "Cut ID" },
+    { key: "project_name", label: "Project" },
+    { key: "revision", label: "Revision", exportValue: (row) => `R${row.revision || 1}` },
+    { key: "updated_at", label: "Last Updated", exportValue: (row) => formatDateTime(row.updated_at) },
+  ];
 
   const loadRows = async () => {
     setLoading(true);
@@ -47,7 +84,7 @@ function CutOptimiserListPage() {
   return (
     <section className="module-page">
       <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
-        <h1 className="module-page__title" style={{ margin: 0 }}>Cut Optimiser List</h1>
+        <h1 className="module-page__title module-page__title--cutting" style={{ margin: 0 }}>Cut Optimiser List</h1>
         <Link
           className="crud-add-btn"
           title="Add Cut Optimiser"
@@ -58,11 +95,18 @@ function CutOptimiserListPage() {
         </Link>
       </div>
 
-      <p className="module-page__description" style={{ marginBottom: "0.9rem" }}>
-        Saved calculations with revision tracking by project.
-      </p>
+       <p className="module-page__description" style={{ marginBottom: "0.9rem" }}>
+         Saved calculations with revision tracking by project.
+       </p>
 
-      <div className="users-table-wrap" style={{ maxHeight: "68vh", overflowY: "auto" }}>
+       <TableSearchAndDownload
+         rows={filteredRows}
+         columns={tableColumns}
+         title="Cut Optimiser List"
+         onSearchChange={setSearchText}
+         showDownloadButton={true}
+       />
+       <div className="users-table-wrap" style={{ maxHeight: "68vh", overflowY: "auto" }}>
         <table className="users-table">
           <thead>
             <tr>
@@ -70,9 +114,16 @@ function CutOptimiserListPage() {
               <th>Project</th>
               <th style={{ textAlign: "right" }}>Revision</th>
               <th>Last Updated</th>
-              <th />
-            </tr>
-          </thead>
+               <th />
+             </tr>
+             <tr>
+               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.cut_optimiser_id ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, cut_optimiser_id: e.target.value }))} /></th>
+               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, project_name: e.target.value }))} /></th>
+               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.revision ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, revision: e.target.value }))} /></th>
+               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.updated_at ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, updated_at: e.target.value }))} /></th>
+               <th></th>
+             </tr>
+           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={5} style={{ textAlign: "center" }}>Loading...</td></tr>

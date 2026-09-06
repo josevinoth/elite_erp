@@ -128,7 +128,7 @@ function VendorsPage() {
   return (
     <section className="module-page vendor-page">
       <div className="crud-page__header vendor-page__header">
-        <h1 className="module-page__title">Vendors</h1>
+        <h1 className="module-page__title module-page__title--vendors">Vendors</h1>
       </div>
 
       {status.message ? <p className={`users-status users-status--${status.type}`}>{status.message}</p> : null}

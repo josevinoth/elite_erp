@@ -20,27 +20,7 @@ class ProjectCostingSummaryView:
 
     @staticmethod
     def ensure_retrieval_statuses_seeded():
-        legacy_labels = ["Request Rejected", "item Rejected"]
-        canonical = RetrievalStatusInfo.STATUS_REQUEST_REJECTED
-        canonical_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=canonical).first()
-        if canonical_obj:
-            legacy_qs = RetrievalStatusInfo.objects.filter(status_name__in=legacy_labels).exclude(pk=canonical_obj.pk)
-            legacy_ids = list(legacy_qs.values_list("id", flat=True))
-            if legacy_ids:
-                # Re-point legacy references first so cleanup does not violate PROTECT FKs.
-                ProjectCostingItemInfo.objects.filter(retrieval_status_id__in=legacy_ids).update(retrieval_status=canonical_obj)
-                try:
-                    legacy_qs.delete()
-                except ProtectedError:
-                    # Keep legacy rows if any other protected references still exist.
-                    pass
-        else:
-            legacy_obj = RetrievalStatusInfo.objects.filter(status_name__in=legacy_labels).order_by("id").first()
-            if legacy_obj:
-                legacy_obj.status_name = canonical
-                legacy_obj.save(update_fields=["status_name"])
-
-        for status_name in [
+        canonical_statuses = [
             RetrievalStatusInfo.STATUS_NO_ACTION,
             RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
             RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
@@ -48,8 +28,50 @@ class ProjectCostingSummaryView:
             RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
             RetrievalStatusInfo.STATUS_ITEM_RETURN,
             RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
-        ]:
-            RetrievalStatusInfo.objects.get_or_create(status_name=status_name)
+        ]
+        alias_to_canonical = {
+            "request rejected": RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
+        }
+
+        for canonical_name in canonical_statuses:
+            canonical_obj = RetrievalStatusInfo.objects.filter(status_name=canonical_name).order_by("id").first()
+            if not canonical_obj:
+                canonical_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=canonical_name).order_by("id").first()
+            if not canonical_obj:
+                canonical_obj = RetrievalStatusInfo.objects.create(status_name=canonical_name)
+            elif canonical_obj.status_name != canonical_name:
+                canonical_obj.status_name = canonical_name
+                canonical_obj.save(update_fields=["status_name"])
+
+            duplicate_ids = list(
+                RetrievalStatusInfo.objects.filter(status_name__iexact=canonical_name)
+                .exclude(pk=canonical_obj.pk)
+                .values_list("id", flat=True)
+            )
+            if duplicate_ids:
+                # Re-point duplicate references first so cleanup does not violate PROTECT FKs.
+                ProjectCostingItemInfo.objects.filter(retrieval_status_id__in=duplicate_ids).update(retrieval_status=canonical_obj)
+                try:
+                    RetrievalStatusInfo.objects.filter(pk__in=duplicate_ids).delete()
+                except ProtectedError:
+                    pass
+
+        for alias_name, canonical_name in alias_to_canonical.items():
+            canonical_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=canonical_name).order_by("id").first()
+            if not canonical_obj:
+                canonical_obj = RetrievalStatusInfo.objects.create(status_name=canonical_name)
+
+            alias_ids = list(
+                RetrievalStatusInfo.objects.filter(status_name__iexact=alias_name)
+                .exclude(pk=canonical_obj.pk)
+                .values_list("id", flat=True)
+            )
+            if alias_ids:
+                ProjectCostingItemInfo.objects.filter(retrieval_status_id__in=alias_ids).update(retrieval_status=canonical_obj)
+                try:
+                    RetrievalStatusInfo.objects.filter(pk__in=alias_ids).delete()
+                except ProtectedError:
+                    pass
 
     def _serialize_retrieval_statuses(self):
         self.ensure_retrieval_statuses_seeded()
@@ -187,11 +209,7 @@ class ProjectCostingItemView:
         ProjectCostingSummaryView.ensure_retrieval_statuses_seeded()
         allowed_status_ids = list(
             RetrievalStatusInfo.objects.filter(
-                status_name__in=[
-                    RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
-                    RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
-                    RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
-                ]
+                status_name=RetrievalStatusInfo.STATUS_ITEM_REQUESTED
             ).values_list("id", flat=True)
         )
         queryset = ProjectCostingItemInfo.objects.select_related("costing_id", "cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")

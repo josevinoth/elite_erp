@@ -17,6 +17,7 @@ import {
   YESNO_FIELD_CONFIG,
 } from "../utils/projectsAddPageUtils";
 import ProjectLayoutDrawingSection from "./ProjectLayoutDrawingSection";
+import ProjectCostingPage from "./ProjectCostingPage";
 import ProjectQuotationPage from "./ProjectQuotationPage";
 import "../styles/project_quotation.css";
 const TEXT_FIELD_KEYS = new Set([
@@ -45,6 +46,7 @@ function ProjectsAddPage() {
   const [projectError, setProjectError] = useState("");
   const [projectStatus, setProjectStatus] = useState("");
   const [quotationStatus, setQuotationStatus] = useState({ type: "", message: "" });
+  const [costingStatus, setCostingStatus] = useState({ type: "", message: "" });
   const mapOptions = useCallback((values = []) => {
     const unique = Array.from(new Set(values.filter(Boolean).map((v) => String(v).trim())));
     return unique.map((v) => ({ value: v, label: v }));
@@ -252,10 +254,14 @@ function ProjectsAddPage() {
   const handleQuotationSummaryStatus = useCallback((nextStatus) => {
     setQuotationStatus(nextStatus || { type: "", message: "" });
   }, []);
+
+  const handleCostingStatus = useCallback((nextStatus) => {
+    setCostingStatus(nextStatus || { type: "", message: "" });
+  }, []);
   return (
     <section className="module-page">
       <div className="crud-page__header pq-header">
-        <h1 className="module-page__title pq-title">{isEditMode ? "Project Edit" : "Project Add"}</h1>
+        <h1 className="module-page__title module-page__title--projects pq-title">{isEditMode ? "Project Edit" : "Project Add"}</h1>
         <button type="button" className="crud-add-btn" onClick={() => navigate("/projects")} disabled={savingProject}>Back to List</button>
       </div>
       {projectError ? <p className="users-status users-status--error">{projectError}</p> : null}
@@ -337,6 +343,36 @@ function ProjectsAddPage() {
               ) : (
                 <p className="users-status pq-disabled-note" style={{ marginTop: 0 }}>
                   Save the project first to add quotation items.
+                </p>
+              )}
+            </div>
+          </details>
+
+          <details
+            open
+            className="costing-selector-details pq-details-card pq-project-quotation-panel"
+          >
+            {costingStatus.message ? (
+              <p className={`${costingStatus.type === "error" ? "users-status users-status--error" : "users-status users-status--success"} pq-disabled-note`} style={{ marginTop: 0 }}>
+                {costingStatus.message}
+              </p>
+            ) : null}
+            <summary
+              className="auth-input costing-selector-summary pq-details-summary pq-project-quotation-summary"
+            >
+              Project Costing List
+            </summary>
+            <div className="pq-details-content">
+              {isEditMode ? (
+                <ProjectCostingPage
+                  projectId={projectId}
+                  projectCode={formValues.project_id}
+                  embedded
+                  onStatusChange={handleCostingStatus}
+                />
+              ) : (
+                <p className="users-status pq-disabled-note" style={{ marginTop: 0 }}>
+                  Save the project first to manage project costing records.
                 </p>
               )}
             </div>

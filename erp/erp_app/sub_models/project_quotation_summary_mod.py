@@ -8,9 +8,21 @@ from .project import Project
 
 
 class ProjectQuotationSummaryInfo(models.Model):
+    STATUS_WORK_IN_PROGRESS = "Work In Progress"
+    STATUS_COMPLETED = "Completed"
+    STATUS_HOLD = "Hold"
+    STATUS_CANCELLED = "Cancelled"
+    STATUS_CHOICES = [
+        (STATUS_WORK_IN_PROGRESS, STATUS_WORK_IN_PROGRESS),
+        (STATUS_COMPLETED, STATUS_COMPLETED),
+        (STATUS_HOLD, STATUS_HOLD),
+        (STATUS_CANCELLED, STATUS_CANCELLED),
+    ]
+
     quotation_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="project_quotation_summaries")
     project_name = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_WORK_IN_PROGRESS)
 
     total_material_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     petrol_expenses = models.IntegerField(default=0)
@@ -119,6 +131,11 @@ class ProjectQuotationSummaryInfo(models.Model):
         self.installation = self._as_int(self.installation)
         self.business_development = self._as_int(self.business_development)
         self.markup = self._as_decimal(self.markup)
+
+        if self.status == self.STATUS_COMPLETED:
+            has_items = bool(self.pk and self.quotation_items.exists())
+            if not has_items:
+                raise ValidationError({"status": "Quotation cannot be marked Completed when no quotation items exist."})
 
         if self.pk:
             self.total_material_cost = self._material_items_total()

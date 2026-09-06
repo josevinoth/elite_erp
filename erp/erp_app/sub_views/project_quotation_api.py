@@ -263,6 +263,8 @@ def quotation_items_api_view(request, pk):
         return JsonResponse({"status": "error", "message": "Quotation summary not found."}, status=404)
 
     if request.method == "GET":
+        # Quotation payload intentionally excludes retrieval workflow fields.
+        # retrieval_status belongs only to Project Costing module.
         payload = ProjectQuotationItemView(request).list_payload(summary)
         return Response(payload, status=status.HTTP_200_OK)
 
@@ -320,6 +322,39 @@ def quotation_item_detail_api_view(request, quotation_pk, item_pk):
         return error_response
     payload = ProjectQuotationSummaryView(request).detail_payload(summary)
     return Response({"success": True, "item_id": updated_row.pk, **payload}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@csrf_protect
+def project_quotation_summary_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectQuotationSummaryInfo.objects.select_related("project").get(pk=pk)
+    except ProjectQuotationSummaryInfo.DoesNotExist:
+        return JsonResponse({"status": "error", "message": "Quotation summary not found."}, status=404)
+
+    payload = ProjectQuotationSummaryView(request).detail_payload(summary)
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@csrf_protect
+def project_quotation_items_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectQuotationSummaryInfo.objects.select_related("project").get(pk=pk)
+    except ProjectQuotationSummaryInfo.DoesNotExist:
+        return JsonResponse({"status": "error", "message": "Quotation summary not found."}, status=404)
+
+    # Retrieval workflow remains exclusive to Project Costing; do not expose it here.
+    payload = ProjectQuotationItemView(request).list_payload(summary)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])

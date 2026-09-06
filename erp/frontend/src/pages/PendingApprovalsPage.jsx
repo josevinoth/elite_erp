@@ -3,7 +3,6 @@ import {
   BsCheckCircleFill,
   BsClockHistory,
   BsDownload,
-  BsPersonCheck,
   BsXCircleFill,
 } from "react-icons/bs";
 import { approveRegistration, listPendingRegistrations } from "../services/authApi";
@@ -76,8 +75,7 @@ function PendingApprovalsPage() {
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
-        <h1 className="module-page__title">
-          <BsPersonCheck aria-hidden="true" style={{ marginRight: "0.5rem", color: "var(--primary)" }} />
+        <h1 className="module-page__title module-page__title--approvals">
           Pending Approvals
           {rows.length > 0 && (
             <span className="pending-badge pending-badge--header">{rows.length}</span>

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  BsBoxes,
+  BsCashCoin,
   BsCheckCircleFill,
+  BsClipboardData,
   BsPencilSquare,
   BsPlusCircleFill,
   BsTrashFill,
@@ -14,16 +17,18 @@ import {
   downloadQuotationItemsImportTemplate,
   deleteQuotationItem,
   deleteQuotationSummary,
+  getProjectQuotationSummary,
   getItemCostPreview,
   importQuotationItemsExcel,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
-  listQuotationItems,
+  listProjectQuotationItems,
   listQuotationSummaries,
   listRooms,
   updateQuotationItem,
   updateQuotationSummary,
 } from "../services/crudApi";
+import "../styles/ProjectCostingSummary.css";
 import "../styles/ProjectQuotation.css";
 
 const MATERIAL_NAME = "MATERIAL";
@@ -92,6 +97,7 @@ const buildDraftItem = (materialCostTypeId) => ({
   stock_status_name: "In-Stock",
   requested_qty: "0",
   purchase_qty: "0",
+  cost_per_qty: "0",
   max_cost: "0",
   min_cost: "0",
   actual_cost: "0",
@@ -100,6 +106,7 @@ const buildDraftItem = (materialCostTypeId) => ({
 });
 
 const SUMMARY_EDITABLE_FIELDS = [
+  "quotation_status",
   "petrol_expenses",
   "transport_installation_team",
   "contingency",
@@ -112,27 +119,12 @@ const SUMMARY_EDITABLE_FIELDS = [
   "markup",
 ];
 
-const SUMMARY_PRIMARY_FIELDS = [
-  "quotation_number",
-  "project_id",
-  "project_name",
-  "planned_order_value",
+const QUOTATION_STATUS_OPTIONS = [
+  "Work In Progress",
+  "Completed",
+  "Hold",
+  "Cancelled",
 ];
-
-const SUMMARY_CALCULATED_FIELDS = [
-  "total_material_cost",
-  "final_material_cost",
-  "total_cost_to_elite",
-  "total_markup",
-  "discount",
-  "undiscounted_quote_value",
-  "factor",
-];
-
-const SUMMARY_FIELD_LABELS = {
-  project_id: "project id",
-  food_accomodation: "food accomodation",
-};
 
 const getStatusClassName = (type) => {
   if (type === "error") return "users-status users-status--error";
@@ -292,7 +284,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       return;
     }
 
-    const data = await listQuotationItems(quotationId);
+    const data = await listProjectQuotationItems(quotationId);
     setItems(Array.isArray(data.items) ? data.items : []);
     setValidationMessages(normalizeValidationMessages(data.validation_messages));
   }, []);
@@ -387,7 +379,12 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       if (nextSelectedId) {
         const selected = refreshedSummaryRows.find((row) => String(row.id) === String(nextSelectedId));
         setSelectedQuotationId(String(nextSelectedId));
-        setSummary(selected || null);
+        let summaryPayload = selected || null;
+        if (selected) {
+          const detailPayload = await getProjectQuotationSummary(selected.id);
+          summaryPayload = detailPayload?.quotation || selected;
+        }
+        setSummary(summaryPayload);
         if (selected) {
           await loadItemsForSummary(selected.id);
         } else {
@@ -429,7 +426,12 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     const rows = Array.isArray(listData.quotations) ? listData.quotations : [];
     setQuotations(rows);
     const selected = rows.find((row) => String(row.id) === String(quotationId || "")) || null;
-    setSummary(selected);
+    let summaryPayload = selected;
+    if (selected) {
+      const detailPayload = await getProjectQuotationSummary(selected.id);
+      summaryPayload = detailPayload?.quotation || selected;
+    }
+    setSummary(summaryPayload);
     if (selected) {
       await loadItemsForSummary(selected.id);
     } else {
@@ -525,6 +527,13 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   }, [clearStatus, loadItemsForSummary, showStatus, summary?.id]);
 
   const patchSummary = useCallback((field, value) => {
+    if (field === "quotation_status") {
+      const nextStatus = String(value || "").trim().toLowerCase();
+      if (nextStatus === "completed" && (!Array.isArray(items) || items.length === 0)) {
+        showStatus("Quotation cannot be marked Completed when no quotation items exist.", "warning");
+        return;
+      }
+    }
     setSummary((prev) => {
       if (!prev) return prev;
       const next = { ...prev, [field]: value };
@@ -532,7 +541,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     });
     setSummarySaveFeedback({ type: "", message: "" });
     if (onSummaryStatusChange) onSummaryStatusChange({ type: "", message: "" });
-  }, [onSummaryStatusChange]);
+  }, [items, onSummaryStatusChange, showStatus]);
 
   const goBackToQuotationList = useCallback(() => {
     if (selectedQuotationId) {
@@ -550,7 +559,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   }, [clearStatus, navigate, selectedQuotationId, setSearchParams]);
 
   const saveSummary = useCallback(async () => {
-    if (!summary?.id) return;
+    if (!summary?.id || !ensureEditableQuotation("save summary")) return;
     setSavingSummary(true);
     clearStatus();
     setSummarySaveFeedback({ type: "", message: "" });
@@ -590,10 +599,15 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     } finally {
       setSavingSummary(false);
     }
-  }, [clearStatus, refreshSelectedSummary, showStatus, summary]);
+  }, [clearStatus, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary]);
 
-  const removeSummary = useCallback(async (quotationId) => {
+  const removeSummary = useCallback(async (summaryRow) => {
+    const quotationId = summaryRow?.id;
     if (!quotationId) return;
+    if (String(summaryRow?.quotation_status || "").trim().toLowerCase() === "completed") {
+      showStatus("Completed quotation cannot be deleted.", "warning");
+      return;
+    }
     if (!window.confirm("Delete this quotation and all linked items?")) return;
 
     clearStatus();
@@ -619,7 +633,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     if (!selected) return;
 
     setSelectedQuotationId(String(selected.id));
-    setSummary(selected);
+    const detailPayload = await getProjectQuotationSummary(selected.id);
+    setSummary(detailPayload?.quotation || selected);
     setImportSummary(null);
     setImportReports([]);
     clearStatus();
@@ -628,6 +643,17 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     }
     await loadItemsForSummary(selected.id);
   }, [clearStatus, embedded, loadItemsForSummary, quotations, setSearchParams]);
+
+  const quotationTitle = summary?.quotation_number
+    ? `Project Quotation - ${summary.quotation_number}`
+    : (embedded ? "Quotation" : "Project Quotation");
+  const isCompletedQuotation = String(summary?.quotation_status || "").trim().toLowerCase() === "completed";
+
+  const ensureEditableQuotation = useCallback((actionLabel = "edit values") => {
+    if (!isCompletedQuotation) return true;
+    showStatus(`Completed quotation is read-only. You cannot ${actionLabel}.`, "warning");
+    return false;
+  }, [isCompletedQuotation, showStatus]);
 
   const applyMaterialSelection = useCallback(async (itemCodeId, applyPatch) => {
     const master = getMasterById(itemCodeId);
@@ -638,6 +664,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         stock_status_name: "No Stock",
         purchase_qty: "0",
         requested_qty: "0",
+        cost_per_qty: "0",
         max_cost: "0",
         min_cost: "0",
         actual_cost: "0",
@@ -659,6 +686,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       stock_status_name: hasNoPurchaseData ? "No Stock" : (toNumber(quantity) <= 0 ? "No Stock" : "In-Stock"),
       purchase_qty: quantity,
       requested_qty: "0",
+      cost_per_qty: "0",
       max_cost: "0",
       min_cost: "0",
       actual_cost: "0", // User must enter cost manually if purchase data is missing
@@ -679,9 +707,9 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       try {
         const preview = await getItemCostPreview(master.item_code, 1);
         const previewCost = String(preview?.cost ?? "0");
-        applyPatch({ max_cost: previewCost, min_cost: previewCost, actual_cost: previewCost });
+        applyPatch({ cost_per_qty: previewCost, max_cost: previewCost, min_cost: previewCost, actual_cost: previewCost });
       } catch (_error) {
-        applyPatch({ max_cost: "0", min_cost: "0", actual_cost: "0" });
+        applyPatch({ cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0" });
       }
     }
   }, [getMasterById, showStatus]);
@@ -705,17 +733,19 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   }, []);
 
   const startAdd = useCallback(() => {
+    if (!ensureEditableQuotation("add items")) return;
     setEditingItemId(null);
     setEditingRow(null);
     setDraftRow(buildDraftItem(materialCostTypeId));
     clearStatus();
-  }, [clearStatus, materialCostTypeId]);
+  }, [clearStatus, ensureEditableQuotation, materialCostTypeId]);
 
   const cancelAdd = useCallback(() => {
     setDraftRow(null);
   }, []);
 
   const startEdit = useCallback((row) => {
+    if (!ensureEditableQuotation("edit items")) return;
     setDraftRow(null);
     setEditingItemId(row.id);
     setEditingRow({
@@ -728,6 +758,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       stock_status_name: getStockStatusName(row),
       requested_qty: String(row.requested_qty ?? "0"),
       purchase_qty: String(row.purchase_qty ?? "0"),
+      cost_per_qty: String(row.cost_per_qty ?? "0"),
       actual_cost: String(row.actual_cost ?? "0"),
       max_cost: String(row.max_cost ?? "0"),
       min_cost: String(row.min_cost ?? "0"),
@@ -738,7 +769,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       volume: String(row.volume ?? "0"),
     });
     clearStatus();
-  }, [clearStatus]);
+  }, [clearStatus, ensureEditableQuotation]);
 
   const cancelEdit = useCallback(() => {
     setEditingItemId(null);
@@ -782,7 +813,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   }), [isMaterialCostType]);
 
   const saveDraftItem = useCallback(async () => {
-    if (!summary?.id || !draftRow) return;
+    if (!summary?.id || !draftRow || !ensureEditableQuotation("save item changes")) return;
     const validation = validateItemRow(draftRow);
     if (validation.type === "error") {
       showStatus(validation.message, validation.type);
@@ -836,10 +867,10 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     } finally {
       setSavingRow(false);
     }
-  }, [buildItemPayload, clearStatus, draftRow, refreshSelectedSummary, showStatus, summary, validateItemRow]);
+  }, [buildItemPayload, clearStatus, draftRow, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary, validateItemRow]);
 
   const saveEditedItem = useCallback(async () => {
-    if (!summary?.id || !editingItemId || !editingRow) return;
+    if (!summary?.id || !editingItemId || !editingRow || !ensureEditableQuotation("save item changes")) return;
     const validation = validateItemRow(editingRow);
     if (validation.type === "error") {
       showStatus(validation.message, validation.type);
@@ -895,10 +926,10 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     } finally {
       setSavingRow(false);
     }
-  }, [buildItemPayload, clearStatus, editingItemId, editingRow, refreshSelectedSummary, showStatus, summary, validateItemRow]);
+  }, [buildItemPayload, clearStatus, editingItemId, editingRow, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary, validateItemRow]);
 
   const removeItem = useCallback(async (itemId) => {
-    if (!summary?.id) return;
+    if (!summary?.id || !ensureEditableQuotation("delete items")) return;
     if (!window.confirm("Delete this quotation item?")) return;
 
     clearStatus();
@@ -911,43 +942,168 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       showStatus(text, "error");
       window.alert(text);
     }
-  }, [clearStatus, refreshSelectedSummary, showStatus, summary]);
+  }, [clearStatus, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary]);
 
   const renderSummaryGrid = () => {
     if (!summary) return null;
 
-    const orderedFields = [
-      ...SUMMARY_PRIMARY_FIELDS,
-      ...SUMMARY_EDITABLE_FIELDS,
-      ...SUMMARY_CALCULATED_FIELDS,
-    ];
-
-    const readOnlyFields = new Set([...SUMMARY_PRIMARY_FIELDS, ...SUMMARY_CALCULATED_FIELDS]);
-
     return (
-      <div className="pq-summary-grid">
-        {orderedFields.map((field) => {
-          const readOnly = readOnlyFields.has(field);
-          const displayValue = field === "project_id"
-            ? (summary.project_code || summary.project_id || "")
-            : (readOnly ? (summaryPreviewValues[field] ?? summary[field] ?? "") : (summary[field] ?? ""));
+      <>
+        <h2 className="project-costing-section-title">
+          <span className="project-costing-section-title__icon" aria-hidden="true"><BsClipboardData /></span>
+          <span className="project-costing-section-title__text">Quotation Summary</span>
+        </h2>
 
-          return (
-            <label key={field} className="pq-summary-field">
-              <span className="pq-summary-field__label">
-                {(SUMMARY_FIELD_LABELS[field] || field.replaceAll("_", " "))}
+        <div className="project-costing-summary-grid">
+          <div className="project-costing-field">
+            <span className="project-costing-field__label">Quotation Number</span>
+            <span className="project-costing-field__value">{summary.quotation_number || "-"}</span>
+          </div>
+          <div className="project-costing-field">
+            <span className="project-costing-field__label">Status</span>
+            <select
+              className="project-costing-input"
+              value={summary.quotation_status || "Work In Progress"}
+              onChange={(event) => patchSummary("quotation_status", event.target.value)}
+              disabled={savingSummary || isCompletedQuotation}
+            >
+              {QUOTATION_STATUS_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <div className="project-costing-field">
+            <span className="project-costing-field__label">Project ID</span>
+            <span className="project-costing-field__value">{summary.project_code || summary.project_id || "-"}</span>
+          </div>
+          <div className="project-costing-field">
+            <span className="project-costing-field__label">Project Name</span>
+            <span className="project-costing-field__value">{summary.project_name || "-"}</span>
+          </div>
+          <div className="project-costing-field">
+            <span className="project-costing-field__label">Planned Order Value</span>
+            <span className="project-costing-field__value">{summaryPreviewValues.planned_order_value || summary.planned_order_value || "-"}</span>
+          </div>
+        </div>
+
+        <div className="project-costing-form-section">
+          <h3 className="project-costing-form-section__title project-costing-form-section__title--material">
+            <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsCashCoin /></span>
+            <span>Material & Markup</span>
+          </h3>
+          <div className="project-costing-form-grid">
+            <label className="project-costing-form-label">
+              <span className="project-costing-label-with-help">
+                Total Material Cost
+                <span
+                  className="project-costing-help-tooltip"
+                  title="Auto-calculated from quotation items."
+                  aria-label="Auto-calculated from quotation items."
+                >
+                  ?
+                </span>
               </span>
               <input
-                className={`auth-input${readOnly ? " auth-input--readonly" : ""}`}
-                value={displayValue}
-                onChange={(event) => patchSummary(field, event.target.value)}
-                readOnly={readOnly}
-                disabled={readOnly || savingSummary}
+                className="project-costing-input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={summaryPreviewValues.total_material_cost ?? summary.total_material_cost ?? 0}
+                readOnly
+                disabled
               />
             </label>
-          );
-        })}
-      </div>
+            <label className="project-costing-form-label">
+              Markup %
+              <input
+                className="project-costing-input"
+                type="number"
+                min="0"
+                step="0.0001"
+                value={summary.markup ?? 0}
+                onChange={(event) => patchSummary("markup", event.target.value)}
+                disabled={savingSummary || isCompletedQuotation}
+              />
+            </label>
+            <label className="project-costing-form-label">
+              Contingency %
+              <input
+                className="project-costing-input"
+                type="number"
+                min="0"
+                step="0.0001"
+                value={summary.contingency ?? 0}
+                onChange={(event) => patchSummary("contingency", event.target.value)}
+                disabled={savingSummary || isCompletedQuotation}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="project-costing-form-section">
+          <h3 className="project-costing-form-section__title project-costing-form-section__title--expenses">
+            <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsBoxes /></span>
+            <span>Expenses</span>
+          </h3>
+          <div className="project-costing-form-grid">
+            <label className="project-costing-form-label">
+              Petrol Expenses
+              <input className="project-costing-input" type="number" min="0" value={summary.petrol_expenses ?? 0} onChange={(event) => patchSummary("petrol_expenses", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+            <label className="project-costing-form-label">
+              Transport / Install Team
+              <input className="project-costing-input" type="number" min="0" value={summary.transport_installation_team ?? 0} onChange={(event) => patchSummary("transport_installation_team", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+            <label className="project-costing-form-label">
+              Transportation
+              <input className="project-costing-input" type="number" min="0" value={summary.transportation ?? 0} onChange={(event) => patchSummary("transportation", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+            <label className="project-costing-form-label">
+              Food / Accommodation
+              <input className="project-costing-input" type="number" min="0" value={summary.food_accomodation ?? 0} onChange={(event) => patchSummary("food_accomodation", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+            <label className="project-costing-form-label">
+              Loading
+              <input className="project-costing-input" type="number" min="0" value={summary.loading ?? 0} onChange={(event) => patchSummary("loading", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+            <label className="project-costing-form-label">
+              Unloading
+              <input className="project-costing-input" type="number" min="0" value={summary.unloading ?? 0} onChange={(event) => patchSummary("unloading", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+            <label className="project-costing-form-label">
+              Installation
+              <input className="project-costing-input" type="number" min="0" value={summary.installation ?? 0} onChange={(event) => patchSummary("installation", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+            <label className="project-costing-form-label">
+              Business Development
+              <input className="project-costing-input" type="number" min="0" value={summary.business_development ?? 0} onChange={(event) => patchSummary("business_development", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+            </label>
+          </div>
+        </div>
+
+        <div className="project-costing-form-section">
+          <h3 className="project-costing-form-section__title project-costing-form-section__title--calculated">
+            <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsCheckCircleFill /></span>
+            <span>Calculated Totals</span>
+          </h3>
+          <div className="project-costing-summary-grid">
+            {[
+              ["Final Material Cost", summaryPreviewValues.final_material_cost],
+              ["Total Cost to Elite", summaryPreviewValues.total_cost_to_elite],
+              ["Total Markup", summaryPreviewValues.total_markup],
+              ["Planned Order Value", summaryPreviewValues.planned_order_value],
+              ["Discount", summaryPreviewValues.discount],
+              ["Undiscounted Quote Value", summaryPreviewValues.undiscounted_quote_value],
+              ["Factor", summaryPreviewValues.factor],
+            ].map(([label, value]) => (
+              <div key={label} className="project-costing-field">
+                <span className="project-costing-field__label">{label}</span>
+                <span className="project-costing-field__value project-costing-field__value--calc">{value ?? "-"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
     );
   };
 
@@ -958,6 +1114,19 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
     return (
       <>
+        <td>
+          <select
+            className="auth-input"
+            value={row.cost_type_id}
+            disabled={disabled}
+            onChange={(event) => patchFn({ item_category_id: "", item_name: "", item_code_id: "", item_type: "", room_name_id: "", stock_status_name: "In-Stock", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions, cost_type_id: event.target.value })}
+          >
+            <option value="">Select cost type</option>
+            {costTypes.map((option) => (
+              <option key={option.id} value={String(option.id)}>{option.name}</option>
+            ))}
+          </select>
+        </td>
         <td>
           <select
             className="auth-input"
@@ -976,7 +1145,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             className="auth-input"
             value={row.item_category_id}
             disabled={disabled || !material}
-            onChange={(event) => patchFn({ item_category_id: event.target.value, item_name: "", item_code_id: "", item_type: "", purchase_qty: "0", requested_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions })}
+            onChange={(event) => patchFn({ item_category_id: event.target.value, item_name: "", item_code_id: "", item_type: "", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions })}
           >
             <option value="">Select category</option>
             {categoryOptions.map((option) => (
@@ -989,7 +1158,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             className="auth-input"
             value={row.item_name}
             disabled={disabled || !material || !row.item_category_id}
-            onChange={(event) => patchFn({ item_name: event.target.value, item_code_id: "", item_type: "", purchase_qty: "0", requested_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions })}
+            onChange={(event) => patchFn({ item_name: event.target.value, item_code_id: "", item_type: "", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions })}
           >
             <option value="">Select item name</option>
             {itemNames.map((name) => (
@@ -1011,26 +1180,34 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
           </select>
         </td>
         <td><input className="auth-input auth-input--readonly" value={row.item_type || ""} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.length} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.width} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.height} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.volume} readOnly disabled /></td>
         <td><input className="auth-input auth-input--readonly" value={row.purchase_qty} readOnly disabled /></td>
         <td><input className="auth-input" type="number" min="0" step="any" value={row.requested_qty} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value })} /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.cost_per_qty || "0"} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.max_cost || "0"} readOnly disabled /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.min_cost || "0"} readOnly disabled /></td>
+        <td><input className="auth-input" type="number" min="0" step="any" value={row.actual_cost} disabled={disabled} onChange={(event) => patchFn({ actual_cost: event.target.value })} /></td>
+        <td><input className="auth-input auth-input--readonly" value={row.total_cost || "0"} readOnly disabled /></td>
         <td>
           <span className={`pq-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
             {getStockStatusName(row)}
           </span>
         </td>
-        <td><input className="auth-input auth-input--readonly" value={row.length} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.width} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.height} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.volume} readOnly disabled /></td>
       </>
     );
   };
 
   return (
-    <section className="module-page">
-      <div className="crud-page__header pq-header">
+    <section className="module-page project-costing-page">
+      <div className="crud-page__header pq-header project-costing-toolbar">
         <div>
-          <h1 className="module-page__title pq-title">{embedded ? "Quotation" : "Project Quotation"}</h1>
+          <h1 className="module-page__title project-costing-title">
+            <span className="project-costing-title__icon" aria-hidden="true"><BsCashCoin /></span>
+            <span className="project-costing-title__text">{quotationTitle}</span>
+          </h1>
         </div>
         {!embedded ? (
           <div className="pq-header-actions">
@@ -1060,21 +1237,22 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       {loading ? <p className="users-status">Loading quotations...</p> : null}
 
       {!loading && !embedded && !selectedQuotationId ? (
-        <div className="users-table-wrap pq-table-wrap-list">
-          <table className="users-table">
+        <div className="users-table-wrap pq-table-wrap-list project-costing-table-wrap">
+          <table className="users-table project-costing-table">
             <thead>
               <tr>
                 <th>Quotation Number</th>
                 <th>Project ID</th>
                 <th>Project Name</th>
                 <th>Total Quotation Cost</th>
+                <th>Status</th>
                 <th className="pq-text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {quotations.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="pq-empty-cell">
+                  <td colSpan={6} className="pq-empty-cell">
                     No quotations found.
                   </td>
                 </tr>
@@ -1084,12 +1262,19 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                   <td>{row.project_code || row.project_id}</td>
                   <td>{row.project_name || "-"}</td>
                   <td className="pq-text-right">{row.total_quotation_cost}</td>
+                  <td>{row.quotation_status || "Work In Progress"}</td>
                   <td className="pq-text-center">
                     <div className="pq-inline-actions">
                       <button type="button" className="users-action users-action--edit" onClick={() => openSummary(row.id)} title="Edit">
                         <BsPencilSquare aria-hidden="true" />
                       </button>
-                      <button type="button" className="users-action users-action--delete" onClick={() => removeSummary(row.id)} title="Delete">
+                      <button
+                        type="button"
+                        className="users-action users-action--delete"
+                        onClick={() => removeSummary(row)}
+                        disabled={String(row.quotation_status || "").trim().toLowerCase() === "completed"}
+                        title={String(row.quotation_status || "").trim().toLowerCase() === "completed" ? "Completed quotations cannot be deleted" : "Delete"}
+                      >
                         <BsTrashFill aria-hidden="true" />
                       </button>
                     </div>
@@ -1102,13 +1287,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       ) : null}
 
       {!loading && (embedded || selectedQuotationId) && summary ? (
-        <details open className="costing-selector-details pq-details-card">
-          <summary className="auth-input costing-selector-summary pq-details-summary">
-            <span className="pq-details-title">{summary.quotation_number || "Auto"} - {summary.project_name || "Project"}</span>
-            <span className="pq-details-total">Total OMR {toMoney(summaryPreviewValues.planned_order_value || summary.total_quotation_cost || summary.total_cost_to_elite)}</span>
-          </summary>
-
-          <div className="pq-details-content">
+        <div className="pq-details-content project-costing-card">
             {summaryStatus ? (
               <p className={`${getStatusClassName(summaryStatus.type)} pq-status-block`}>
                 {summaryStatus.message}
@@ -1126,8 +1305,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             ) : null}
 
             {renderSummaryGrid()}
-            <div className="pq-summary-actions">
-              <button type="button" className="crud-add-btn" onClick={saveSummary} disabled={savingSummary}>
+            <div className="project-costing-form-actions pq-summary-actions">
+              <button type="button" className="crud-add-btn" onClick={saveSummary} disabled={savingSummary || isCompletedQuotation}>
                 {savingSummary ? "Saving..." : "Save Summary"}
               </button>
             </div>
@@ -1144,17 +1323,17 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               <strong>Quotation Items</strong>
               <div className="pq-items-header-actions">
                 <input ref={importFileInputRef} className="pq-hidden-file-input" type="file" accept=".xlsx,.xls" onChange={handleImportItemsFile} />
-                <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || savingRow}>
+                <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || savingRow || isCompletedQuotation}>
                   {downloadingTemplate ? "Downloading..." : "Download Template"}
                 </button>
-                <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || savingRow}>
+                <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || savingRow || isCompletedQuotation}>
                   {importingItems ? "Importing..." : "Import Excel"}
                 </button>
-                <button type="button" className="crud-add-btn" onClick={openRoomModal}>
+                <button type="button" className="crud-add-btn" onClick={openRoomModal} disabled={isCompletedQuotation}>
                  <BsPlusCircleFill aria-hidden="true" /> Add New Room
                 </button>
                 {!draftRow ? (
-                  <button type="button" className="crud-add-btn" onClick={startAdd}>
+                  <button type="button" className="crud-add-btn" onClick={startAdd} disabled={isCompletedQuotation}>
                     <BsPlusCircleFill aria-hidden="true" /> Add Item
                   </button>
                 ) : null}
@@ -1204,35 +1383,41 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               </div>
             ) : null}
 
-            <div className="users-table-wrap users-table-wrap--fit pq-table-wrap-items">
-              <table className="users-table users-table--quotation pq-table-quotation">
+            <div className="users-table-wrap users-table-wrap--fit pq-table-wrap-items project-costing-table-wrap project-costing-table-wrap--items">
+              <table className="users-table users-table--quotation pq-table-quotation project-costing-table project-costing-table--quotation">
                 <thead>
                   <tr>
+                    <th>Cost Type</th>
                     <th>Room Name</th>
                     <th>Item Category</th>
                     <th>Item Name</th>
                     <th>Item Code</th>
                     <th>Item Type</th>
+                    <th>L</th>
+                    <th>W</th>
+                    <th>H</th>
+                    <th>Vol</th>
                     <th>Purchase Qty</th>
                     <th>Requested Qty</th>
+                    <th>Cost/Qty</th>
+                    <th>Max Cost</th>
+                    <th>Min Cost</th>
+                    <th>Actual Cost</th>
+                    <th>Total Cost</th>
                     <th>Stock Status</th>
-                    <th>Length</th>
-                    <th>Width</th>
-                    <th>Height</th>
-                    <th>Volume</th>
                     <th className="pq-text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {draftRow ? (
                     <tr>
-                      {renderItemEditorCells(draftRow, patchDraftRow, savingRow)}
+                      {renderItemEditorCells(draftRow, patchDraftRow, savingRow || isCompletedQuotation)}
                       <td className="pq-text-center">
                         <div className="pq-inline-actions">
-                          <button type="button" className="modal-btn modal-btn--save" onClick={saveDraftItem} disabled={savingRow}>
+                          <button type="button" className="modal-btn modal-btn--save" onClick={saveDraftItem} disabled={savingRow || isCompletedQuotation}>
                             <BsCheckCircleFill aria-hidden="true" />
                           </button>
-                          <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelAdd} disabled={savingRow}>
+                          <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelAdd} disabled={savingRow || isCompletedQuotation}>
                             <BsXCircleFill aria-hidden="true" />
                           </button>
                         </div>
@@ -1242,21 +1427,22 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="pq-empty-cell">No quotation items yet.</td>
+                      <td colSpan={19} className="pq-empty-cell">No quotation items yet.</td>
                     </tr>
                   ) : items.map((row) => {
+                    const rowCostType = row.cost_type?.name || row.cost_type_name || row.cost_type || "-";
                     const inEditMode = editingItemId === row.id && editingRow;
                     return (
                       <tr key={row.id}>
                         {inEditMode ? (
                           <>
-                            {renderItemEditorCells(editingRow, patchEditingRow, savingRow)}
+                            {renderItemEditorCells(editingRow, patchEditingRow, savingRow || isCompletedQuotation)}
                             <td className="pq-text-center">
                               <div className="pq-inline-actions">
-                                <button type="button" className="modal-btn modal-btn--save" onClick={saveEditedItem} disabled={savingRow}>
+                                <button type="button" className="modal-btn modal-btn--save" onClick={saveEditedItem} disabled={savingRow || isCompletedQuotation}>
                                   <BsCheckCircleFill aria-hidden="true" />
                                 </button>
-                                <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelEdit} disabled={savingRow}>
+                                <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelEdit} disabled={savingRow || isCompletedQuotation}>
                                   <BsXCircleFill aria-hidden="true" />
                                 </button>
                               </div>
@@ -1264,28 +1450,34 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                           </>
                         ) : (
                           <>
+                            <td>{rowCostType}</td>
                             <td>{row.room_name?.room_name || "-"}</td>
                             <td>{row.item_category || "-"}</td>
                             <td>{row.item_name || "-"}</td>
                             <td>{row.item_code || "-"}</td>
                             <td>{row.item_type || "-"}</td>
+                            <td className="pq-text-right">{row.length}</td>
+                            <td className="pq-text-right">{row.width}</td>
+                            <td className="pq-text-right">{row.height}</td>
+                            <td className="pq-text-right">{row.volume}</td>
                             <td className="pq-text-right">{row.purchase_qty}</td>
                             <td className="pq-text-right">{row.requested_qty}</td>
+                            <td className="pq-text-right">{row.cost_per_qty ?? row.actual_cost ?? "0"}</td>
+                            <td className="pq-text-right">{row.max_cost ?? "0"}</td>
+                            <td className="pq-text-right">{row.min_cost ?? "0"}</td>
+                            <td className="pq-text-right">{row.actual_cost ?? "0"}</td>
+                            <td className="pq-text-right">{row.total_cost ?? "0"}</td>
                             <td>
                               <span className={`pq-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
                                 {getStockStatusName(row)}
                               </span>
                             </td>
-                            <td className="pq-text-right">{row.length}</td>
-                            <td className="pq-text-right">{row.width}</td>
-                            <td className="pq-text-right">{row.height}</td>
-                            <td className="pq-text-right">{row.volume}</td>
                             <td className="pq-text-center">
                               <div className="pq-inline-actions">
-                                <button type="button" className="users-action users-action--edit" onClick={() => startEdit(row)} title="Edit">
+                                <button type="button" className="users-action users-action--edit" onClick={() => startEdit(row)} disabled={isCompletedQuotation} title={isCompletedQuotation ? "Completed quotation is read-only" : "Edit"}>
                                   <BsPencilSquare aria-hidden="true" />
                                 </button>
-                                <button type="button" className="users-action users-action--delete" onClick={() => removeItem(row.id)} title="Delete">
+                                <button type="button" className="users-action users-action--delete" onClick={() => removeItem(row.id)} disabled={isCompletedQuotation} title={isCompletedQuotation ? "Completed quotation is read-only" : "Delete"}>
                                   <BsTrashFill aria-hidden="true" />
                                 </button>
                               </div>
@@ -1299,8 +1491,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               </table>
             </div>
 
-          </div>
-        </details>
+        </div>
       ) : null}
 
       {roomModalOpen ? (

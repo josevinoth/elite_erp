@@ -38,7 +38,7 @@ function StockPurchaseItemTracePage() {
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
-        <h1 className="module-page__title">Traceability</h1>
+        <h1 className="module-page__title module-page__title--traceability">Traceability</h1>
       </div>
 
       {loading ? <p className="users-status">Loading trace details...</p> : null}

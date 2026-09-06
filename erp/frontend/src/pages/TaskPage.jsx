@@ -564,7 +564,7 @@ function TaskPage({ onNotificationsChanged = null }) {
         {isAdmin && (
           <>
             <div className="crud-page__header" style={{ marginBottom: "0.75rem" }}>
-              <h2 className="module-page__title" style={{ margin: 0, fontSize: "1.05rem" }}>
+              <h2 className="module-page__title module-page__title--tasks module-page__title--import" style={{ margin: 0, fontSize: "1.05rem" }}>
                 Import Tasks from Excel
               </h2>
               <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -597,7 +597,7 @@ function TaskPage({ onNotificationsChanged = null }) {
             {importRowReports.length ? (
               <>
                 <div className="crud-page__header" style={{ margin: "0.5rem 0" }}>
-                  <h3 className="module-page__title" style={{ margin: 0, fontSize: "1rem" }}>
+                  <h3 className="module-page__title module-page__title--tasks module-page__title--report" style={{ margin: 0, fontSize: "1rem" }}>
                     Import Details
                   </h3>
                   <button

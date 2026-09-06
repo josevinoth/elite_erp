@@ -807,7 +807,47 @@ select.auth-input option {
 .module-page__title {
   margin: 0;
   font-size: 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.45rem 0.8rem;
+  border-radius: 12px;
+  background: var(--list-header-bg-2);
+  border: 1px solid #d6deeb;
+  color: #334155;
 }
+
+.module-page__title::before {
+  content: "\1F4CB";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: var(--list-header-bg);
+  color: #ffffff;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+.module-page__title--users::before { content: "\1F465"; }
+.module-page__title--vendors::before { content: "\1F3E2"; }
+.module-page__title--projects::before { content: "\1F4C1"; }
+.module-page__title--quotation::before { content: "\1F9FE"; }
+.module-page__title--stock::before { content: "\1F4E6"; }
+.module-page__title--tasks::before { content: "\2705"; }
+.module-page__title--timesheet::before { content: "\23F1"; }
+.module-page__title--expenses::before { content: "\1F4B8"; }
+.module-page__title--approvals::before { content: "\1F44D"; }
+.module-page__title--dashboard::before { content: "\1F4CA"; }
+.module-page__title--cutting::before { content: "\2702"; }
+.module-page__title--default::before { content: "\1F4CB"; }
+.module-page__title--traceability::before { content: "\1F9ED"; }
+.module-page__title--import::before { content: "\1F4E5"; }
+.module-page__title--report::before { content: "\1F4C8"; }
 
 .module-page__description {
   margin-top: 0.5rem;
@@ -835,27 +875,48 @@ select.auth-input option {
 }
 
 .users-status--error {
-  color: var(--error);
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.28);
-  border-radius: 8px;
-  padding: 0.45rem 0.7rem;
+  color: #ffffff;
+  background: #dc2626;
+  border-left: 6px solid #b91c1c;
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.users-status--error::before {
+  content: "❌";
 }
 
 .users-status--success {
-  color: #166534;
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.28);
-  border-radius: 8px;
-  padding: 0.45rem 0.7rem;
+  color: #ffffff;
+  background: #16a34a;
+  border-left: 6px solid #15803d;
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.users-status--success::before {
+  content: "✔️";
 }
 
 .users-status--warning {
-  color: #b26a00;
-  background: rgba(255, 193, 7, 0.12);
-  border: 1px solid rgba(255, 193, 7, 0.35);
-  border-radius: 8px;
-  padding: 0.45rem 0.7rem;
+  color: #1f2937;
+  background: #facc15;
+  border-left: 6px solid #eab308;
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.users-status--warning::before {
+  content: "⚠️";
 }
 
 .users-table {

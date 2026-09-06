@@ -317,7 +317,7 @@ function ItemCostingFormPage() {
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
-        <h1 className="module-page__title">{pageTitle}</h1>
+        <h1 className="module-page__title module-page__title--projects">{pageTitle}</h1>
       </div>
 
       {status ? <p className="users-status users-status--error">{status}</p> : null}

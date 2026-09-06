@@ -427,7 +427,7 @@ function CdcTeamExpencePage() {
       {latestImportResult?.row_reports?.length ? (
         <section className="module-page" style={{ marginTop: "1rem" }}>
           <div className="crud-page__header">
-            <h2 className="module-page__title" style={{ fontSize: "1.1rem" }}>Import Report</h2>
+            <h2 className="module-page__title module-page__title--expenses module-page__title--report" style={{ fontSize: "1.1rem" }}>Import Report</h2>
           </div>
           <div className="users-table-wrap users-table-wrap--sticky" style={{ maxHeight: "40vh", overflowY: "auto" }}>
             <table className="users-table">

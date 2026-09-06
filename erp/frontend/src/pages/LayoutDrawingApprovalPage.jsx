@@ -42,7 +42,7 @@ function LayoutDrawingApprovalPage() {
   return (
     <section className="module-page">
       <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
-        <h1 className="module-page__title" style={{ margin: 0 }}>
+        <h1 className="module-page__title module-page__title--approvals" style={{ margin: 0 }}>
           Layout Drawing Approval
         </h1>
         <button type="button" className="crud-add-btn" onClick={() => navigate("/projects")}>Back to Projects</button>

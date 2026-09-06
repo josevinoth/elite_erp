@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BsArrowLeft,
+  BsCashCoin,
   BsCheckCircleFill,
+  BsClipboardData,
+  BsBoxes,
   BsPencilSquare,
   BsPlusCircleFill,
   BsTrashFill,
@@ -29,6 +32,11 @@ import { getSessionUser } from "../services/sessionUser";
 import "../styles/ProjectCosting.css";
 
 const STATUS_ITEM_ACCEPTED = "Item Accepted";
+const STATUS_NO_ACTION = "No Action";
+const STATUS_ITEM_REQUESTED = "Item Requested";
+const STATUS_ITEM_SUPPLIED = "Item Supplied";
+const STATUS_ITEM_RETURN = "Item Return";
+const STATUS_ITEM_RETURN_ACCEPTED = "Item Return Accepted";
 const MATERIAL_NAME = "MATERIAL";
 
 const toNumber = (value) => {
@@ -50,6 +58,7 @@ const emptyDimensions = {
 };
 
 const getStockStatusName = (row) => row?.stock_status?.status_name || row?.stock_status_name || "In-Stock";
+const getRetrievalStatusName = (row) => row?.retrieval_status?.status_name || row?.retrieval_status_name || STATUS_NO_ACTION;
 
 const buildDraftItem = (materialCostTypeId) => ({
   cost_type_id: materialCostTypeId ? String(materialCostTypeId) : "",
@@ -58,6 +67,7 @@ const buildDraftItem = (materialCostTypeId) => ({
   item_code_id: "",
   item_type: "",
   room_name_id: "",
+  retrieval_status_name: STATUS_NO_ACTION,
   stock_status_name: "In-Stock",
   requested_qty: "0",
   purchase_qty: "0",
@@ -122,7 +132,7 @@ function summaryFormFromCosting(c) {
   };
 }
 
-function ProjectCostingPage() {
+function ProjectCostingPage({ projectId = null, projectCode = "", embedded = false, onStatusChange = null }) {
   const currentUser = useMemo(() => getSessionUser(), []);
   const roleName = String(currentUser?.role || "").trim().toLowerCase();
   const teamName = String(currentUser?.team || "").trim().toLowerCase();
@@ -135,6 +145,7 @@ function ProjectCostingPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [costings, setCostings] = useState([]);
+  const [listColumnFilters, setListColumnFilters] = useState({});
   const [quotationOptions, setQuotationOptions] = useState([]);
   const [selectedQuotationId, setSelectedQuotationId] = useState("");
   const [retrievalStatuses, setRetrievalStatuses] = useState([]);
@@ -164,6 +175,12 @@ function ProjectCostingPage() {
   const [newRoomName, setNewRoomName] = useState("");
   const [savingRoom, setSavingRoom] = useState(false);
   const [roomPopup, setRoomPopup] = useState({ type: "", message: "" });
+  const [itemColumnFilters, setItemColumnFilters] = useState({});
+  useEffect(() => {
+    if (!onStatusChange) return;
+    onStatusChange(status || { type: "", message: "" });
+  }, [onStatusChange, status]);
+
 
   const itemMasterRef = useRef([]);
   const importFileInputRef = useRef(null);
@@ -185,6 +202,86 @@ function ProjectCostingPage() {
   const getMasterById = useCallback((itemId) => (
     itemMasterRef.current.find((item) => String(item.id) === String(itemId || "")) || null
   ), []);
+
+  const getItemColumnValue = useCallback((item, key) => {
+    if (key === "room_name") return item?.room_name?.room_name || "";
+    if (key === "stock_status") return getStockStatusName(item);
+    if (key === "retrieval_status") return item?.retrieval_status?.status_name || "";
+    return item?.[key] ?? "";
+  }, []);
+
+  const filteredEditingItems = useMemo(() => {
+    const activeFilters = Object.entries(itemColumnFilters).filter(([, value]) => String(value || "").trim());
+    if (!activeFilters.length) return editingItems;
+    return editingItems.filter((item) => (
+      activeFilters.every(([key, filterValue]) => (
+        String(getItemColumnValue(item, key)).toLowerCase().includes(String(filterValue).trim().toLowerCase())
+      ))
+    ));
+  }, [editingItems, getItemColumnValue, itemColumnFilters]);
+
+  const acceptedMaterialCost = useMemo(() => {
+    const total = editingItems.reduce((sum, item) => {
+      const statusName = String(getRetrievalStatusName(item)).trim().toLowerCase();
+      if (statusName !== STATUS_ITEM_ACCEPTED.toLowerCase()) return sum;
+      return sum + toNumber(item?.total_cost);
+    }, 0);
+    return toMoney(total);
+  }, [editingItems]);
+
+  const getEditableRetrievalOptions = useCallback((currentStatusName) => {
+    const current = String(currentStatusName || "").trim().toLowerCase();
+    if (!current || current === STATUS_NO_ACTION.toLowerCase()) return [STATUS_ITEM_REQUESTED];
+    if (current === STATUS_ITEM_SUPPLIED.toLowerCase()) return [STATUS_ITEM_RETURN];
+    if (current === STATUS_ITEM_RETURN_ACCEPTED.toLowerCase()) return [STATUS_ITEM_RETURN_ACCEPTED];
+    return [String(currentStatusName || STATUS_NO_ACTION)];
+  }, []);
+
+  const getDraftRetrievalOptions = useCallback(() => ([STATUS_NO_ACTION, STATUS_ITEM_REQUESTED]), []);
+
+  const canDeleteItem = useCallback((item) => (
+    String(getRetrievalStatusName(item)).trim().toLowerCase() === STATUS_NO_ACTION.toLowerCase()
+  ), []);
+
+  const canEditItem = useCallback((item) => (
+    String(getRetrievalStatusName(item)).trim().toLowerCase() === STATUS_NO_ACTION.toLowerCase()
+  ), []);
+
+  const scopedQuotationOptions = useMemo(() => {
+    if (!embedded || !projectId) return quotationOptions;
+    const pid = String(projectId);
+    return quotationOptions.filter((row) => String(row?.project_id ?? row?.project?.id ?? "") === pid);
+  }, [embedded, projectId, quotationOptions]);
+
+  const scopedCostings = useMemo(() => {
+    if (!embedded || !projectId) return costings;
+    const pid = String(projectId);
+    const normalizedProjectCode = String(projectCode || "").trim().toLowerCase();
+    const allowedQuotationNumbers = new Set(
+      scopedQuotationOptions
+        .map((row) => String(row?.quotation_number || "").trim())
+        .filter(Boolean)
+    );
+    return costings.filter((row) => {
+      const rowProjectId = row?.project_id ?? row?.project?.id ?? row?.project_ref_id;
+      if (String(rowProjectId || "") === pid) return true;
+      if (normalizedProjectCode && String(row?.project_code || "").trim().toLowerCase() === normalizedProjectCode) {
+        return true;
+      }
+      const quotationNumber = String(row?.quotation_number || "").trim();
+      return Boolean(quotationNumber) && allowedQuotationNumbers.has(quotationNumber);
+    });
+  }, [costings, embedded, projectCode, projectId, scopedQuotationOptions]);
+
+  const filteredCostings = useMemo(() => {
+    const activeFilters = Object.entries(listColumnFilters).filter(([, value]) => String(value || "").trim());
+    if (!activeFilters.length) return scopedCostings;
+    return scopedCostings.filter((row) => (
+      activeFilters.every(([key, filterValue]) => (
+        String(row?.[key] ?? "").toLowerCase().includes(String(filterValue).trim().toLowerCase())
+      ))
+    ));
+  }, [listColumnFilters, scopedCostings]);
 
   const getNamesForCategory = useCallback((categoryId) => {
     const names = itemMasterRef.current
@@ -218,16 +315,17 @@ function ProjectCostingPage() {
   }, []);
 
   const loadList = useCallback(async () => {
+    const activeProjectId = embedded && projectId ? projectId : null;
     const [costingData, quotationData] = await Promise.all([
       listProjectCostings(),
-      listQuotationSummaries(),
+      listQuotationSummaries(activeProjectId),
     ]);
     setCostings(Array.isArray(costingData?.costings) ? costingData.costings : []);
     setQuotationOptions(Array.isArray(quotationData?.quotations) ? quotationData.quotations : []);
     setRetrievalStatuses(
       Array.isArray(costingData?.retrieval_statuses) ? costingData.retrieval_statuses : []
     );
-  }, []);
+  }, [embedded, projectId]);
 
   useEffect(() => {
     let alive = true;
@@ -240,6 +338,14 @@ function ProjectCostingPage() {
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [loadItemMeta, loadList]);
+
+  useEffect(() => {
+    if (!editingCosting) return;
+    setSummaryForm((prev) => ({
+      ...prev,
+      total_material_cost: acceptedMaterialCost,
+    }));
+  }, [acceptedMaterialCost, editingCosting]);
 
   const openCosting = useCallback(async (costingId) => {
     setStatus({ type: "", message: "" });
@@ -321,7 +427,10 @@ function ProjectCostingPage() {
     setSummarySaving(true);
     setStatus({ type: "", message: "" });
     try {
-      const response = await updateProjectCosting(editingCosting.id, summaryForm);
+      const response = await updateProjectCosting(editingCosting.id, {
+        ...summaryForm,
+        total_material_cost: acceptedMaterialCost,
+      });
       const updated = response?.costing || null;
       if (updated) {
         setEditingCosting(updated);
@@ -333,10 +442,16 @@ function ProjectCostingPage() {
     } finally {
       setSummarySaving(false);
     }
-  }, [editingCosting, summaryForm]);
+  }, [acceptedMaterialCost, editingCosting, summaryForm]);
 
   // ── Item edit ────────────────────────────────────────────
   const startEditItem = useCallback((item) => {
+    if (!canEditItem(item)) {
+      setStatus({ type: "warning", message: "Editing is allowed only when retrieval status is No Action." });
+      return;
+    }
+    const currentRetrievalStatus = getRetrievalStatusName(item);
+    const editableStatusOptions = getEditableRetrievalOptions(currentRetrievalStatus);
     setDraftRow(null);
     setEditingItemId(item.id);
     setEditingRow({
@@ -354,13 +469,13 @@ function ProjectCostingPage() {
       min_cost: String(item.min_cost ?? "0"),
       actual_cost: String(item.actual_cost ?? "0"),
       total_cost: String(item.total_cost ?? "0"),
-      retrieval_status_name: item?.retrieval_status?.status_name || "",
+      retrieval_status_name: editableStatusOptions[0] || currentRetrievalStatus || STATUS_NO_ACTION,
       length: String(item.length ?? "0"),
       width: String(item.width ?? "0"),
       height: String(item.height ?? "0"),
       volume: String(item.volume ?? "0"),
     });
-  }, []);
+  }, [canEditItem, getEditableRetrievalOptions]);
 
   const cancelEditItem = useCallback(() => {
     setEditingItemId(null);
@@ -376,6 +491,7 @@ function ProjectCostingPage() {
     requested_qty: row.requested_qty || "0",
     purchase_qty: row.purchase_qty || "0",
     actual_cost: row.actual_cost || "0",
+    retrieval_status_name: row.retrieval_status_name || STATUS_NO_ACTION,
   }), [isMaterialCostType]);
 
   const validateItemRow = useCallback((row) => {
@@ -676,6 +792,7 @@ function ProjectCostingPage() {
   }, [buildItemPayload, draftRow, editingCosting?.id, validateItemRow]);
 
   const renderItemEditorCells = (row, patchFn, disabled) => {
+            const retrievalOptions = row?.id ? getEditableRetrievalOptions(row.retrieval_status_name) : getDraftRetrievalOptions();
     const material = isMaterialCostType(row.cost_type_id);
     const itemNames = material ? getNamesForCategory(row.item_category_id) : [];
     const itemCodes = material ? getCodesForSelection(row.item_category_id, row.item_name) : [];
@@ -798,6 +915,10 @@ function ProjectCostingPage() {
             ))}
           </select>
         </td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.length || "0"} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.width || "0"} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.height || "0"} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.volume || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.purchase_qty || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value })} /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.cost_per_qty || "0"} readOnly disabled /></td>
@@ -810,24 +931,19 @@ function ProjectCostingPage() {
           {canEditRetrievalStatus ? (
             <select
               className="project-costing-select"
-              value={row.retrieval_status_name || "No Action"}
+              value={row.retrieval_status_name || STATUS_NO_ACTION}
               onChange={(event) => patchFn({ retrieval_status_name: event.target.value })}
               disabled={disabled}
             >
-              <option value="">— select —</option>
-              {retrievalStatuses.map((rs) => (
-                <option key={rs.id} value={rs.status_name}>{rs.status_name}</option>
+              {retrievalOptions.map((statusName) => (
+                <option key={statusName} value={statusName}>{statusName}</option>
               ))}
             </select>
           ) : (
-            <span className={getRetrievalBadgeClass(row.retrieval_status_name || "No Action")}>{row.retrieval_status_name || "No Action"}</span>
+            <span className={getRetrievalBadgeClass(row.retrieval_status_name || STATUS_NO_ACTION)}>{row.retrieval_status_name || STATUS_NO_ACTION}</span>
           )}
         </td>
         <td className="project-costing-comment-cell">{row.rejection_comment || "-"}</td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.length || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.width || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.height || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.volume || "0"} readOnly disabled /></td>
       </>
     );
   };
@@ -839,7 +955,8 @@ function ProjectCostingPage() {
       <section className="module-page project-costing-page">
         <div className="crud-page__header project-costing-toolbar">
           <h1 className="module-page__title project-costing-title">
-            Project Costing — {c.costing_id}
+            <span className="project-costing-title__icon" aria-hidden="true"><BsCashCoin /></span>
+            <span className="project-costing-title__text">Project Costing - {c.costing_id}</span>
           </h1>
           <button type="button" className="crud-add-btn" onClick={closeCosting}>
             <BsArrowLeft aria-hidden="true" /> Back to List
@@ -852,7 +969,10 @@ function ProjectCostingPage() {
 
         {/* ── Costing Summary Card ────────────────────────────── */}
         <div className="project-costing-card">
-          <h2 className="project-costing-section-title">Costing Summary</h2>
+          <h2 className="project-costing-section-title">
+            <span className="project-costing-section-title__icon" aria-hidden="true"><BsClipboardData /></span>
+            <span className="project-costing-section-title__text">Costing Summary</span>
+          </h2>
 
           {/* Read-only identifiers */}
           <div className="project-costing-summary-grid">
@@ -876,12 +996,25 @@ function ProjectCostingPage() {
 
           {/* Editable financial inputs */}
           <div className="project-costing-form-section">
-            <h3 className="project-costing-form-section__title">Material & Markup</h3>
+            <h3 className="project-costing-form-section__title project-costing-form-section__title--material">
+              <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsCashCoin /></span>
+              <span>Material & Markup</span>
+            </h3>
             <div className="project-costing-form-grid">
               <label className="project-costing-form-label">
-                Total Material Cost
+                <span className="project-costing-label-with-help">
+                  Total Material Cost
+                  <span
+                    className="project-costing-help-tooltip"
+                    title="Auto-calculated from Item Accepted rows only."
+                    aria-label="Auto-calculated from Item Accepted rows only."
+                  >
+                    ?
+                  </span>
+                </span>
                 <input className="project-costing-input" type="number" min="0" step="0.01"
-                  value={summaryForm.total_material_cost} onChange={sfld("total_material_cost")} disabled={summarySaving} />
+                  value={summaryForm.total_material_cost} readOnly disabled />
+                <small className="project-costing-form-help">Auto-calculated from Item Accepted rows only.</small>
               </label>
               <label className="project-costing-form-label">
                 Markup %
@@ -897,7 +1030,10 @@ function ProjectCostingPage() {
           </div>
 
           <div className="project-costing-form-section">
-            <h3 className="project-costing-form-section__title">Expenses</h3>
+            <h3 className="project-costing-form-section__title project-costing-form-section__title--expenses">
+              <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsBoxes /></span>
+              <span>Expenses</span>
+            </h3>
             <div className="project-costing-form-grid">
               <label className="project-costing-form-label">
                 Petrol Expenses
@@ -944,7 +1080,10 @@ function ProjectCostingPage() {
 
           {/* Calculated / derived — read-only display */}
           <div className="project-costing-form-section">
-            <h3 className="project-costing-form-section__title">Calculated Totals</h3>
+            <h3 className="project-costing-form-section__title project-costing-form-section__title--calculated">
+              <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsCheckCircleFill /></span>
+              <span>Calculated Totals</span>
+            </h3>
             <div className="project-costing-summary-grid">
               {[
                 ["Final Material Cost", c.final_material_cost],
@@ -1043,6 +1182,10 @@ function ProjectCostingPage() {
                   <th>Item Code</th>
                   <th>Item Type</th>
                   <th>Room</th>
+                  <th className="project-costing-table__right">L</th>
+                  <th className="project-costing-table__right">W</th>
+                  <th className="project-costing-table__right">H</th>
+                  <th className="project-costing-table__right">Vol</th>
                   <th className="project-costing-table__right">Purchase Qty</th>
                   <th className="project-costing-table__right">Requested Qty</th>
                   <th className="project-costing-table__right">Cost/Qty</th>
@@ -1053,11 +1196,30 @@ function ProjectCostingPage() {
                   <th>Stock Status</th>
                   <th>Retrieval Status</th>
                   <th>Rejection Comments</th>
-                  <th className="project-costing-table__right">L</th>
-                  <th className="project-costing-table__right">W</th>
-                  <th className="project-costing-table__right">H</th>
-                  <th className="project-costing-table__right">Vol</th>
                   <th className="project-costing-table__center">Actions</th>
+                </tr>
+                <tr>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_type ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_type: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_category ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_category: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_name ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_name: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.room_name ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, room_name: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.length ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, length: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.width ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, width: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.height ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, height: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.volume ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, volume: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_per_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_per_qty: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.max_cost ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, max_cost: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.min_cost ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, min_cost: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.actual_cost ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, actual_cost: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.total_cost ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, total_cost: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.stock_status ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, stock_status: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.retrieval_status ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, retrieval_status: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.rejection_comment ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, rejection_comment: event.target.value }))} /></th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -1077,11 +1239,11 @@ function ProjectCostingPage() {
                   </tr>
                 ) : null}
 
-                {editingItems.length === 0 ? (
+                {filteredEditingItems.length === 0 ? (
                   <tr>
                     <td colSpan={21} className="project-costing-empty">No costing items found.</td>
                   </tr>
-                ) : editingItems.map((item) => {
+                ) : filteredEditingItems.map((item) => {
                   const frozen = isFrozen(item);
                   const isEditing = editingItemId === item.id && editingRow;
                   const retrievalName = item?.retrieval_status?.status_name || "—";
@@ -1114,6 +1276,10 @@ function ProjectCostingPage() {
                       <td>{item.item_code || "—"}</td>
                       <td>{item.item_type || "—"}</td>
                       <td>{item.room_name?.room_name || "—"}</td>
+                      <td className="project-costing-table__right">{item.length}</td>
+                      <td className="project-costing-table__right">{item.width}</td>
+                      <td className="project-costing-table__right">{item.height}</td>
+                      <td className="project-costing-table__right">{item.volume}</td>
                       <td className="project-costing-table__right">{item.purchase_qty}</td>
                       <td className="project-costing-table__right">{item.requested_qty}</td>
                       <td className="project-costing-table__right">{item.cost_per_qty}</td>
@@ -1130,19 +1296,31 @@ function ProjectCostingPage() {
                         <span className={getRetrievalBadgeClass(retrievalName)}>{retrievalName}</span>
                       </td>
                       <td className="project-costing-comment-cell">{item.rejection_comment || "-"}</td>
-                      <td className="project-costing-table__right">{item.length}</td>
-                      <td className="project-costing-table__right">{item.width}</td>
-                      <td className="project-costing-table__right">{item.height}</td>
-                      <td className="project-costing-table__right">{item.volume}</td>
                       <td className="project-costing-table__center">
                         <div className="project-costing-inline-actions">
                           <button type="button" className="users-action users-action--edit" title="Edit item"
-                            disabled={frozen || itemSaving || !!editingItemId || !!draftRow || importingItems || summarySaving}
+                            disabled={
+                              frozen
+                              || !canEditItem(item)
+                              || itemSaving
+                              || !!editingItemId
+                              || !!draftRow
+                              || importingItems
+                              || summarySaving
+                            }
                             onClick={() => startEditItem(item)}>
                             <BsPencilSquare aria-hidden="true" />
                           </button>
                           <button type="button" className="users-action users-action--delete" title="Delete item"
-                            disabled={frozen || itemSaving || !!editingItemId || !!draftRow || importingItems || summarySaving}
+                            disabled={
+                              frozen
+                              || !canDeleteItem(item)
+                              || itemSaving
+                              || !!editingItemId
+                              || !!draftRow
+                              || importingItems
+                              || summarySaving
+                            }
                             onClick={() => handleDeleteItem(item.id)}>
                             <BsTrashFill aria-hidden="true" />
                           </button>
@@ -1195,7 +1373,10 @@ function ProjectCostingPage() {
   return (
     <section className="module-page project-costing-page">
       <div className="crud-page__header project-costing-toolbar">
-        <h1 className="module-page__title project-costing-title">Project Costing</h1>
+        <h1 className="module-page__title project-costing-title">
+          <span className="project-costing-title__icon" aria-hidden="true"><BsCashCoin /></span>
+          <span className="project-costing-title__text">Project Costing</span>
+        </h1>
       </div>
 
       {status.message ? (
@@ -1206,7 +1387,7 @@ function ProjectCostingPage() {
         <select className="auth-input" value={selectedQuotationId}
           onChange={(e) => setSelectedQuotationId(e.target.value)} disabled={saving || loading}>
           <option value="">Select quotation for generation</option>
-          {quotationOptions.map((row) => (
+          {scopedQuotationOptions.map((row) => (
             <option key={row.id} value={String(row.id)}>
               {row.quotation_number || "Auto"} — {row.project_name || "Project"}
             </option>
@@ -1235,13 +1416,22 @@ function ProjectCostingPage() {
                 <th className="project-costing-table__right">Planned Order Value</th>
                 <th className="project-costing-table__center">Actions</th>
               </tr>
+              <tr>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.costing_id ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, costing_id: event.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.quotation_number ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, quotation_number: event.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_code ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_code: event.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_name ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_name: event.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.total_material_cost ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, total_material_cost: event.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.planned_order_value ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, planned_order_value: event.target.value }))} /></th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
-              {costings.length === 0 ? (
+              {filteredCostings.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="project-costing-empty">No project costing records found.</td>
                 </tr>
-              ) : costings.map((row) => (
+              ) : filteredCostings.map((row) => (
                 <tr key={row.id}>
                   <td>{row.costing_id || "—"}</td>
                   <td>{row.quotation_number || "—"}</td>

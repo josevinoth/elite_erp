@@ -217,6 +217,10 @@ Prepare project quotations per project with BOM hierarchy validation and cost-ty
 - BOM hierarchy rejects skipped levels with the message:
   `Invalid BOM hierarchy: children must be linked to immediate parent level.`
 - `cost_per_qty` auto-resolves from Item Costing first, then the latest stock purchase costs
+- UI on `/projects/quotation` uses the same visual styling pattern as Project Costing summary (shared header/table/alert theme)
+- Shared style baseline is imported from `erp/frontend/src/styles/ProjectCostingSummary.css` in addition to `ProjectQuotation.css`
+- Retrieval workflow logic is intentionally excluded from quotation items and remains Project Costing-only
+- Navigation: **Home -> Projects -> Quotation -> Quotation Summary + Items**
 
 ---
 
@@ -286,6 +290,14 @@ Registered in `erp/erp_app/urls.py` — view files: `erp/erp_app/sub_views/proje
 - Route: `/projects/quotation`
 - Page: `erp/frontend/src/pages/ProjectQuotationPage.jsx`
 - Service calls: `erp/frontend/src/services/crudApi.js`
+- Shared style file: `erp/frontend/src/styles/ProjectCostingSummary.css`
+
+### Quotation summary + item API routes
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/project-quotation/<id>/summary/` | Fetch quotation summary payload for one quotation |
+| `GET` | `/api/project-quotation/<id>/items/` | Fetch quotation item list without retrieval status fields |
 
 ### Migration
 
@@ -384,6 +396,11 @@ Handle post-supply stock acceptance decisions for Project Costing items.
 | Area | File | Purpose |
 |------|------|---------|
 | Page | `erp/frontend/src/pages/StockAcceptancePage.jsx` | Shows only supplied rows and supports allowed status changes |
+| Page | `erp/frontend/src/pages/StockRetrievalPage.jsx` | Retrieval action workflow with confirmation screen + refreshed list return |
+| Page | `erp/frontend/src/pages/StockReturnPage.jsx` | Return action workflow with confirmation screen + refreshed list return |
+| Shared confirmation component | `erp/frontend/src/components/ActionConfirmationPage.jsx` | Action summary + `Return to List` button after updates |
+| Shared alert component | `erp/frontend/src/components/AlertMessage.jsx` | Consistent success/info/danger/warning/default messages |
+| Shared alert + confirmation styles | `erp/frontend/src/styles/ProjectCostingSummary.css` | Reusable alert variants and confirmation layout |
 | Service API | `erp/frontend/src/services/crudApi.js` | `listStockAcceptanceItems`, `updateStockAcceptanceItem` |
 | Route registration | `erp/frontend/src/App.jsx` | Registers `/stock-acceptance` page route |
 | Home navigation | `erp/frontend/src/config/homeNavigation.js` | Adds **Stock Acceptance** under Stocks menu |
@@ -397,6 +414,19 @@ Handle post-supply stock acceptance decisions for Project Costing items.
   - `Stock Supplied -> Stock Accepted`
   - `Stock Supplied -> Stock Returned`
 - After update, the row no longer appears in Stock Acceptance list.
+
+### Action confirmation workflow (Retrieval / Acceptance / Return)
+
+- Every update action now follows: **Action -> Confirmation -> Refreshed List**.
+- After submitting an action, the page shows a confirmation screen with:
+  - summary fields: `item_name`, `item_code`, `project_name`, `quotation_number`
+  - status message shown through `AlertMessage`
+  - `Return to List` button
+- `Return to List` goes back to the same module list route and reloads data from API:
+  - `/stock-retrieval`
+  - `/stock-acceptance`
+  - `/stock-return`
+- Refresh keeps backward compatibility with existing quotation/project costing records and does not require schema changes.
 
 ### Project owner integration
 

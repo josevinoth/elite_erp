@@ -50,7 +50,7 @@ function StockPlanningPage() {
     <section className="module-page">
       <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
         <div>
-          <h1 className="module-page__title" style={{ margin: 0 }}>Stock Planning</h1>
+          <h1 className="module-page__title module-page__title--stock" style={{ margin: 0 }}>Stock Planning</h1>
           <p className="module-page__description" style={{ marginBottom: 0 }}>
             Quotation items where stock status is not In-Stock.
           </p>

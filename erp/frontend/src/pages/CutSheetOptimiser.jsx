@@ -1212,7 +1212,7 @@ const CutSheetOptimiser = () => {
   return (
       <section className="module-page cut-sheet-optimiser-page">
         <div className="crud-page__header" style={{ marginBottom: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h1 className="module-page__title" style={{ margin: 0 }}>CutSheet Optimiser</h1>
+          <h1 className="module-page__title module-page__title--cutting" style={{ margin: 0 }}>CutSheet Optimiser</h1>
           <button
               type="button"
               className="crud-add-btn"

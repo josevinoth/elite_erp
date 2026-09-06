@@ -504,7 +504,7 @@ function StockPurchaseAddPage() {
     return (
         <section className="module-page">
             <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
-                <h1 className="module-page__title" style={{ margin: 0 }}>
+                <h1 className="module-page__title module-page__title--stock" style={{ margin: 0 }}>
                     {isEditMode ? "Stock Purchase Edit" : "Stock Purchase Add"}
                     {spNumber ? <span style={{ marginLeft: "0.75rem", color: "#0ea5e9", fontWeight: 700, fontSize: "1rem" }}>[{spNumber}]</span> : null}
                 </h1>

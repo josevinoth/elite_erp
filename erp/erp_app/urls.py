@@ -12,6 +12,8 @@ from .sub_views.project_quotation_api import (
     quotation_items_api_view,
     quotations_api_view,
     project_quotation_item_detail_api_view,
+    project_quotation_items_api_view,
+    project_quotation_summary_api_view,
     stock_planning_api_view,
 )
 from .sub_views.stock_manufacture_api import (
@@ -190,6 +192,8 @@ urlpatterns = [
     path("api/quotations/", quotations_api_view, name="api-quotations-list-create"),
     path("api/quotations/stock-planning/", stock_planning_api_view, name="api-quotations-stock-planning"),
     path("api/quotations/<int:pk>/", quotation_detail_api_view, name="api-quotations-detail"),
+    path("api/project-quotation/<int:pk>/summary/", project_quotation_summary_api_view, name="api-project-quotation-summary"),
+    path("api/project-quotation/<int:pk>/items/", project_quotation_items_api_view, name="api-project-quotation-items"),
     path("api/quotations/<int:pk>/items/", quotation_items_api_view, name="api-quotations-items-list-create"),
     path("api/quotations/<int:pk>/items/import/", import_quotation_items_excel_api_view, name="api-quotations-items-import"),
     path("api/quotations/items/import/template/", download_quotation_items_import_template_api_view, name="api-quotations-items-import-template"),

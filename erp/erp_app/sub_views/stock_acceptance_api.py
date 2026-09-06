@@ -15,8 +15,8 @@ def _resolve_target_retrieval_status(value):
     mapping = {
         "stock accepted": RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
         "item accepted": RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
-        "stock returned": RetrievalStatusInfo.STATUS_ITEM_RETURN,
-        "item return": RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        "stock returned": RetrievalStatusInfo.STATUS_NO_ACTION,
+        "item return": RetrievalStatusInfo.STATUS_NO_ACTION,
     }
     return mapping.get(normalized)
 

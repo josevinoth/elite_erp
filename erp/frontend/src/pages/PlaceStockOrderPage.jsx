@@ -123,7 +123,7 @@ function PlaceStockOrderPage() {
   return (
     <section className="module-page place-stock-order-page">
       <div className="crud-page__header place-stock-order-header">
-        <h1 className="module-page__title">Place Stock Order</h1>
+        <h1 className="module-page__title module-page__title--stock">Place Stock Order</h1>
       </div>
 
       {status.message ? <p className={`users-status users-status--${status.type}`}>{status.message}</p> : null}

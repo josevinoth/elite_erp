@@ -99,11 +99,13 @@ def _is_valid_status_transition(current_name, target_name, source):
             RetrievalStatusInfo.STATUS_ITEM_RETURN,
         },
         "retrieval": {
+            RetrievalStatusInfo.STATUS_NO_ACTION,
             RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
             RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
             RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
         },
         "return": {
+            RetrievalStatusInfo.STATUS_NO_ACTION,
             RetrievalStatusInfo.STATUS_ITEM_RETURN,
             RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
         },
@@ -457,7 +459,9 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
     if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED and not was_requested:
         item.requested_by = request.user
         item.requested_on = timezone.now()
-    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+    if action_name == "reject" and status_obj.status_name == RetrievalStatusInfo.STATUS_NO_ACTION:
+        item.rejection_comment = rejection_comment
+    elif status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
         item.rejection_comment = rejection_comment
     if status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
         item.rejection_comment = rejection_comment
@@ -502,7 +506,26 @@ def stock_return_item_detail_api_view(request, item_pk):
     current_name = getattr(item.retrieval_status, "status_name", "")
     if not _is_valid_status_transition(current_name, status_obj.status_name, "return"):
         return Response({"status": "error", "message": "Invalid status transition from Stock Return."}, status=400)
+    action_name = normalize_text(request.data.get("action")).lower()
+    rejection_comment = normalize_text(request.data.get("rejection_comment"))
+    if action_name == "reject" and not rejection_comment:
+        return Response(
+            {"status": "error", "message": "Rejection comment is required when action is Reject."},
+            status=400,
+        )
+    if action_name != "reject":
+        # Only reject action is allowed to persist a rejection reason.
+        rejection_comment = ""
+
+    was_requested = current_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED
     item.retrieval_status = status_obj
+    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED and not was_requested:
+        item.requested_by = request.user
+        item.requested_on = timezone.now()
+    if action_name == "reject" and status_obj.status_name == RetrievalStatusInfo.STATUS_NO_ACTION:
+        item.rejection_comment = rejection_comment
+    elif status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED:
+        item.rejection_comment = ""
     item.save()
     return Response({"success": True, "item": ProjectCostingItemSerializer(item).data}, status=status.HTTP_200_OK)
 
@@ -738,4 +761,6 @@ def import_costing_items_excel_api_view(request, pk):
         },
         status=status.HTTP_200_OK,
     )
+
+
 

@@ -182,6 +182,24 @@ export async function listQuotationItems(quotationId) {
   return parseJson(res);
 }
 
+export async function getProjectQuotationSummary(quotationId) {
+  const res = await fetch(`/api/project-quotation/${quotationId}/summary/`, { credentials: "include" });
+  if (res.status === 404) {
+    const fallback = await fetch(`/api/quotations/${quotationId}/`, { credentials: "include" });
+    return parseJson(fallback);
+  }
+  return parseJson(res);
+}
+
+export async function listProjectQuotationItems(quotationId) {
+  const res = await fetch(`/api/project-quotation/${quotationId}/items/`, { credentials: "include" });
+  if (res.status === 404) {
+    const fallback = await fetch(`/api/quotations/${quotationId}/items/`, { credentials: "include" });
+    return parseJson(fallback);
+  }
+  return parseJson(res);
+}
+
 export async function createQuotationItem(quotationId, payload) {
   const headers = await csrfHeaders();
   const res = await fetch(`/api/quotations/${quotationId}/items/`, {
@@ -416,13 +434,17 @@ export async function listStockReturnItems() {
   return parseJson(res);
 }
 
-export async function updateStockReturnItem(itemId, retrievalStatusName) {
+export async function updateStockReturnItem(itemId, retrievalStatusName, rejectionComment = "", action = "") {
   const headers = await csrfHeaders();
   const res = await fetch(`/api/stock-return/${itemId}/`, {
     method: "PATCH",
     credentials: "include",
     headers,
-    body: JSON.stringify({ retrieval_status_name: retrievalStatusName }),
+    body: JSON.stringify({ 
+      retrieval_status_name: retrievalStatusName,
+      rejection_comment: rejectionComment,
+      action: action
+    }),
   });
   return parseJson(res);
 }

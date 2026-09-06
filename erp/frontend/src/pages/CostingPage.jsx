@@ -696,7 +696,7 @@ function CostingPage() {
     <section className="module-page">
       <div className="crud-page__header costing-page__header">
         <div>
-          <h1 className="module-page__title costing-page__title">
+          <h1 className="module-page__title module-page__title--projects costing-page__title">
             {isAddMode ? "LCE Add" : `LCE Form — ${lceLabel}`}
           </h1>
         </div>
@@ -998,7 +998,7 @@ function CostingPage() {
 
           {/* ── Linked items table ── */}
           <div className="costing-linked-section">
-            <h2 className="module-page__title costing-linked-section__title">
+            <h2 className="module-page__title module-page__title--projects costing-linked-section__title">
               Linked Purchase Items {linkedItems.length > 0 ? `(${linkedItems.length})` : ""}
             </h2>
             {linkedItems.length === 0 ? (

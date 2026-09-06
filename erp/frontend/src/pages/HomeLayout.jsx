@@ -131,7 +131,7 @@ function HomeLayout({ currentUser }) {
       <HomeSideNav badges={{ pendingCount }} isAdmin={isAdmin} isCdcTeam={isCdcTeam} />
       <main className="home-main">
         <section className="dashboard-panel">
-          <h1 className="module-page__title">Dashboard</h1>
+          <h1 className="module-page__title module-page__title--dashboard">Dashboard</h1>
           <p className="module-page__description">
             Home space is reserved for dashboards. Open modules from the side navigator.
           </p>

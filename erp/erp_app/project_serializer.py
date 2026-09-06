@@ -15,4 +15,3 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 __all__ = ["ProjectSerializer"]
 
-

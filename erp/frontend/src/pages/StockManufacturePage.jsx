@@ -401,7 +401,7 @@ function StockManufacturePage() {
     <section className="module-page">
       {/* Page header */}
       <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
-        <h1 className="module-page__title" style={{ margin: 0 }}>Stock Manufacture</h1>
+        <h1 className="module-page__title module-page__title--stock" style={{ margin: 0 }}>Stock Manufacture</h1>
         {!addMode && (
           <button type="button" className="crud-add-btn" onClick={startAdd}>
             <BsPlusCircleFill aria-hidden="true" /> Add

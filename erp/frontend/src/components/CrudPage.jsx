@@ -7,6 +7,20 @@ import PaginationControls from "./PaginationControls";
 
 const AUDIT_COLUMN_KEYS = ["updated_by", "updated_on"];
 
+function getTitleVariant(title) {
+  const normalized = String(title || "").toLowerCase();
+  if (normalized.includes("user")) return "users";
+  if (normalized.includes("vendor")) return "vendors";
+  if (normalized.includes("project")) return "projects";
+  if (normalized.includes("quotation")) return "quotation";
+  if (normalized.includes("stock")) return "stock";
+  if (normalized.includes("task")) return "tasks";
+  if (normalized.includes("timesheet")) return "timesheet";
+  if (normalized.includes("expense") || normalized.includes("cdc")) return "expenses";
+  if (normalized.includes("approval")) return "approvals";
+  return "default";
+}
+
 function normalizeUpdatedBy(row) {
   const labelValue =
     row?.updated_by_label ??
@@ -616,11 +630,12 @@ function CrudPage({
       : false;
 
   const effectiveTableMaxHeight = tableMaxHeight || (stickyHeader ? "60vh" : null);
+  const titleVariant = getTitleVariant(title);
 
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
-        <h1 className="module-page__title">{title}</h1>
+          <h1 className={`module-page__title module-page__title--${titleVariant}`}>{title}</h1>
         <div className="crud-page__header-tools">
           <input
             type="search"

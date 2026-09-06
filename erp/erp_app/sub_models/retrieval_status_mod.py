@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from ..utils import normalize_text
@@ -37,6 +38,19 @@ class RetrievalStatusInfo(models.Model):
         return self.status_name
 
     def save(self, *args, **kwargs):
-        self.status_name = normalize_text(self.status_name)
+        status_name = normalize_text(self.status_name)
+        canonical_map = {
+            self.STATUS_NO_ACTION.lower(): self.STATUS_NO_ACTION,
+            self.STATUS_ITEM_REQUESTED.lower(): self.STATUS_ITEM_REQUESTED,
+            self.STATUS_ITEM_SUPPLIED.lower(): self.STATUS_ITEM_SUPPLIED,
+            self.STATUS_REQUEST_REJECTED.lower(): self.STATUS_REQUEST_REJECTED,
+            "request rejected": self.STATUS_REQUEST_REJECTED,
+            self.STATUS_ITEM_ACCEPTED.lower(): self.STATUS_ITEM_ACCEPTED,
+            self.STATUS_ITEM_RETURN.lower(): self.STATUS_ITEM_RETURN,
+            self.STATUS_ITEM_RETURN_ACCEPTED.lower(): self.STATUS_ITEM_RETURN_ACCEPTED,
+        }
+        self.status_name = canonical_map.get(status_name.lower(), status_name)
+        if RetrievalStatusInfo.objects.filter(status_name__iexact=self.status_name).exclude(pk=self.pk).exists():
+            raise ValidationError({"status_name": "Retrieval status already exists."})
         super().save(*args, **kwargs)
 
