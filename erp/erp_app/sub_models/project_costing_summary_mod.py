@@ -9,6 +9,17 @@ from .project_quotation_summary_mod import ProjectQuotationSummaryInfo
 
 
 class ProjectCostingSummaryInfo(models.Model):
+    STATUS_WORK_IN_PROGRESS = "Work In Progress"
+    STATUS_COMPLETED = "Completed"
+    STATUS_HOLD = "Hold"
+    STATUS_CANCELLED = "Cancelled"
+    STATUS_CHOICES = [
+        (STATUS_WORK_IN_PROGRESS, STATUS_WORK_IN_PROGRESS),
+        (STATUS_COMPLETED, STATUS_COMPLETED),
+        (STATUS_HOLD, STATUS_HOLD),
+        (STATUS_CANCELLED, STATUS_CANCELLED),
+    ]
+
     costing_id = models.CharField(max_length=20, unique=True, blank=True)
     quotation_number = models.ForeignKey(
         ProjectQuotationSummaryInfo,
@@ -17,6 +28,7 @@ class ProjectCostingSummaryInfo(models.Model):
     )
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="project_costing_summaries")
     project_name = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_WORK_IN_PROGRESS)
 
     # Financial fields — cloned from ProjectQuotationSummaryInfo
     total_material_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)

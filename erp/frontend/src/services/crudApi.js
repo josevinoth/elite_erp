@@ -166,6 +166,31 @@ export async function updateQuotationSummary(id, payload) {
   return parseJson(res);
 }
 
+export async function updateQuotationStatus(id, quotationStatus) {
+  const headers = await csrfHeaders();
+  const payload = typeof quotationStatus === "string"
+    ? { quotation_status: quotationStatus }
+    : (quotationStatus || {});
+  const res = await fetch(`/api/project-quotation/${id}/status/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function saveQuotationSummary(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-quotation/${id}/save/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload || {}),
+  });
+  return parseJson(res);
+}
+
 export async function deleteQuotationSummary(id) {
   const headers = await csrfHeaders();
   delete headers["Content-Type"];

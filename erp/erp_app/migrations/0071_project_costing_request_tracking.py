@@ -15,26 +15,43 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="projectcostingiteminfo",
-            name="rejection_comment",
-            field=models.TextField(blank=True, default=""),
-        ),
-        migrations.AddField(
-            model_name="projectcostingiteminfo",
-            name="requested_by",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=models.SET_NULL,
-                related_name="requested_project_costing_items",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="projectcostingiteminfo",
-            name="requested_on",
-            field=models.DateTimeField(blank=True, null=True),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="""
+                    ALTER TABLE erp_app_projectcostingiteminfo
+                    ADD COLUMN IF NOT EXISTS rejection_comment text NOT NULL DEFAULT '';
+                    ALTER TABLE erp_app_projectcostingiteminfo
+                    ADD COLUMN IF NOT EXISTS requested_by_id integer NULL;
+                    ALTER TABLE erp_app_projectcostingiteminfo
+                    ADD COLUMN IF NOT EXISTS requested_on timestamp with time zone NULL;
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name="projectcostingiteminfo",
+                    name="rejection_comment",
+                    field=models.TextField(blank=True, default=""),
+                ),
+                migrations.AddField(
+                    model_name="projectcostingiteminfo",
+                    name="requested_by",
+                    field=models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=models.SET_NULL,
+                        related_name="requested_project_costing_items",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                migrations.AddField(
+                    model_name="projectcostingiteminfo",
+                    name="requested_on",
+                    field=models.DateTimeField(blank=True, null=True),
+                ),
+            ],
         ),
         migrations.RunPython(seed_request_rejected_status, migrations.RunPython.noop),
     ]

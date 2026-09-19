@@ -37,8 +37,11 @@ class ProjectQuotationSummaryView:
             return {"status": "error", "message": "Invalid item code for quotation item."}
         if purchase_qty <= 0:
             return {
-                "status": "error",
-                "message": f"Missing purchase data for item code {item_code or 'selected item'}.",
+                "status": "warning",
+                "message": (
+                    f"Missing purchase data for item code {item_code or 'selected item'}. "
+                    "You can still save in quotation stage."
+                ),
             }
         if requested_qty > purchase_qty:
             return {
@@ -78,8 +81,8 @@ class ProjectQuotationSummaryView:
             **ProjectQuotationSummarySerializer(summary, context=self.get_serializer_context()).data,
             "total_quotation_cost": str(summary.total_cost_to_elite or 0),
             "project_code": getattr(summary.project, "project_id", ""),
-            "status": validation["status"],
-            "message": validation["message"],
+            "validation_status": validation["status"],
+            "validation_message": validation["message"],
         }
 
     def list_payload(self, project_id=None):

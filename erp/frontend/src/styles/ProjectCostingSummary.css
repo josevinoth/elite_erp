@@ -33,6 +33,12 @@
   flex: 1;
 }
 
+.alert-icon {
+  display: inline-block;
+  line-height: 1;
+  margin-right: 0.45rem;
+}
+
 .erp-alert.erp-alert-default {
   background-color: #e5e7eb;
   color: #1f2937;
@@ -139,6 +145,80 @@
 .workflow-confirmation__actions {
   display: flex;
   justify-content: flex-start;
+}
+
+.pq-status-confirmation-wrap {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.pq-status-confirmation-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pq-confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.45);
+}
+
+.pq-confirm-modal {
+  width: min(560px, calc(100vw - 2rem));
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+  padding: 1rem;
+}
+
+.pq-confirm-modal__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.pq-confirm-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.45);
+}
+
+.modal-box {
+  width: min(560px, calc(100vw - 2rem));
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+  padding: 1rem;
+}
+
+.modal-header {
+  margin: 0 0 0.75rem;
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .stock-acceptance-actions {

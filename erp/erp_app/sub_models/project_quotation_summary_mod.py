@@ -134,7 +134,8 @@ class ProjectQuotationSummaryInfo(models.Model):
 
         if self.status == self.STATUS_COMPLETED:
             has_items = bool(self.pk and self.quotation_items.exists())
-            if not has_items:
+            allow_without_items = bool(getattr(self, "_allow_completed_without_items", False))
+            if not has_items and not allow_without_items:
                 raise ValidationError({"status": "Quotation cannot be marked Completed when no quotation items exist."})
 
         if self.pk:

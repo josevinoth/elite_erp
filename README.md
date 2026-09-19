@@ -221,6 +221,20 @@ Prepare project quotations per project with BOM hierarchy validation and cost-ty
 - Shared style baseline is imported from `erp/frontend/src/styles/ProjectCostingSummary.css` in addition to `ProjectQuotation.css`
 - Retrieval workflow logic is intentionally excluded from quotation items and remains Project Costing-only
 - Navigation: **Home -> Projects -> Quotation -> Quotation Summary + Items**
+- Quotation Summary status change from `Work In Progress` to `Completed` requires an `AlertMessage` confirmation (`OK` / `Cancel`).
+- On confirmation `OK`, status updates to `Completed`; non-admin users are read-only while admin users retain edit rights.
+- On confirmation `Cancel`, status is reverted and the summary remains editable.
+- Admin users can revert status from `Completed` to `Work In Progress` after confirmation (`Revert status to Work in Progress? This will unlock editing for all users.`).
+- Non-admin users cannot revert status once `Completed`.
+- Confirmation popup `OK` now calls `/api/project-quotation/<id>/status/` and re-fetches summary data before applying UI lock/unlock state.
+- Quotation item validation alerts are rendered at the top of the Quotation Items table section.
+- Non-admin users opening a `Completed` quotation see: `Status is Completed. Only admin can edit this form.` at the top of the summary section.
+- Save Summary uses a popup warning when `Completed` is selected with no quotation items; confirmation allows save for backward compatibility.
+- Quotation status change from `Work In Progress` to `Completed` validates Quotation Items first:
+  - if items exist → standard completion confirmation popup,
+  - if items are empty → warning confirmation popup (`No quotation items added...`).
+- Summary alerts are status-related and shown above the Quotation Summary section.
+- Item alerts are item-related and shown above the Quotation Items table.
 
 ---
 
@@ -291,12 +305,22 @@ Registered in `erp/erp_app/urls.py` — view files: `erp/erp_app/sub_views/proje
 - Page: `erp/frontend/src/pages/ProjectQuotationPage.jsx`
 - Service calls: `erp/frontend/src/services/crudApi.js`
 - Shared style file: `erp/frontend/src/styles/ProjectCostingSummary.css`
+- Standard confirmation popup component: `erp/frontend/src/components/ConfirmPopupModal.jsx`
+
+### Confirmation modal tracing
+
+- `ProjectQuotationPage.jsx`: status change confirmation + save-without-items warning.
+- `StockRetrievalPage.jsx`: accept/reject retrieval confirmations.
+- `StockAcceptancePage.jsx`: accept/return stock confirmations.
+- `StockReturnPage.jsx`: approve/reject return confirmations.
 
 ### Quotation summary + item API routes
 
 | Method | Route | Description |
 |--------|-------|-------------|
 | `GET` | `/api/project-quotation/<id>/summary/` | Fetch quotation summary payload for one quotation |
+| `PATCH` | `/api/project-quotation/<id>/status/` | Update quotation status with admin/non-admin edit-permission flags |
+| `PATCH` | `/api/project-quotation/<id>/save/` | Save summary fields with optional confirmation for `Completed` status when no items exist |
 | `GET` | `/api/project-quotation/<id>/items/` | Fetch quotation item list without retrieval status fields |
 
 ### Migration

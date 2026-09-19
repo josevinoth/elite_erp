@@ -25,9 +25,13 @@ import {
   listProjectQuotationItems,
   listQuotationSummaries,
   listRooms,
+  saveQuotationSummary,
   updateQuotationItem,
-  updateQuotationSummary,
+  updateQuotationStatus,
 } from "../services/crudApi";
+import AlertMessage from "../components/AlertMessage";
+import ConfirmPopupModal from "../components/ConfirmPopupModal";
+import { getSessionUser } from "../services/sessionUser";
 import "../styles/ProjectCostingSummary.css";
 import "../styles/ProjectQuotation.css";
 
@@ -43,6 +47,21 @@ const toMoney = (value, decimals = 2) => (
 );
 
 const normalizeText = (value) => String(value || "").trim();
+
+const getQuotationStatus = (payload) => {
+  const quotationStatus = normalizeText(payload?.quotation_status);
+  if (quotationStatus) return quotationStatus;
+
+  const legacyStatus = normalizeText(payload?.status);
+  const normalizedLegacyStatus = legacyStatus.toLowerCase();
+  if (["work in progress", "completed", "hold", "cancelled"].includes(normalizedLegacyStatus)) {
+    return legacyStatus;
+  }
+
+  return "Work In Progress";
+};
+
+const getNormalizedQuotationStatus = (payload) => getQuotationStatus(payload).toLowerCase();
 
 const asPercent = (value) => {
   const numeric = toNumber(value);
@@ -209,6 +228,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const [quotations, setQuotations] = useState([]);
   const [selectedQuotationId, setSelectedQuotationId] = useState(() => queryQuotationId || "");
   const [summary, setSummary] = useState(null);
+  const [savedSummaryStatus, setSavedSummaryStatus] = useState("");
   const [items, setItems] = useState([]);
   const [costTypes, setCostTypes] = useState([]);
   const [materialCostTypeId, setMaterialCostTypeId] = useState(null);
@@ -232,6 +252,23 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const [savingRoom, setSavingRoom] = useState(false);
   const [roomPopup, setRoomPopup] = useState({ type: "", message: "" });
   const [summarySaveFeedback, setSummarySaveFeedback] = useState({ type: "", message: "" });
+  const [statusConfirmation, setStatusConfirmation] = useState({
+    open: false,
+    previousStatus: "",
+    nextStatus: "",
+    type: "warning",
+    message: "",
+    allowCompletedWithoutItems: false,
+  });
+  const [saveNoItemsConfirmationOpen, setSaveNoItemsConfirmationOpen] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  const sessionUser = useMemo(() => getSessionUser(), []);
+  const isAdminUser = useMemo(() => {
+    const roleName = String(sessionUser?.role || "").trim().toLowerCase();
+    const normalizedRoleName = roleName.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+    return ["admin", "super admin", "superadmin", "staff"].includes(normalizedRoleName);
+  }, [sessionUser]);
 
   const itemMasterRef = useRef([]);
   const importFileInputRef = useRef(null);
@@ -314,19 +351,30 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     return { type: "success", message: "Requested Qty is within Purchase Qty." };
   }, [isMaterialCostType]);
 
+  const isAdminReadonlyWarning = useCallback((message) => {
+    if (!isAdminUser) return false;
+    const normalized = String(message || "").trim().toLowerCase();
+    return normalized.includes("completed quotation is read-only for non-admin users");
+  }, [isAdminUser]);
+
   const summaryStatus = useMemo(() => {
     if (!status.message) return null;
+    if (isAdminReadonlyWarning(status.message)) return null;
     return isSummaryRelatedMessage(status.message) ? status : null;
-  }, [status]);
+  }, [isAdminReadonlyWarning, status]);
 
   const summaryValidationMessages = useMemo(
-    () => validationMessages.filter((entry) => isSummaryRelatedMessage(entry.message)),
-    [validationMessages]
+    () => validationMessages
+      .filter((entry) => isSummaryRelatedMessage(entry.message))
+      .filter((entry) => !isAdminReadonlyWarning(entry.message)),
+    [isAdminReadonlyWarning, validationMessages]
   );
 
   const itemValidationMessages = useMemo(
-    () => validationMessages.filter((entry) => !isSummaryRelatedMessage(entry.message)),
-    [validationMessages]
+    () => validationMessages
+      .filter((entry) => !isSummaryRelatedMessage(entry.message))
+      .filter((entry) => !isAdminReadonlyWarning(entry.message)),
+    [isAdminReadonlyWarning, validationMessages]
   );
 
   const summaryPreviewValues = useMemo(() => recalculateSummary(summary), [summary]);
@@ -385,6 +433,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
           summaryPayload = detailPayload?.quotation || selected;
         }
         setSummary(summaryPayload);
+        setSavedSummaryStatus(getNormalizedQuotationStatus(summaryPayload));
         if (selected) {
           await loadItemsForSummary(selected.id);
         } else {
@@ -393,6 +442,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         }
       } else {
         setSummary(null);
+        setSavedSummaryStatus("");
         setItems([]);
         setValidationMessages([]);
       }
@@ -400,6 +450,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       showStatus(error.message || "Failed to load quotations.", "error");
       setQuotations([]);
       setSummary(null);
+      setSavedSummaryStatus("");
       setItems([]);
       setValidationMessages([]);
       setCostTypes([]);
@@ -432,6 +483,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       summaryPayload = detailPayload?.quotation || selected;
     }
     setSummary(summaryPayload);
+    setSavedSummaryStatus(getNormalizedQuotationStatus(summaryPayload));
     if (selected) {
       await loadItemsForSummary(selected.id);
     } else {
@@ -513,6 +565,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       }
       if (response.quotation) {
         setSummary(response.quotation);
+        setSavedSummaryStatus(getNormalizedQuotationStatus(response.quotation));
       }
       showStatus(response.message || "Quotation item import completed.", response.status || "success");
     } catch (error) {
@@ -527,13 +580,6 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   }, [clearStatus, loadItemsForSummary, showStatus, summary?.id]);
 
   const patchSummary = useCallback((field, value) => {
-    if (field === "quotation_status") {
-      const nextStatus = String(value || "").trim().toLowerCase();
-      if (nextStatus === "completed" && (!Array.isArray(items) || items.length === 0)) {
-        showStatus("Quotation cannot be marked Completed when no quotation items exist.", "warning");
-        return;
-      }
-    }
     setSummary((prev) => {
       if (!prev) return prev;
       const next = { ...prev, [field]: value };
@@ -541,35 +587,172 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     });
     setSummarySaveFeedback({ type: "", message: "" });
     if (onSummaryStatusChange) onSummaryStatusChange({ type: "", message: "" });
-  }, [items, onSummaryStatusChange, showStatus]);
+  }, [onSummaryStatusChange]);
+
+  const handleSummaryStatusChange = useCallback((nextStatus) => {
+    const normalizedNextStatus = String(nextStatus || "").trim().toLowerCase();
+    const currentStatus = getQuotationStatus(summary);
+    const normalizedCurrentStatus = currentStatus.toLowerCase();
+
+    if (normalizedCurrentStatus === "work in progress" && normalizedNextStatus === "completed") {
+      const hasItems = Array.isArray(items) && items.length > 0;
+      setStatusConfirmation({
+        open: true,
+        previousStatus: currentStatus,
+        nextStatus: "Completed",
+        type: "warning",
+        message: hasItems
+          ? "Status changed to Completed. Only admin can edit. Shall I proceed?"
+          : "⚠ No quotation items added. Do you still want to save as Completed? Only admin can edit after completion.",
+        allowCompletedWithoutItems: !hasItems,
+      });
+      return;
+    }
+
+    if (
+      isAdminUser
+      && normalizedCurrentStatus === "completed"
+      && normalizedNextStatus === "work in progress"
+    ) {
+      setStatusConfirmation({
+        open: true,
+        previousStatus: currentStatus,
+        nextStatus: "Work In Progress",
+        type: "warning",
+        message: "Revert status to Work in Progress? This will unlock editing for all users.",
+        allowCompletedWithoutItems: false,
+      });
+      return;
+    }
+
+    patchSummary("quotation_status", nextStatus);
+  }, [isAdminUser, items, patchSummary, summary]);
+
+  const closeStatusConfirmation = useCallback(() => {
+    setStatusConfirmation({
+      open: false,
+      previousStatus: "",
+      nextStatus: "",
+      type: "warning",
+      message: "",
+      allowCompletedWithoutItems: false,
+    });
+  }, []);
+
+  const cancelStatusConfirmation = useCallback(() => {
+    patchSummary("quotation_status", statusConfirmation.previousStatus || "Work In Progress");
+    closeStatusConfirmation();
+  }, [closeStatusConfirmation, patchSummary, statusConfirmation.previousStatus]);
+
+  const confirmStatusChange = useCallback(async () => {
+    if (!summary?.id || !statusConfirmation.nextStatus) {
+      closeStatusConfirmation();
+      return;
+    }
+
+    setUpdatingStatus(true);
+    try {
+      const nextStatus = String(statusConfirmation.nextStatus || "").trim();
+      const normalizedNextStatus = nextStatus.toLowerCase();
+      const isTransitioningToCompleted = normalizedNextStatus === "completed";
+      const statusPayload = normalizedNextStatus === "work in progress"
+        ? { status: "Work In Progress" }
+        : {
+          quotation_status: nextStatus,
+          confirm_completed_without_items: isTransitioningToCompleted && statusConfirmation.allowCompletedWithoutItems,
+        };
+      const response = await updateQuotationStatus(summary.id, statusPayload);
+      const updatedSummary = response?.quotation || summary;
+      setSummary(updatedSummary);
+      setSavedSummaryStatus(getNormalizedQuotationStatus(updatedSummary));
+      setValidationMessages(normalizeValidationMessages(response.validation_messages));
+      setSummarySaveFeedback({
+        type: response.result_status || response.status || "success",
+        message: response.message || "Quotation status updated successfully.",
+      });
+      if (onSummaryStatusChange) {
+        onSummaryStatusChange({
+          type: response.result_status || response.status || "success",
+          message: response.message || "Quotation status updated successfully.",
+        });
+      }
+      closeStatusConfirmation();
+      await refreshSelectedSummary(summary.id);
+    } catch (error) {
+      setSummarySaveFeedback({
+        type: error.payload?.status || "error",
+        message: error.message || "Failed to update quotation status.",
+      });
+      if (onSummaryStatusChange) {
+        onSummaryStatusChange({
+          type: error.payload?.status || "error",
+          message: error.message || "Failed to update quotation status.",
+        });
+      }
+      patchSummary("quotation_status", statusConfirmation.previousStatus || "Work In Progress");
+      closeStatusConfirmation();
+    } finally {
+      setUpdatingStatus(false);
+    }
+  }, [
+    closeStatusConfirmation,
+    onSummaryStatusChange,
+    patchSummary,
+    refreshSelectedSummary,
+    statusConfirmation.nextStatus,
+    statusConfirmation.previousStatus,
+    statusConfirmation.allowCompletedWithoutItems,
+    summary,
+  ]);
 
   const goBackToQuotationList = useCallback(() => {
     if (selectedQuotationId) {
       setSelectedQuotationId("");
       setSummary(null);
+      setSavedSummaryStatus("");
       setItems([]);
       setValidationMessages([]);
       setImportSummary(null);
       setImportReports([]);
+      closeStatusConfirmation();
+      setSaveNoItemsConfirmationOpen(false);
       clearStatus();
       setSearchParams({});
       return;
     }
     navigate("/projects");
-  }, [clearStatus, navigate, selectedQuotationId, setSearchParams]);
+  }, [clearStatus, closeStatusConfirmation, navigate, selectedQuotationId, setSearchParams]);
 
-  const saveSummary = useCallback(async () => {
+  const isSavedCompletedQuotation = savedSummaryStatus === "completed";
+  const isQuotationReadOnly = isSavedCompletedQuotation && !isAdminUser;
+  const isSummaryBusy = savingSummary || updatingStatus;
+
+  function ensureEditableQuotation(actionLabel = "edit values") {
+    if (!isSavedCompletedQuotation || isAdminUser) return true;
+    showStatus(`Completed quotation is read-only for non-admin users. You cannot ${actionLabel}.`, "warning");
+    return false;
+  }
+
+  const executeSummarySave = useCallback(async (allowCompletedWithoutItems = false) => {
     if (!summary?.id || !ensureEditableQuotation("save summary")) return;
     setSavingSummary(true);
     clearStatus();
     setSummarySaveFeedback({ type: "", message: "" });
     try {
-      const payload = {};
+      const payload = {
+        quotation_status: getQuotationStatus(summary),
+        confirm_completed_without_items: allowCompletedWithoutItems,
+      };
       SUMMARY_EDITABLE_FIELDS.forEach((field) => {
         payload[field] = summary[field] ?? 0;
       });
-      const response = await updateQuotationSummary(summary.id, payload);
+      const response = await saveQuotationSummary(summary.id, payload);
+      if (response?.requires_confirmation) {
+        setSaveNoItemsConfirmationOpen(true);
+        return;
+      }
       setSummary(response.quotation || summary);
+      setSavedSummaryStatus(getNormalizedQuotationStatus(response.quotation || summary));
       setValidationMessages(normalizeValidationMessages(response.validation_messages));
       setSummarySaveFeedback({
         type: response.status || "success",
@@ -582,7 +765,11 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         });
       }
       showStatus(response.message || "Quotation summary updated successfully.", response.status || "success");
-      await refreshSelectedSummary(summary.id);
+      try {
+        await refreshSelectedSummary(summary.id);
+      } catch (_refreshError) {
+        // Keep save successful even if the follow-up refresh request intermittently fails.
+      }
     } catch (error) {
       setSummarySaveFeedback({
         type: error.payload?.status || "error",
@@ -599,12 +786,32 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     } finally {
       setSavingSummary(false);
     }
-  }, [clearStatus, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary]);
+  }, [clearStatus, ensureEditableQuotation, onSummaryStatusChange, refreshSelectedSummary, showStatus, summary]);
+
+  const saveSummary = useCallback(async () => {
+    if (!summary?.id || !ensureEditableQuotation("save summary")) return;
+    const selectedStatus = getNormalizedQuotationStatus(summary);
+    if (selectedStatus === "completed" && (!Array.isArray(items) || items.length === 0)) {
+      setSaveNoItemsConfirmationOpen(true);
+      return;
+    }
+    await executeSummarySave(false);
+  }, [ensureEditableQuotation, executeSummarySave, items, summary]);
+
+  const cancelSaveNoItemsConfirmation = useCallback(() => {
+    setSaveNoItemsConfirmationOpen(false);
+    patchSummary("quotation_status", "Work In Progress");
+  }, [patchSummary]);
+
+  const confirmSaveNoItems = useCallback(async () => {
+    setSaveNoItemsConfirmationOpen(false);
+    await executeSummarySave(true);
+  }, [executeSummarySave]);
 
   const removeSummary = useCallback(async (summaryRow) => {
     const quotationId = summaryRow?.id;
     if (!quotationId) return;
-    if (String(summaryRow?.quotation_status || "").trim().toLowerCase() === "completed") {
+    if (getNormalizedQuotationStatus(summaryRow) === "completed") {
       showStatus("Completed quotation cannot be deleted.", "warning");
       return;
     }
@@ -618,6 +825,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         setSearchParams({});
       }
       setSummary(null);
+      setSavedSummaryStatus("");
       setItems([]);
       await loadData();
       showStatus("Quotation deleted successfully.");
@@ -634,7 +842,11 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
     setSelectedQuotationId(String(selected.id));
     const detailPayload = await getProjectQuotationSummary(selected.id);
-    setSummary(detailPayload?.quotation || selected);
+    const summaryPayload = detailPayload?.quotation || selected;
+    setSummary(summaryPayload);
+    setSavedSummaryStatus(getNormalizedQuotationStatus(summaryPayload));
+    closeStatusConfirmation();
+    setSaveNoItemsConfirmationOpen(false);
     setImportSummary(null);
     setImportReports([]);
     clearStatus();
@@ -642,18 +854,11 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setSearchParams({ quotationId: String(selected.id) });
     }
     await loadItemsForSummary(selected.id);
-  }, [clearStatus, embedded, loadItemsForSummary, quotations, setSearchParams]);
+  }, [clearStatus, closeStatusConfirmation, embedded, loadItemsForSummary, quotations, setSearchParams]);
 
   const quotationTitle = summary?.quotation_number
     ? `Project Quotation - ${summary.quotation_number}`
     : (embedded ? "Quotation" : "Project Quotation");
-  const isCompletedQuotation = String(summary?.quotation_status || "").trim().toLowerCase() === "completed";
-
-  const ensureEditableQuotation = useCallback((actionLabel = "edit values") => {
-    if (!isCompletedQuotation) return true;
-    showStatus(`Completed quotation is read-only. You cannot ${actionLabel}.`, "warning");
-    return false;
-  }, [isCompletedQuotation, showStatus]);
 
   const applyMaterialSelection = useCallback(async (itemCodeId, applyPatch) => {
     const master = getMasterById(itemCodeId);
@@ -963,9 +1168,9 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             <span className="project-costing-field__label">Status</span>
             <select
               className="project-costing-input"
-              value={summary.quotation_status || "Work In Progress"}
-              onChange={(event) => patchSummary("quotation_status", event.target.value)}
-              disabled={savingSummary || isCompletedQuotation}
+              value={getQuotationStatus(summary)}
+              onChange={(event) => handleSummaryStatusChange(event.target.value)}
+              disabled={isSummaryBusy || isQuotationReadOnly}
             >
               {QUOTATION_STATUS_OPTIONS.map((option) => (
                 <option key={option} value={option}>{option}</option>
@@ -1022,7 +1227,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                 step="0.0001"
                 value={summary.markup ?? 0}
                 onChange={(event) => patchSummary("markup", event.target.value)}
-                disabled={savingSummary || isCompletedQuotation}
+                disabled={isSummaryBusy || isQuotationReadOnly}
               />
             </label>
             <label className="project-costing-form-label">
@@ -1034,7 +1239,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                 step="0.0001"
                 value={summary.contingency ?? 0}
                 onChange={(event) => patchSummary("contingency", event.target.value)}
-                disabled={savingSummary || isCompletedQuotation}
+                disabled={isSummaryBusy || isQuotationReadOnly}
               />
             </label>
           </div>
@@ -1048,35 +1253,35 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
           <div className="project-costing-form-grid">
             <label className="project-costing-form-label">
               Petrol Expenses
-              <input className="project-costing-input" type="number" min="0" value={summary.petrol_expenses ?? 0} onChange={(event) => patchSummary("petrol_expenses", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.petrol_expenses ?? 0} onChange={(event) => patchSummary("petrol_expenses", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
             <label className="project-costing-form-label">
               Transport / Install Team
-              <input className="project-costing-input" type="number" min="0" value={summary.transport_installation_team ?? 0} onChange={(event) => patchSummary("transport_installation_team", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.transport_installation_team ?? 0} onChange={(event) => patchSummary("transport_installation_team", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
             <label className="project-costing-form-label">
               Transportation
-              <input className="project-costing-input" type="number" min="0" value={summary.transportation ?? 0} onChange={(event) => patchSummary("transportation", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.transportation ?? 0} onChange={(event) => patchSummary("transportation", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
             <label className="project-costing-form-label">
               Food / Accommodation
-              <input className="project-costing-input" type="number" min="0" value={summary.food_accomodation ?? 0} onChange={(event) => patchSummary("food_accomodation", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.food_accomodation ?? 0} onChange={(event) => patchSummary("food_accomodation", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
             <label className="project-costing-form-label">
               Loading
-              <input className="project-costing-input" type="number" min="0" value={summary.loading ?? 0} onChange={(event) => patchSummary("loading", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.loading ?? 0} onChange={(event) => patchSummary("loading", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
             <label className="project-costing-form-label">
               Unloading
-              <input className="project-costing-input" type="number" min="0" value={summary.unloading ?? 0} onChange={(event) => patchSummary("unloading", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.unloading ?? 0} onChange={(event) => patchSummary("unloading", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
             <label className="project-costing-form-label">
               Installation
-              <input className="project-costing-input" type="number" min="0" value={summary.installation ?? 0} onChange={(event) => patchSummary("installation", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.installation ?? 0} onChange={(event) => patchSummary("installation", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
             <label className="project-costing-form-label">
               Business Development
-              <input className="project-costing-input" type="number" min="0" value={summary.business_development ?? 0} onChange={(event) => patchSummary("business_development", event.target.value)} disabled={savingSummary || isCompletedQuotation} />
+              <input className="project-costing-input" type="number" min="0" value={summary.business_development ?? 0} onChange={(event) => patchSummary("business_development", event.target.value)} disabled={isSummaryBusy || isQuotationReadOnly} />
             </label>
           </div>
         </div>
@@ -1228,7 +1433,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         </p>
       ) : null}
 
-      {status.message && (!summary || (!embedded && !selectedQuotationId)) ? (
+      {status.message && !isAdminReadonlyWarning(status.message) && (!summary || (!embedded && !selectedQuotationId)) ? (
         <p className={getStatusClassName(status.type)}>
           {status.message}
         </p>
@@ -1262,7 +1467,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                   <td>{row.project_code || row.project_id}</td>
                   <td>{row.project_name || "-"}</td>
                   <td className="pq-text-right">{row.total_quotation_cost}</td>
-                  <td>{row.quotation_status || "Work In Progress"}</td>
+                  <td>{getQuotationStatus(row)}</td>
                   <td className="pq-text-center">
                     <div className="pq-inline-actions">
                       <button type="button" className="users-action users-action--edit" onClick={() => openSummary(row.id)} title="Edit">
@@ -1272,8 +1477,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                         type="button"
                         className="users-action users-action--delete"
                         onClick={() => removeSummary(row)}
-                        disabled={String(row.quotation_status || "").trim().toLowerCase() === "completed"}
-                        title={String(row.quotation_status || "").trim().toLowerCase() === "completed" ? "Completed quotations cannot be deleted" : "Delete"}
+                        disabled={getNormalizedQuotationStatus(row) === "completed"}
+                        title={getNormalizedQuotationStatus(row) === "completed" ? "Completed quotations cannot be deleted" : "Delete"}
                       >
                         <BsTrashFill aria-hidden="true" />
                       </button>
@@ -1288,34 +1493,50 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
       {!loading && (embedded || selectedQuotationId) && summary ? (
         <div className="pq-details-content project-costing-card">
+            {isQuotationReadOnly ? (
+              <AlertMessage
+                type="warning"
+                message="Status is Completed. Only admin can edit this form."
+              />
+            ) : null}
+
             {summaryStatus ? (
-              <p className={`${getStatusClassName(summaryStatus.type)} pq-status-block`}>
-                {summaryStatus.message}
-              </p>
+              <AlertMessage
+                type={summaryStatus.type === "error" ? "danger" : (summaryStatus.type === "warning" ? "warning" : "info")}
+                message={summaryStatus.message}
+              />
             ) : null}
 
             {summaryValidationMessages.length ? (
               <div className="pq-status-list">
                 {summaryValidationMessages.map((entry) => (
-                  <p key={`summary-${entry.type}-${entry.message}`} className={`${getStatusClassName(entry.type)} pq-status-line`}>
-                    {entry.message}
-                  </p>
+                  <AlertMessage
+                    key={`summary-${entry.type}-${entry.message}`}
+                    type={entry.type === "error" ? "danger" : (entry.type === "warning" ? "warning" : "info")}
+                    message={entry.message}
+                  />
                 ))}
               </div>
             ) : null}
 
+            {summarySaveFeedback.message && !isAdminReadonlyWarning(summarySaveFeedback.message) ? (
+              <AlertMessage
+                type={summarySaveFeedback.type === "error" ? "danger" : (summarySaveFeedback.type === "warning" ? "warning" : "info")}
+                message={summarySaveFeedback.message}
+              />
+            ) : null}
+
             {renderSummaryGrid()}
             <div className="project-costing-form-actions pq-summary-actions">
-              <button type="button" className="crud-add-btn" onClick={saveSummary} disabled={savingSummary || isCompletedQuotation}>
+              <button
+                type="button"
+                className="crud-add-btn"
+                onClick={saveSummary}
+                disabled={isSummaryBusy || isQuotationReadOnly || statusConfirmation.open || saveNoItemsConfirmationOpen}
+              >
                 {savingSummary ? "Saving..." : "Save Summary"}
               </button>
             </div>
-
-            {!embedded && summarySaveFeedback.message ? (
-              <p className={`${getStatusClassName(summarySaveFeedback.type)} pq-status-block`}>
-                {summarySaveFeedback.message}
-              </p>
-            ) : null}
 
             <div aria-hidden="true" className="pq-divider" />
 
@@ -1323,22 +1544,34 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               <strong>Quotation Items</strong>
               <div className="pq-items-header-actions">
                 <input ref={importFileInputRef} className="pq-hidden-file-input" type="file" accept=".xlsx,.xls" onChange={handleImportItemsFile} />
-                <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || savingRow || isCompletedQuotation}>
+                <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || savingRow || isQuotationReadOnly}>
                   {downloadingTemplate ? "Downloading..." : "Download Template"}
                 </button>
-                <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || savingRow || isCompletedQuotation}>
+                <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || savingRow || isQuotationReadOnly}>
                   {importingItems ? "Importing..." : "Import Excel"}
                 </button>
-                <button type="button" className="crud-add-btn" onClick={openRoomModal} disabled={isCompletedQuotation}>
+                <button type="button" className="crud-add-btn" onClick={openRoomModal} disabled={isQuotationReadOnly}>
                  <BsPlusCircleFill aria-hidden="true" /> Add New Room
                 </button>
                 {!draftRow ? (
-                  <button type="button" className="crud-add-btn" onClick={startAdd} disabled={isCompletedQuotation}>
+                  <button type="button" className="crud-add-btn" onClick={startAdd} disabled={isQuotationReadOnly}>
                     <BsPlusCircleFill aria-hidden="true" /> Add Item
                   </button>
                 ) : null}
               </div>
             </div>
+
+            {itemValidationMessages.length ? (
+              <div className="pq-status-list">
+                {itemValidationMessages.map((entry) => (
+                  <AlertMessage
+                    key={`item-${entry.type}-${entry.message}`}
+                    type={entry.type === "error" ? "danger" : "warning"}
+                    message={entry.message}
+                  />
+                ))}
+              </div>
+            ) : null}
 
             {importSummary ? (
               <div className="pq-import-summary">
@@ -1373,16 +1606,6 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               </div>
             ) : null}
 
-            {itemValidationMessages.length ? (
-              <div className="pq-status-list">
-                {itemValidationMessages.map((entry) => (
-                  <p key={`item-${entry.type}-${entry.message}`} className={`${getStatusClassName(entry.type)} pq-status-line`}>
-                    {entry.message}
-                  </p>
-                ))}
-              </div>
-            ) : null}
-
             <div className="users-table-wrap users-table-wrap--fit pq-table-wrap-items project-costing-table-wrap project-costing-table-wrap--items">
               <table className="users-table users-table--quotation pq-table-quotation project-costing-table project-costing-table--quotation">
                 <thead>
@@ -1411,13 +1634,13 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                 <tbody>
                   {draftRow ? (
                     <tr>
-                      {renderItemEditorCells(draftRow, patchDraftRow, savingRow || isCompletedQuotation)}
+                      {renderItemEditorCells(draftRow, patchDraftRow, savingRow || isQuotationReadOnly)}
                       <td className="pq-text-center">
                         <div className="pq-inline-actions">
-                          <button type="button" className="modal-btn modal-btn--save" onClick={saveDraftItem} disabled={savingRow || isCompletedQuotation}>
+                          <button type="button" className="modal-btn modal-btn--save" onClick={saveDraftItem} disabled={savingRow || isQuotationReadOnly}>
                             <BsCheckCircleFill aria-hidden="true" />
                           </button>
-                          <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelAdd} disabled={savingRow || isCompletedQuotation}>
+                          <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelAdd} disabled={savingRow || isQuotationReadOnly}>
                             <BsXCircleFill aria-hidden="true" />
                           </button>
                         </div>
@@ -1436,13 +1659,13 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                       <tr key={row.id}>
                         {inEditMode ? (
                           <>
-                            {renderItemEditorCells(editingRow, patchEditingRow, savingRow || isCompletedQuotation)}
+                            {renderItemEditorCells(editingRow, patchEditingRow, savingRow || isQuotationReadOnly)}
                             <td className="pq-text-center">
                               <div className="pq-inline-actions">
-                                <button type="button" className="modal-btn modal-btn--save" onClick={saveEditedItem} disabled={savingRow || isCompletedQuotation}>
+                                <button type="button" className="modal-btn modal-btn--save" onClick={saveEditedItem} disabled={savingRow || isQuotationReadOnly}>
                                   <BsCheckCircleFill aria-hidden="true" />
                                 </button>
-                                <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelEdit} disabled={savingRow || isCompletedQuotation}>
+                                <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelEdit} disabled={savingRow || isQuotationReadOnly}>
                                   <BsXCircleFill aria-hidden="true" />
                                 </button>
                               </div>
@@ -1474,10 +1697,10 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                             </td>
                             <td className="pq-text-center">
                               <div className="pq-inline-actions">
-                                <button type="button" className="users-action users-action--edit" onClick={() => startEdit(row)} disabled={isCompletedQuotation} title={isCompletedQuotation ? "Completed quotation is read-only" : "Edit"}>
+                                <button type="button" className="users-action users-action--edit" onClick={() => startEdit(row)} disabled={isQuotationReadOnly} title={isQuotationReadOnly ? "Completed quotation is read-only for non-admin users" : "Edit"}>
                                   <BsPencilSquare aria-hidden="true" />
                                 </button>
-                                <button type="button" className="users-action users-action--delete" onClick={() => removeItem(row.id)} disabled={isCompletedQuotation} title={isCompletedQuotation ? "Completed quotation is read-only" : "Delete"}>
+                                <button type="button" className="users-action users-action--delete" onClick={() => removeItem(row.id)} disabled={isQuotationReadOnly} title={isQuotationReadOnly ? "Completed quotation is read-only for non-admin users" : "Delete"}>
                                   <BsTrashFill aria-hidden="true" />
                                 </button>
                               </div>
@@ -1491,8 +1714,35 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               </table>
             </div>
 
+
         </div>
       ) : null}
+
+      <ConfirmPopupModal
+        open={statusConfirmation.open}
+        title="Status Confirmation"
+        type={statusConfirmation.type || "warning"}
+        message={statusConfirmation.message || "Status confirmation required."}
+        confirmLabel={updatingStatus ? "Updating..." : "OK"}
+        cancelLabel="Cancel"
+        confirmDisabled={updatingStatus}
+        cancelDisabled={updatingStatus}
+        onConfirm={confirmStatusChange}
+        onCancel={cancelStatusConfirmation}
+      />
+
+      <ConfirmPopupModal
+        open={saveNoItemsConfirmationOpen}
+        title="Save Confirmation"
+        type="warning"
+        message="⚠ No quotation items added. Do you still want to save as Completed?"
+        confirmLabel={savingSummary ? "Saving..." : "OK"}
+        cancelLabel="Cancel"
+        confirmDisabled={savingSummary}
+        cancelDisabled={savingSummary}
+        onConfirm={confirmSaveNoItems}
+        onCancel={cancelSaveNoItemsConfirmation}
+      />
 
       {roomModalOpen ? (
         <div className="pq-room-modal-backdrop" role="presentation" onClick={closeRoomModal}>

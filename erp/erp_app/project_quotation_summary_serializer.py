@@ -16,12 +16,18 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
             "incorrect_type": "Project is required.",
         },
     )
+    quotation_status = serializers.ChoiceField(
+        source="status",
+        choices=ProjectQuotationSummaryInfo.STATUS_CHOICES,
+        required=False,
+    )
 
     class Meta:
         model = ProjectQuotationSummaryInfo
         fields = [
             "id",
             "quotation_number",
+            "quotation_status",
             "project_id",
             "project_name",
             "total_material_cost",
@@ -74,6 +80,7 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
 
         field_names = [
             "project",
+            "status",
             "project_name",
             "total_material_cost",
             "petrol_expenses",

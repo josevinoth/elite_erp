@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ActionConfirmationPage from "../components/ActionConfirmationPage";
+import ConfirmPopupModal from "../components/ConfirmPopupModal";
 import { listStockAcceptanceItems, updateStockAcceptanceItem } from "../services/crudApi";
 import AlertMessage from "../components/AlertMessage";
 import { getSessionUser } from "../services/sessionUser";
@@ -188,26 +189,26 @@ function StockAcceptancePage() {
       ) : null}
       {!confirmation.open ? <AlertMessage type={status.type} message={status.message} /> : null}
        {!confirmation.open && confirmModal.open && confirmModal.row ? (
-         <div className="stock-acceptance-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) cancelStatusUpdate(); }}>
-           <div className="stock-acceptance-modal" role="dialog" aria-modal="true" aria-labelledby="stock-acceptance-confirm-title">
-             <h3 id="stock-acceptance-confirm-title" className="stock-acceptance-modal__title">Confirm Status Update</h3>
-             <div className="stock-acceptance-modal__content">
-               <p><strong>Item:</strong> {confirmModal.row?.item_name || "-"}</p>
-               <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
-               <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
-               <p><strong>Current Status:</strong> {confirmModal.row?.retrieval_status?.status_name || "Stock Supplied"}</p>
-                <p><strong>New Status:</strong> <span className={getStatusHighlightClass(confirmModal.nextStatus === "No Action" ? "Item Return" : confirmModal.nextStatus)}>{confirmModal.nextStatus === "No Action" ? "No Action" : confirmModal.nextStatus}</span></p>
-             </div>
-             <div className="stock-acceptance-modal__actions">
-               <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelStatusUpdate} disabled={savingId === String(confirmModal.row?.id)}>
-                 Cancel
-               </button>
-               <button type="button" className="modal-btn modal-btn--save" onClick={confirmStatusUpdate} disabled={savingId === String(confirmModal.row?.id)}>
-                 {savingId === String(confirmModal.row?.id) ? "Updating..." : "Confirm Update"}
-               </button>
-             </div>
+         <ConfirmPopupModal
+           open={confirmModal.open}
+           title="Confirm Status Update"
+           type="info"
+           message="Confirm action. Do you want to proceed?"
+           confirmLabel={savingId === String(confirmModal.row?.id) ? "Updating..." : "OK"}
+           cancelLabel="Cancel"
+           confirmDisabled={savingId === String(confirmModal.row?.id)}
+           cancelDisabled={savingId === String(confirmModal.row?.id)}
+           onConfirm={confirmStatusUpdate}
+           onCancel={cancelStatusUpdate}
+         >
+           <div className="stock-acceptance-modal__content">
+             <p><strong>Item:</strong> {confirmModal.row?.item_name || "-"}</p>
+             <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
+             <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
+             <p><strong>Current Status:</strong> {confirmModal.row?.retrieval_status?.status_name || "Stock Supplied"}</p>
+             <p><strong>New Status:</strong> <span className={getStatusHighlightClass(confirmModal.nextStatus === "No Action" ? "Item Return" : confirmModal.nextStatus)}>{confirmModal.nextStatus === "No Action" ? "No Action" : confirmModal.nextStatus}</span></p>
            </div>
-         </div>
+         </ConfirmPopupModal>
        ) : null}
        {!confirmation.open && !isAdmin ? <AlertMessage type="warning" message="Only your owned projects are visible here." /> : null}
        {!confirmation.open && loading ? <p className="users-status">Loading stock acceptance items...</p> : null}

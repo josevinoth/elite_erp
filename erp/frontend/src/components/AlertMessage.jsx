@@ -23,11 +23,18 @@ function AlertMessage({ type = "default", message = "" }) {
 
   const alertType = normalizeType(type);
   const icon = ICONS_BY_TYPE[alertType] || ICONS_BY_TYPE.default;
+  const normalizedMessage = String(message || "").trim();
+  const messageText =
+    alertType === "warning"
+      ? normalizedMessage.replace(/^([\u26A0]\uFE0F?|⚠️)\s*/u, "")
+      : normalizedMessage;
 
   return (
     <div className={`erp-alert alert alert-${alertType} erp-alert-${alertType}`} role="status" aria-live="polite">
-      <span className="erp-alert__icon" aria-hidden="true">{icon}</span>
-      <span className="erp-alert__text">{message}</span>
+      <span className="erp-alert__text">
+        <span className="alert-icon" aria-hidden="true">{icon}</span>
+        {messageText}
+      </span>
     </div>
   );
 }

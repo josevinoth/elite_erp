@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ActionConfirmationPage from "../components/ActionConfirmationPage";
+import ConfirmPopupModal from "../components/ConfirmPopupModal";
 import { listStockRetrievalItems, updateStockRetrievalItem } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
 import AlertMessage from "../components/AlertMessage";
@@ -257,48 +258,41 @@ function StockRetrievalPage() {
       ) : null}
       {!confirmation.open ? <AlertMessage type={status.type} message={status.message} /> : null}
        {!confirmation.open && confirmModal.open && confirmModal.row ? (
-         <div className="stock-retrieval-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) cancelConfirm(); }}>
-           <div className="stock-retrieval-modal" role="dialog" aria-modal="true" aria-labelledby="stock-retrieval-confirm-title">
-             <h3 id="stock-retrieval-confirm-title" className="stock-retrieval-modal__title">
-               {confirmModal.action === "accept" ? "Confirm Accept" : "Confirm Rejection"}
-             </h3>
-             <div className="stock-retrieval-modal__content">
-               <p><strong>Item:</strong> {confirmModal.row?.item_name || "-"}</p>
-               <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
-               <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
-               {confirmModal.action === "accept" ? (
-                 <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--success">Item Supplied</span></p>
-               ) : (
-                 <>
-                   <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--danger">Item Requested</span></p>
-                    <label className="stock-retrieval-modal__label">
-                     Rejection Comment:
-                     <textarea
-                        className="auth-input stock-retrieval-modal__textarea stock-retrieval-modal__textarea--spaced"
-                       rows={3}
-                       value={confirmModal.comment}
-                       onChange={(e) => setConfirmModal((prev) => ({ ...prev, comment: e.target.value }))}
-                       placeholder="Enter reason for rejection"
-                     />
-                   </label>
-                 </>
-               )}
-             </div>
-             <div className="stock-retrieval-modal__actions">
-               <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelConfirm} disabled={savingId === String(confirmModal.row?.id)}>
-                 Cancel
-               </button>
-               <button
-                 type="button"
-                 className={confirmModal.action === "accept" ? "modal-btn modal-btn--save" : "modal-btn modal-btn--cancel"}
-                 onClick={confirmModal.action === "accept" ? confirmAccept : confirmReject}
-                 disabled={savingId === String(confirmModal.row?.id)}
-               >
-                 {savingId === String(confirmModal.row?.id) ? "Processing..." : "Confirm"}
-               </button>
-             </div>
+         <ConfirmPopupModal
+           open={confirmModal.open}
+           title={confirmModal.action === "accept" ? "Confirm Accept" : "Confirm Rejection"}
+           type={confirmModal.action === "accept" ? "info" : "warning"}
+           message="Confirm action. Do you want to proceed?"
+           confirmLabel={savingId === String(confirmModal.row?.id) ? "Processing..." : "OK"}
+           cancelLabel="Cancel"
+           confirmDisabled={savingId === String(confirmModal.row?.id)}
+           cancelDisabled={savingId === String(confirmModal.row?.id)}
+           onConfirm={confirmModal.action === "accept" ? confirmAccept : confirmReject}
+           onCancel={cancelConfirm}
+         >
+           <div className="stock-retrieval-modal__content">
+             <p><strong>Item:</strong> {confirmModal.row?.item_name || "-"}</p>
+             <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
+             <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
+             {confirmModal.action === "accept" ? (
+               <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--success">Item Supplied</span></p>
+             ) : (
+               <>
+                 <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--danger">Item Requested</span></p>
+                 <label className="stock-retrieval-modal__label">
+                   Rejection Comment:
+                   <textarea
+                     className="auth-input stock-retrieval-modal__textarea stock-retrieval-modal__textarea--spaced"
+                     rows={3}
+                     value={confirmModal.comment}
+                     onChange={(e) => setConfirmModal((prev) => ({ ...prev, comment: e.target.value }))}
+                     placeholder="Enter reason for rejection"
+                   />
+                 </label>
+               </>
+             )}
            </div>
-         </div>
+         </ConfirmPopupModal>
        ) : null}
        {!confirmation.open && !canEdit ? <AlertMessage type="warning" message="Only stock team or admin can update retrieval status." /> : null}
        {!confirmation.open && loading ? <p className="users-status">Loading stock retrieval items...</p> : null}
