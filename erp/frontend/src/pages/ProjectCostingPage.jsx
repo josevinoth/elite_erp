@@ -26,10 +26,13 @@ import {
   listQuotationSummaries,
   listRooms,
   updateProjectCosting,
+  updateProjectCostingStatus,
   updateProjectCostingItem,
 } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
-import "../styles/ProjectCosting.css";
+import AlertMessage from "../components/AlertMessage";
+import ConfirmPopupModal from "../components/ConfirmPopupModal";
+import "../styles/ProjectCostingSummary.css";
 
 const STATUS_ITEM_ACCEPTED = "Item Accepted";
 const STATUS_NO_ACTION = "No Action";
@@ -102,6 +105,7 @@ const getStockStatusBadgeClass = (statusName) => {
 };
 
 const EMPTY_SUMMARY_FORM = {
+  status: "Work in Progress",
   total_material_cost: "0",
   petrol_expenses: "0",
   transport_installation_team: "0",
@@ -118,6 +122,7 @@ const EMPTY_SUMMARY_FORM = {
 function summaryFormFromCosting(c) {
   if (!c) return EMPTY_SUMMARY_FORM;
   return {
+    status: String(c.status_name || c.status || "Work in Progress"),
     total_material_cost: String(c.total_material_cost ?? "0"),
     petrol_expenses: String(c.petrol_expenses ?? "0"),
     transport_installation_team: String(c.transport_installation_team ?? "0"),
@@ -139,6 +144,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
   const canEditRetrievalStatus =
     isAdmin || ["engineering team", "engineering", "engg team"].includes(teamName);
+  const normalizeStatusName = useCallback((value) => String(value || "").trim().toLowerCase(), []);
 
   // list
   const [loading, setLoading] = useState(true);
@@ -148,7 +154,6 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   const [listColumnFilters, setListColumnFilters] = useState({});
   const [quotationOptions, setQuotationOptions] = useState([]);
   const [selectedQuotationId, setSelectedQuotationId] = useState("");
-  const [retrievalStatuses, setRetrievalStatuses] = useState([]);
   const [roomOptions, setRoomOptions] = useState([]);
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [costTypes, setCostTypes] = useState([]);
@@ -161,6 +166,16 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   // summary form
   const [summaryForm, setSummaryForm] = useState(EMPTY_SUMMARY_FORM);
   const [summarySaving, setSummarySaving] = useState(false);
+  const [summaryAlert, setSummaryAlert] = useState({ type: "", message: "" });
+  const [itemAlert, setItemAlert] = useState({ type: "", message: "" });
+  const [statusConfirmation, setStatusConfirmation] = useState({
+    open: false,
+    nextStatus: "",
+    previousStatus: "Work in Progress",
+    message: "",
+    type: "warning",
+    allowCompletedWithoutItems: false,
+  });
 
   // per-item edit
   const [editingItemId, setEditingItemId] = useState(null);
@@ -238,10 +253,6 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   }, []);
 
   const getDraftRetrievalOptions = useCallback(() => ([STATUS_NO_ACTION, STATUS_ITEM_REQUESTED]), []);
-
-  const canDeleteItem = useCallback((item) => (
-    String(getRetrievalStatusName(item)).trim().toLowerCase() === STATUS_NO_ACTION.toLowerCase()
-  ), []);
 
   const canEditItem = useCallback((item) => (
     String(getRetrievalStatusName(item)).trim().toLowerCase() === STATUS_NO_ACTION.toLowerCase()
@@ -322,9 +333,6 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     ]);
     setCostings(Array.isArray(costingData?.costings) ? costingData.costings : []);
     setQuotationOptions(Array.isArray(quotationData?.quotations) ? quotationData.quotations : []);
-    setRetrievalStatuses(
-      Array.isArray(costingData?.retrieval_statuses) ? costingData.retrieval_statuses : []
-    );
   }, [embedded, projectId]);
 
   useEffect(() => {
@@ -349,6 +357,8 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
 
   const openCosting = useCallback(async (costingId) => {
     setStatus({ type: "", message: "" });
+    setSummaryAlert({ type: "", message: "" });
+    setItemAlert({ type: "", message: "" });
     setEditingItemId(null);
     setEditingRow(null);
     setDraftRow(null);
@@ -360,6 +370,11 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       setEditingCosting(c);
       setEditingItems(Array.isArray(data?.items) ? data.items : []);
       setSummaryForm(summaryFormFromCosting(c));
+      setSummaryAlert(
+        normalizeStatusName(c?.status_name || c?.status) === "completed" && !isAdmin
+          ? { type: "warning", message: "Status is Completed. Only admin can edit this form." }
+          : { type: "" , message: "" }
+      );
        setCostTypes(Array.isArray(data?.cost_types) ? data.cost_types : []);
        setMaterialCostTypeId(data?.material_cost_type_id ? String(data.material_cost_type_id) : "");
       if (Array.isArray(data?.retrieval_statuses) && data.retrieval_statuses.length) {
@@ -377,12 +392,22 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     setEditingRow(null);
     setDraftRow(null);
     setSummaryForm(EMPTY_SUMMARY_FORM);
+    setSummaryAlert({ type: "", message: "" });
+    setItemAlert({ type: "", message: "" });
     setImportSummary(null);
     setImportReports([]);
     setRoomModalOpen(false);
     setNewRoomName("");
     setRoomPopup({ type: "", message: "" });
     setStatus({ type: "", message: "" });
+    setStatusConfirmation({
+      open: false,
+      nextStatus: "",
+      previousStatus: "Work in Progress",
+      message: "",
+      type: "warning",
+      allowCompletedWithoutItems: false,
+    });
   }, []);
 
   const handleGenerate = useCallback(async () => {
@@ -422,6 +447,45 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   }, [loadList, editingCosting, closeCosting]);
 
   // ── Summary save ─────────────────────────────────────────
+  const openStatusConfirmation = useCallback((nextStatus) => {
+    if (!editingCosting) return;
+    const previousStatus = String(summaryForm.status || "Work in Progress");
+    const normalizedNext = String(nextStatus || "").trim();
+    const hasItems = editingItems.length > 0;
+    const allowCompletedWithoutItems = normalizedNext === "Completed" && !hasItems;
+    const message = normalizedNext === "Completed"
+      ? (allowCompletedWithoutItems
+        ? "⚠ No costing items added. Do you still want to save as Completed? Only admin can edit after completion."
+        : "Status changed to Completed. Only admin can edit. Shall I proceed?")
+      : "Revert status to Work in Progress? This will unlock editing for all users.";
+
+    setStatusConfirmation({
+      open: true,
+      nextStatus: normalizedNext,
+      previousStatus,
+      message,
+      type: "warning",
+      allowCompletedWithoutItems,
+    });
+  }, [editingCosting, editingItems.length, summaryForm.status]);
+
+  const handleSummaryStatusSelect = useCallback((event) => {
+    const nextStatus = String(event.target.value || "Work in Progress");
+    const currentStatus = String(summaryForm.status || "Work in Progress");
+    if (nextStatus === currentStatus) return;
+
+    setStatus({ type: "", message: "" });
+
+    const normalizedNext = normalizeStatusName(nextStatus);
+    const normalizedCurrent = normalizeStatusName(currentStatus);
+    if (normalizedNext === "completed" || (normalizedCurrent === "completed" && normalizedNext === "work in progress")) {
+      openStatusConfirmation(nextStatus);
+      return;
+    }
+
+    setSummaryAlert({ type: "", message: "" });
+  }, [normalizeStatusName, openStatusConfirmation, summaryForm.status]);
+
   const handleSaveSummary = useCallback(async () => {
     if (!editingCosting) return;
     setSummarySaving(true);
@@ -429,12 +493,18 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     try {
       const response = await updateProjectCosting(editingCosting.id, {
         ...summaryForm,
+        status: summaryForm.status,
         total_material_cost: acceptedMaterialCost,
       });
       const updated = response?.costing || null;
       if (updated) {
         setEditingCosting(updated);
         setSummaryForm(summaryFormFromCosting(updated));
+        setSummaryAlert(
+          normalizeStatusName(updated?.status_name || updated?.status) === "completed" && !isAdmin
+            ? { type: "warning", message: "Status is Completed. Only admin can edit this form." }
+            : { type: "", message: "" }
+        );
       }
       setStatus({ type: "success", message: "Costing summary saved." });
     } catch (err) {
@@ -442,12 +512,62 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     } finally {
       setSummarySaving(false);
     }
-  }, [acceptedMaterialCost, editingCosting, summaryForm]);
+  }, [acceptedMaterialCost, editingCosting, isAdmin, normalizeStatusName, summaryForm]);
+
+  const cancelStatusConfirmation = useCallback(() => {
+    setStatusConfirmation({
+      open: false,
+      nextStatus: "",
+      previousStatus: summaryForm.status || "Work in Progress",
+      message: "",
+      type: "warning",
+      allowCompletedWithoutItems: false,
+    });
+    setSummaryForm((prev) => ({ ...prev, status: statusConfirmation.previousStatus || "Work in Progress" }));
+  }, [statusConfirmation.previousStatus, summaryForm.status]);
+
+  const confirmStatusChange = useCallback(async () => {
+    if (!editingCosting) return;
+    const nextStatus = statusConfirmation.nextStatus || "Work in Progress";
+    setSummarySaving(true);
+    setStatus({ type: "", message: "" });
+    try {
+      const response = await updateProjectCostingStatus(editingCosting.id, {
+        status: nextStatus,
+        confirm_completed_without_items: statusConfirmation.allowCompletedWithoutItems,
+      });
+      const updated = response?.costing || response?.quotation || response?.summary || null;
+      if (updated) {
+        setEditingCosting(updated);
+        setEditingItems(Array.isArray(response?.items) ? response.items : editingItems);
+        setSummaryForm(summaryFormFromCosting(updated));
+        setSummaryAlert(
+          normalizeStatusName(updated?.status_name || updated?.status) === "completed" && !isAdmin
+            ? { type: "warning", message: "Status is Completed. Only admin can edit this form." }
+            : { type: "", message: "" }
+        );
+        setStatus({ type: response?.status || "success", message: response?.message || "Costing status updated." });
+      }
+      setStatusConfirmation({
+        open: false,
+        nextStatus: "",
+        previousStatus: nextStatus,
+        message: "",
+        type: "warning",
+        allowCompletedWithoutItems: false,
+      });
+    } catch (err) {
+      setStatus({ type: "error", message: err.message || "Failed to update costing status." });
+      setSummaryForm((prev) => ({ ...prev, status: statusConfirmation.previousStatus || "Work in Progress" }));
+    } finally {
+      setSummarySaving(false);
+    }
+  }, [editingCosting, editingItems, isAdmin, normalizeStatusName, statusConfirmation.allowCompletedWithoutItems, statusConfirmation.nextStatus, statusConfirmation.previousStatus]);
 
   // ── Item edit ────────────────────────────────────────────
   const startEditItem = useCallback((item) => {
     if (!canEditItem(item)) {
-      setStatus({ type: "warning", message: "Editing is allowed only when retrieval status is No Action." });
+      setItemAlert({ type: "warning", message: "Editing is allowed only when retrieval status is No Action." });
       return;
     }
     const currentRetrievalStatus = getRetrievalStatusName(item);
@@ -531,15 +651,11 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     if (!editingCosting || !editingItemId || !editingRow) return;
     const validation = validateItemRow(editingRow);
     if (validation.type === "error") {
-      setStatus(validation);
+      setItemAlert(validation);
       return;
     }
     if (validation.type === "warning") {
-      const proceed = window.confirm(`${validation.message}\n\nDo you want to proceed?`);
-      if (!proceed) {
-        setStatus({ type: "warning", message: "Save cancelled by user." });
-        return;
-      }
+      setItemAlert(validation);
     }
 
     setItemSaving(true);
@@ -550,8 +666,10 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       });
       setEditingItems(Array.isArray(response?.items) ? response.items : []);
       cancelEditItem();
+      setItemAlert({ type: response.status || "success", message: response.message || "Item updated." });
       setStatus({ type: "success", message: "Item updated." });
     } catch (err) {
+      setItemAlert({ type: "error", message: err.message || "Failed to update item." });
       setStatus({ type: "error", message: err.message || "Failed to update item." });
     } finally {
       setItemSaving(false);
@@ -565,8 +683,10 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     try {
       const response = await deleteProjectCostingItem(editingCosting.id, itemId);
       setEditingItems(Array.isArray(response?.items) ? response.items : []);
+      setItemAlert({ type: "success", message: "Item deleted." });
       setStatus({ type: "success", message: "Item deleted." });
     } catch (err) {
+      setItemAlert({ type: "error", message: err.message || "Failed to delete item." });
       setStatus({ type: "error", message: err.message || "Failed to delete item." });
     } finally {
       setItemSaving(false);
@@ -689,7 +809,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         actual_cost: "0",
         ...emptyDimensions,
       });
-      setStatus({ type: "error", message: "Invalid item code selected." });
+      setItemAlert({ type: "error", message: "Invalid item code selected." });
       return;
     }
 
@@ -710,7 +830,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     });
 
     if (hasNoPurchaseData) {
-      setStatus({ type: "warning", message: "No stock available. Please enter Actual Cost manually." });
+      setItemAlert({ type: "warning", message: "No stock available. Please enter Actual Cost manually." });
       return;
     }
 
@@ -723,7 +843,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         min_cost: previewCost,
         actual_cost: previewCost,
       });
-      setStatus({ type: "success", message: "Requested Qty is within Purchase Qty." });
+      setItemAlert({ type: "success", message: "Requested Qty is within Purchase Qty." });
     } catch (_error) {
       applyPatch({ cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0" });
     }
@@ -755,6 +875,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     setEditingRow(null);
     setDraftRow(buildDraftItem(materialCostTypeId));
     setStatus({ type: "", message: "" });
+    setItemAlert({ type: "", message: "" });
   }, [editingCosting, materialCostTypeId]);
 
   const cancelAdd = useCallback(() => {
@@ -765,15 +886,11 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     if (!editingCosting?.id || !draftRow) return;
     const validation = validateItemRow(draftRow);
     if (validation.type === "error") {
-      setStatus(validation);
+      setItemAlert(validation);
       return;
     }
     if (validation.type === "warning") {
-      const proceed = window.confirm(`${validation.message}\n\nDo you want to proceed?`);
-      if (!proceed) {
-        setStatus({ type: "warning", message: "Save cancelled by user." });
-        return;
-      }
+      setItemAlert(validation);
     }
 
     setItemSaving(true);
@@ -782,8 +899,10 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       const response = await createProjectCostingItem(editingCosting.id, buildItemPayload(draftRow));
       setEditingItems(Array.isArray(response?.items) ? response.items : []);
       setDraftRow(null);
+      setItemAlert({ type: response.status || "success", message: response.message || "Costing item added successfully." });
       setStatus({ type: response.status || "success", message: response.message || "Costing item added successfully." });
     } catch (error) {
+      setItemAlert({ type: error.payload?.status || "error", message: error.message || "Failed to add costing item." });
       setStatus({ type: error.payload?.status || "error", message: error.message || "Failed to add costing item." });
       window.alert(error.message || "Failed to add costing item.");
     } finally {
@@ -967,6 +1086,10 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
           <p className={getPopupClass(status.type)}>{status.message}</p>
         ) : null}
 
+        {summaryAlert.message ? (
+          <AlertMessage type={summaryAlert.type} message={summaryAlert.message} />
+        ) : null}
+
         {/* ── Costing Summary Card ────────────────────────────── */}
         <div className="project-costing-card">
           <h2 className="project-costing-section-title">
@@ -991,6 +1114,28 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
             <div className="project-costing-field">
               <span className="project-costing-field__label">Project Name</span>
               <span className="project-costing-field__value">{c.project_name || "—"}</span>
+            </div>
+          </div>
+
+          <div className="project-costing-form-section">
+            <h3 className="project-costing-form-section__title project-costing-form-section__title--material">
+              <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsCheckCircleFill /></span>
+              <span>Status</span>
+            </h3>
+            <div className="project-costing-form-grid">
+              <label className="project-costing-form-label">
+                Status
+                <select
+                  className="project-costing-select"
+                  value={summaryForm.status || "Work in Progress"}
+                  onChange={handleSummaryStatusSelect}
+                  disabled={isStatusDropdownDisabled || summarySaving}
+                >
+                  {COSTING_STATUS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
 
@@ -1019,12 +1164,12 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               <label className="project-costing-form-label">
                 Markup %
                 <input className="project-costing-input" type="number" min="0" step="0.0001"
-                  value={summaryForm.markup} onChange={sfld("markup")} disabled={summarySaving} />
+                  value={summaryForm.markup} onChange={sfld("markup")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Contingency %
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.contingency} onChange={sfld("contingency")} disabled={summarySaving} />
+                  value={summaryForm.contingency} onChange={sfld("contingency")} disabled={summarySaving || isCostingReadOnly} />
               </label>
             </div>
           </div>
@@ -1038,42 +1183,42 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               <label className="project-costing-form-label">
                 Petrol Expenses
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.petrol_expenses} onChange={sfld("petrol_expenses")} disabled={summarySaving} />
+                  value={summaryForm.petrol_expenses} onChange={sfld("petrol_expenses")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Transport / Install Team
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.transport_installation_team} onChange={sfld("transport_installation_team")} disabled={summarySaving} />
+                  value={summaryForm.transport_installation_team} onChange={sfld("transport_installation_team")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Transportation
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.transportation} onChange={sfld("transportation")} disabled={summarySaving} />
+                  value={summaryForm.transportation} onChange={sfld("transportation")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Food / Accommodation
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.food_accomodation} onChange={sfld("food_accomodation")} disabled={summarySaving} />
+                  value={summaryForm.food_accomodation} onChange={sfld("food_accomodation")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Loading
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.loading} onChange={sfld("loading")} disabled={summarySaving} />
+                  value={summaryForm.loading} onChange={sfld("loading")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Unloading
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.unloading} onChange={sfld("unloading")} disabled={summarySaving} />
+                  value={summaryForm.unloading} onChange={sfld("unloading")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Installation
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.installation} onChange={sfld("installation")} disabled={summarySaving} />
+                  value={summaryForm.installation} onChange={sfld("installation")} disabled={summarySaving || isCostingReadOnly} />
               </label>
               <label className="project-costing-form-label">
                 Business Development
                 <input className="project-costing-input" type="number" min="0"
-                  value={summaryForm.business_development} onChange={sfld("business_development")} disabled={summarySaving} />
+                  value={summaryForm.business_development} onChange={sfld("business_development")} disabled={summarySaving || isCostingReadOnly} />
               </label>
             </div>
           </div>
@@ -1109,30 +1254,46 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               type="button"
               className="crud-add-btn"
               onClick={handleSaveSummary}
-              disabled={summarySaving || itemSaving}
+              disabled={summarySaving || itemSaving || isCostingReadOnly}
             >
               {summarySaving ? "Saving…" : "Save Summary"}
             </button>
           </div>
         </div>
 
+        <ConfirmPopupModal
+          open={statusConfirmation.open}
+          type={statusConfirmation.type}
+          title="Confirm Costing Status"
+          message={statusConfirmation.message}
+          confirmLabel="OK"
+          cancelLabel="Cancel"
+          onConfirm={confirmStatusChange}
+          onCancel={cancelStatusConfirmation}
+          confirmDisabled={summarySaving}
+          cancelDisabled={summarySaving}
+        />
+
         {/* ── Items Table ──────────────────────────────────────── */}
         <div className="project-costing-card">
+          {itemAlert.message ? (
+            <AlertMessage type={itemAlert.type} message={itemAlert.message} />
+          ) : null}
           <div className="project-costing-items-header">
             <strong className="project-costing-items-header__title">Costing Items</strong>
             <div className="project-costing-items-header-actions">
               <input ref={importFileInputRef} className="project-costing-hidden-file-input" type="file" accept=".xlsx,.xls" onChange={handleImportItemsFile} />
-              <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || itemSaving || summarySaving}>
+              <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || itemSaving || summarySaving || isCostingReadOnly}>
                 {downloadingTemplate ? "Downloading..." : "Download Template"}
               </button>
-              <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || itemSaving || summarySaving}>
+              <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || itemSaving || summarySaving || isCostingReadOnly}>
                 {importingItems ? "Importing..." : "Import Excel"}
               </button>
-              <button type="button" className="crud-add-btn" onClick={openRoomModal} disabled={savingRoom}>
+              <button type="button" className="crud-add-btn" onClick={openRoomModal} disabled={savingRoom || isCostingReadOnly}>
                 <BsPlusCircleFill aria-hidden="true" /> Add New Room
               </button>
               {!draftRow ? (
-                <button type="button" className="crud-add-btn" onClick={startAdd} disabled={!!editingItemId || itemSaving || importingItems || summarySaving}>
+                <button type="button" className="crud-add-btn" onClick={startAdd} disabled={!!editingItemId || itemSaving || importingItems || summarySaving || isCostingReadOnly}>
                   <BsPlusCircleFill aria-hidden="true" /> Add Item
                 </button>
               ) : null}
@@ -1225,13 +1386,13 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               <tbody>
                 {draftRow ? (
                   <tr className="project-costing-row--editing">
-                    {renderItemEditorCells(draftRow, patchDraftRow, itemSaving)}
+                    {renderItemEditorCells(draftRow, patchDraftRow, itemSaving || isCostingReadOnly)}
                     <td className="project-costing-table__center">
                       <div className="project-costing-inline-actions">
-                        <button type="button" className="modal-btn modal-btn--save" title="Save item" onClick={saveDraftItem} disabled={itemSaving}>
+                        <button type="button" className="modal-btn modal-btn--save" title="Save item" onClick={saveDraftItem} disabled={itemSaving || isCostingReadOnly}>
                           <BsCheckCircleFill aria-hidden="true" />
                         </button>
-                        <button type="button" className="modal-btn modal-btn--cancel" title="Cancel add" onClick={cancelAdd} disabled={itemSaving}>
+                        <button type="button" className="modal-btn modal-btn--cancel" title="Cancel add" onClick={cancelAdd} disabled={itemSaving || isCostingReadOnly}>
                           <BsXCircleFill aria-hidden="true" />
                         </button>
                       </div>
@@ -1251,15 +1412,15 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                   if (isEditing) {
                     return (
                       <tr key={item.id} className="project-costing-row--editing">
-                        {renderItemEditorCells(editingRow, patchEditingRow, itemSaving)}
+                        {renderItemEditorCells(editingRow, patchEditingRow, itemSaving || isCostingReadOnly)}
                         <td className="project-costing-table__center">
                           <div className="project-costing-inline-actions">
                             <button type="button" className="modal-btn modal-btn--save" title="Save"
-                              onClick={handleSaveItem} disabled={itemSaving}>
+                              onClick={handleSaveItem} disabled={itemSaving || isCostingReadOnly}>
                               <BsCheckCircleFill aria-hidden="true" />
                             </button>
                             <button type="button" className="modal-btn modal-btn--cancel" title="Cancel"
-                              onClick={cancelEditItem} disabled={itemSaving}>
+                              onClick={cancelEditItem} disabled={itemSaving || isCostingReadOnly}>
                               <BsXCircleFill aria-hidden="true" />
                             </button>
                           </div>
@@ -1300,7 +1461,8 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                         <div className="project-costing-inline-actions">
                           <button type="button" className="users-action users-action--edit" title="Edit item"
                             disabled={
-                              frozen
+                              isCostingReadOnly
+                              || frozen
                               || !canEditItem(item)
                               || itemSaving
                               || !!editingItemId
@@ -1313,8 +1475,9 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                           </button>
                           <button type="button" className="users-action users-action--delete" title="Delete item"
                             disabled={
-                              frozen
-                              || !canDeleteItem(item)
+                              isCostingReadOnly
+                              || frozen
+                              || String(getRetrievalStatusName(item)).trim().toLowerCase() !== STATUS_NO_ACTION.toLowerCase()
                               || itemSaving
                               || !!editingItemId
                               || !!draftRow

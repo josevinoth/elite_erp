@@ -17,6 +17,7 @@ from ..sub_models.lab_furniture_item import LabFurnitureItem
 from ..sub_models.project_costing_items_mod import ProjectCostingItemInfo
 from ..sub_models.project_costing_summary_mod import ProjectCostingSummaryInfo
 from ..sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
+from ..sub_models.quotation_status_mod import QuotationStatusInfo
 from ..sub_models.retrieval_status_mod import RetrievalStatusInfo
 from ..sub_models.room_data_mod import RoomDataInfo
 from ..utils import normalize_text
@@ -47,6 +48,10 @@ def _is_admin_user(user):
     if user.is_superuser or user.is_staff:
         return True
     return bool({g.name.strip().lower() for g in user.groups.all()}.intersection({"admin", "super admin", "staff"}))
+
+
+def _summary_status_name(summary):
+    return str(getattr(getattr(summary, "status", None), "status_name", getattr(summary, "status_id", "")) or "").strip()
 
 
 def _user_team_name(user):
@@ -205,6 +210,35 @@ def _update_costing_items_from_payload(request, summary, items_payload):
     return None
 
 
+@api_view(["GET"])
+@csrf_protect
+def project_costing_quotations_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    project_id = normalize_text(request.GET.get("project_id"))
+    quotations = (
+        ProjectQuotationSummaryInfo.objects.select_related("project", "status")
+        .filter(status__status_name__iexact="Completed")
+        .order_by("project__project_id", "id")
+    )
+    if project_id:
+        quotations = quotations.filter(project_id=project_id)
+
+    payload = [
+        {
+            "quotation_id": row.pk,
+            "quotation_number": row.quotation_number,
+            "project_id": row.project_id,
+            "project_name": row.project_name,
+            "status": getattr(row, "status_id", "") or getattr(getattr(row, "status", None), "status_name", ""),
+        }
+        for row in quotations
+    ]
+    return Response(payload, status=status.HTTP_200_OK)
+
+
 @api_view(["GET", "POST"])
 @csrf_protect
 def project_costing_api_view(request):
@@ -246,6 +280,19 @@ def project_costing_detail_api_view(request, pk):
         payload = ProjectCostingSummaryView(request).list_payload()
         return Response({"success": True, "message": "Project costing deleted.", **payload}, status=status.HTTP_200_OK)
 
+    current_status = _summary_status_name(summary)
+    is_admin = _is_admin_user(request.user)
+    if current_status == ProjectCostingSummaryInfo.STATUS_COMPLETED and not is_admin:
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing is read-only for non-admin users.",
+                "is_admin": is_admin,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     serializer = ProjectCostingSummarySerializer(summary, data=request.data, partial=True)
     if not serializer.is_valid():
         return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
@@ -271,6 +318,19 @@ def project_costing_edit_api_view(request, pk):
         payload = ProjectCostingSummaryView(request).detail_payload(summary)
         return Response(payload, status=status.HTTP_200_OK)
 
+    current_status = _summary_status_name(summary)
+    is_admin = _is_admin_user(request.user)
+    if current_status == ProjectCostingSummaryInfo.STATUS_COMPLETED and not is_admin:
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing is read-only for non-admin users.",
+                "is_admin": is_admin,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     request_payload = request.data if isinstance(request.data, dict) else {}
     summary_payload = request_payload.get("summary") if isinstance(request_payload.get("summary"), dict) else {
         key: value for key, value in request_payload.items() if key != "items"
@@ -292,6 +352,103 @@ def project_costing_edit_api_view(request, pk):
     payload = ProjectCostingSummaryView(request).detail_payload(updated_summary)
     return Response(
         {"success": True, "message": "Project costing updated successfully.", **payload},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["PATCH"])
+@csrf_protect
+def project_costing_status_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").get(pk=pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    requested_status = normalize_text(request.data.get("status") or request.data.get("quotation_status"))
+    if not requested_status:
+        return Response({"status": "error", "message": "Costing status is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    allowed_status_map = {
+        str(choice_value).strip().lower(): choice_value
+        for choice_value, _choice_label in QuotationStatusInfo.STATUS_CHOICES
+    }
+    resolved_status = allowed_status_map.get(requested_status.lower())
+    if not resolved_status:
+        return Response({"status": "error", "message": "Invalid costing status."}, status=status.HTTP_400_BAD_REQUEST)
+
+    is_admin = _is_admin_user(request.user)
+    current_status = _summary_status_name(summary)
+    if not is_admin and resolved_status != current_status:
+        is_allowed_non_admin_transition = (
+            current_status == ProjectCostingSummaryInfo.STATUS_WORK_IN_PROGRESS
+            and resolved_status == ProjectCostingSummaryInfo.STATUS_COMPLETED
+        )
+        if not is_allowed_non_admin_transition:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Non-admin users can only change status from Work in Progress to Completed.",
+                    "costing": ProjectCostingSummaryView(request).detail_payload(summary),
+                    "is_admin": is_admin,
+                    "can_edit": current_status != ProjectCostingSummaryInfo.STATUS_COMPLETED,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+    allow_without_items = str(request.data.get("confirm_completed_without_items") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    requested_completed = resolved_status == ProjectCostingSummaryInfo.STATUS_COMPLETED
+    has_items = ProjectCostingItemInfo.objects.filter(costing_id=summary).exists()
+
+    if requested_completed and not has_items and not allow_without_items:
+        payload = ProjectCostingSummaryView(request).detail_payload(summary)
+        return Response(
+            {
+                "success": False,
+                "status": "warning",
+                "message": "No costing items added. Do you still want to save as Completed?",
+                "requires_confirmation": True,
+                "is_admin": is_admin,
+                "can_edit": True,
+                **payload,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    summary.status = resolved_status
+    summary._allow_completed_without_items = allow_without_items
+    try:
+        summary.save()
+    except Exception as exc:
+        logger.exception("Failed to update costing status.")
+        return Response(
+            {
+                "status": "error",
+                "message": str(exc) or "Failed to update costing status.",
+                "is_admin": is_admin,
+                "can_edit": current_status != ProjectCostingSummaryInfo.STATUS_COMPLETED or is_admin,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    payload = ProjectCostingSummaryView(request).detail_payload(summary)
+    can_edit = resolved_status != ProjectCostingSummaryInfo.STATUS_COMPLETED or is_admin
+    warning_message = "No items added" if (requested_completed and not has_items) else ""
+    return Response(
+        {
+            "success": True,
+            "status": resolved_status,
+            "result_status": "success",
+            "costing_status": resolved_status,
+            "message": "Project costing status updated successfully.",
+            "warning": warning_message,
+            "is_admin": is_admin,
+            "can_edit": can_edit,
+            **payload,
+        },
         status=status.HTTP_200_OK,
     )
 
@@ -338,6 +495,18 @@ def project_costing_items_api_view(request, pk):
         payload = ProjectCostingItemView(request).list_payload(summary)
         return Response(payload, status=status.HTTP_200_OK)
 
+    current_status = _summary_status_name(summary)
+    if current_status == ProjectCostingSummaryInfo.STATUS_COMPLETED and not _is_admin_user(request.user):
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing items are read-only for non-admin users.",
+                "is_admin": False,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     serializer = ProjectCostingItemSerializer(data={**request.data, "costing_id": summary.pk})
     if not serializer.is_valid():
         return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
@@ -376,6 +545,17 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
         item.delete()
         payload = ProjectCostingItemView(request).list_payload(summary)
         return Response({"success": True, "message": "Project costing item deleted.", **payload}, status=status.HTTP_200_OK)
+
+    if _summary_status_name(summary) == ProjectCostingSummaryInfo.STATUS_COMPLETED and not _is_admin_user(request.user):
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing items are read-only for non-admin users.",
+                "is_admin": False,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
         return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
@@ -701,11 +881,13 @@ def import_costing_items_excel_api_view(request, pk):
             room_obj = RoomDataInfo.objects.filter(room_name__iexact=room_name_input).first()
 
         existing = ProjectCostingItemInfo.objects.filter(costing_id=costing, item_code=item_master).first()
+        item_category = getattr(item_master, "item_category", None)
+        item_category_id = getattr(item_category, "pk", None) or getattr(item_master, "item_category_id", None)
 
         payload = {
             "costing_id": costing.pk,
             "cost_type_id": material_ct.pk if material_ct else None,
-            "item_category_id": item_master.item_category_id,
+            "item_category_id": item_category_id,
             "item_name": item_master.item_name,
             "item_code_id": item_master.pk,
             "room_name_id": room_obj.pk if room_obj else None,

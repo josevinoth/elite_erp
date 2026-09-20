@@ -39,6 +39,13 @@
   margin-right: 0.45rem;
 }
 
+.erp-alert-warning .alert-icon,
+.alert.alert-warning .alert-icon {
+  color: #c2410c;
+  font-size: 1.05em;
+  font-weight: 700;
+}
+
 .erp-alert.erp-alert-default {
   background-color: #e5e7eb;
   color: #1f2937;

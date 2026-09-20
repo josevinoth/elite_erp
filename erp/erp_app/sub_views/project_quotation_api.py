@@ -112,6 +112,26 @@ def _extract_summary_error_message(exc, fallback_message):
     return str(exc) or fallback_message
 
 
+def _summary_status_name(summary):
+    if summary is None:
+        return ProjectQuotationSummaryInfo.STATUS_WORK_IN_PROGRESS
+
+    # Support FK-backed status objects and legacy direct status strings.
+    fk_status_name = normalize_text(getattr(getattr(summary, "status", None), "status_name", ""))
+    if fk_status_name:
+        return fk_status_name
+
+    status_id_name = normalize_text(getattr(summary, "status_id", ""))
+    if status_id_name:
+        return status_id_name
+
+    direct_status_name = normalize_text(getattr(summary, "status", ""))
+    if direct_status_name:
+        return direct_status_name
+
+    return ProjectQuotationSummaryInfo.STATUS_WORK_IN_PROGRESS
+
+
 def _to_decimal_or_none(value):
     if value in (None, ""):
         return None
@@ -275,7 +295,8 @@ def quotation_detail_api_view(request, pk):
         return Response({"success": True, "message": "Quotation deleted.", **payload}, status=status.HTTP_200_OK)
 
     is_admin = _is_admin_user(request)
-    if summary.status == ProjectQuotationSummaryInfo.STATUS_COMPLETED and not is_admin:
+    current_status = _summary_status_name(summary)
+    if current_status == ProjectQuotationSummaryInfo.STATUS_COMPLETED and not is_admin:
         return Response(
             {
                 "status": "error",
@@ -328,7 +349,7 @@ def quotation_status_api_view(request, pk):
         )
 
     is_admin = _is_admin_user(request)
-    current_status = summary.status
+    current_status = _summary_status_name(summary)
     if not is_admin and resolved_status != current_status:
         is_allowed_non_admin_transition = (
             current_status == ProjectQuotationSummaryInfo.STATUS_WORK_IN_PROGRESS
@@ -341,7 +362,7 @@ def quotation_status_api_view(request, pk):
                     "message": "Non-admin users can only change status from Work In Progress to Completed.",
                     "quotation": ProjectQuotationSummarySerializer(summary, context={"request": request}).data,
                     "is_admin": is_admin,
-                    "can_edit": current_status != ProjectQuotationSummaryInfo.STATUS_COMPLETED,
+                        "can_edit": current_status != ProjectQuotationSummaryInfo.STATUS_COMPLETED,
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -354,18 +375,19 @@ def quotation_status_api_view(request, pk):
         payload = ProjectQuotationSummaryView(request).detail_payload(summary)
         return Response(
             {
+                **payload,
                 "success": False,
                 "status": "warning",
                 "message": "No quotation items added. Do you still want to save as Completed?",
+                "warning": "No items added",
                 "requires_confirmation": True,
                 "is_admin": is_admin,
                 "can_edit": True,
-                **payload,
             },
             status=status.HTTP_200_OK,
         )
 
-    summary.status = resolved_status
+    summary.status_id = resolved_status
     summary._allow_completed_without_items = allow_without_items
     try:
         summary.save()
@@ -376,16 +398,17 @@ def quotation_status_api_view(request, pk):
                 "status": "error",
                 "message": message or "Failed to update quotation status.",
                 "is_admin": is_admin,
-                "can_edit": summary.status != ProjectQuotationSummaryInfo.STATUS_COMPLETED or is_admin,
+                "can_edit": current_status != ProjectQuotationSummaryInfo.STATUS_COMPLETED or is_admin,
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
     payload = ProjectQuotationSummaryView(request).detail_payload(summary)
-    can_edit = summary.status != ProjectQuotationSummaryInfo.STATUS_COMPLETED or is_admin
-    warning_message = "No items added" if (is_admin and requested_completed and not has_items) else ""
+    can_edit = current_status != ProjectQuotationSummaryInfo.STATUS_COMPLETED or is_admin
+    warning_message = "No items added" if (requested_completed and not has_items) else ""
     return Response(
         {
+            **payload,
             "success": True,
             "status": resolved_status,
             "result_status": "success",
@@ -394,7 +417,6 @@ def quotation_status_api_view(request, pk):
             "warning": warning_message,
             "is_admin": is_admin,
             "can_edit": can_edit,
-            **payload,
         },
         status=status.HTTP_200_OK,
     )
@@ -413,7 +435,8 @@ def quotation_summary_save_api_view(request, pk):
         return JsonResponse({"status": "error", "message": "Quotation summary not found."}, status=404)
 
     is_admin = _is_admin_user(request)
-    if summary.status == ProjectQuotationSummaryInfo.STATUS_COMPLETED and not is_admin:
+    current_status = _summary_status_name(summary)
+    if current_status == ProjectQuotationSummaryInfo.STATUS_COMPLETED and not is_admin:
         return Response(
             {
                 "status": "error",
@@ -424,12 +447,12 @@ def quotation_summary_save_api_view(request, pk):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    requested_status = normalize_text(request.data.get("quotation_status") or request.data.get("status") or summary.status)
+    requested_status = normalize_text(request.data.get("quotation_status") or request.data.get("status") or current_status)
     allowed_status_map = {
         str(choice_value).strip().lower(): choice_value
         for choice_value, _choice_label in ProjectQuotationSummaryInfo.STATUS_CHOICES
     }
-    resolved_status = allowed_status_map.get(requested_status.lower(), summary.status)
+    resolved_status = allowed_status_map.get(requested_status.lower(), current_status)
 
     allow_without_items = _as_bool(request.data.get("confirm_completed_without_items"))
     requested_completed = resolved_status == ProjectQuotationSummaryInfo.STATUS_COMPLETED
@@ -439,25 +462,33 @@ def quotation_summary_save_api_view(request, pk):
         payload = ProjectQuotationSummaryView(request).detail_payload(summary)
         return Response(
             {
+                **payload,
                 "success": False,
                 "status": "warning",
                 "message": "No quotation items added. Do you still want to save as Completed?",
+                "warning": "No items added",
                 "requires_confirmation": True,
                 "is_admin": is_admin,
                 "can_edit": True,
-                **payload,
             },
             status=status.HTTP_200_OK,
         )
 
+    summary.status_id = resolved_status
+    summary._allow_completed_without_items = allow_without_items
     payload_data = dict(request.data)
-    payload_data["quotation_status"] = resolved_status
+    payload_data.pop("quotation_status", None)
+    payload_data.pop("status", None)
 
-    serializer = ProjectQuotationSummarySerializer(summary, data=payload_data, partial=True)
+    serializer = ProjectQuotationSummarySerializer(
+        summary,
+        data=payload_data,
+        partial=True,
+        context={"request": request, "allow_completed_without_items": allow_without_items},
+    )
     if not serializer.is_valid():
         return _serializer_error_response(serializer)
 
-    serializer.instance._allow_completed_without_items = allow_without_items
     updated, error_response = _safe_serializer_save(serializer, "Failed to update quotation summary.")
     if error_response:
         return error_response
@@ -466,12 +497,13 @@ def quotation_summary_save_api_view(request, pk):
     can_edit = resolved_status != ProjectQuotationSummaryInfo.STATUS_COMPLETED or is_admin
     return Response(
         {
+            **payload,
             "success": True,
             "status": "success",
             "message": "Quotation summary updated successfully.",
+            "warning": "No items added" if (requested_completed and not has_items) else "",
             "is_admin": is_admin,
             "can_edit": can_edit,
-            **payload,
         },
         status=status.HTTP_200_OK,
     )

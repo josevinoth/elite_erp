@@ -136,6 +136,14 @@ export async function listQuotationSummaries(projectId = null) {
   return parseJson(res);
 }
 
+export async function listCompletedQuotationSummaries(projectId = null) {
+  const query = projectId !== null && projectId !== undefined && String(projectId).trim()
+    ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
+    : "";
+  const res = await fetch(`/api/project-costing/quotations/${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function listStockPlanningItems(projectId = null) {
   const query = projectId !== null && projectId !== undefined && String(projectId).trim()
     ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
@@ -315,6 +323,20 @@ export async function createProjectCosting(payload) {
 export async function updateProjectCosting(id, payload) {
   const headers = await csrfHeaders();
   const res = await fetch(`/api/project-costing/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateProjectCostingStatus(id, statusPayload) {
+  const headers = await csrfHeaders();
+  const payload = typeof statusPayload === "string"
+    ? { status: statusPayload }
+    : (statusPayload || {});
+  const res = await fetch(`/api/project-costing/${id}/status/`, {
     method: "PATCH",
     credentials: "include",
     headers,

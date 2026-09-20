@@ -31,10 +31,8 @@ function AlertMessage({ type = "default", message = "" }) {
 
   return (
     <div className={`erp-alert alert alert-${alertType} erp-alert-${alertType}`} role="status" aria-live="polite">
-      <span className="erp-alert__text">
-        <span className="alert-icon" aria-hidden="true">{icon}</span>
-        {messageText}
-      </span>
+      <span className="alert-icon" aria-hidden="true">{icon}</span>
+      <span className="erp-alert__text">{messageText}</span>
     </div>
   );
 }

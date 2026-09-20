@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .sub_views import list_project_layout_drawings_api_view, save_project_layout_drawings_api_view
+from .sub_views import list_project_layout_drawings_api_view
 from .sub_views.project_layout_drawing_view import list_project_layout_drawings, upload_project_layout_drawing
 from .sub_views.project_quotation_api import (
     create_project_quotation_item_api_view,
@@ -18,6 +18,7 @@ from .sub_views.project_quotation_api import (
     project_quotation_summary_api_view,
     stock_planning_api_view,
 )
+from .sub_views.project_costing_api import project_costing_quotations_api_view, project_costing_status_api_view
 from .sub_views.stock_manufacture_api import (
     list_stock_manufacture_items_api_view,
     create_stock_manufacture_item_api_view,
@@ -207,9 +208,11 @@ urlpatterns = [
         name="api-quotations-items-detail",
     ),
     path("api/project-costing/", project_costing_api_view, name="api-project-costing-list-create"),
+    path("api/project-costing/quotations/", project_costing_quotations_api_view, name="api-project-costing-quotations"),
     path("api/project-costing/generate/", generate_project_costing_api_view, name="api-project-costing-generate"),
     path("api/project-costing/<int:pk>/", project_costing_detail_api_view, name="api-project-costing-detail"),
     path("api/project-costing/<int:pk>/edit/", project_costing_edit_api_view, name="api-project-costing-edit"),
+    path("api/project-costing/<int:pk>/status/", project_costing_status_api_view, name="api-project-costing-status"),
     path("api/project-costing/<int:pk>/items/", project_costing_items_api_view, name="api-project-costing-items"),
     path(
         "api/project-costing/items/import/template/",

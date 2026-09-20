@@ -261,13 +261,14 @@ Clone approved quotation summaries and items into project costing records, then 
 |------|------|---------|
 | Page | `erp/frontend/src/pages/ProjectCostingPage.jsx` | Costing list and costing summary edit page |
 | Styles | `erp/frontend/src/styles/ProjectCosting.css` | All costing page styling and status badge classes |
-| Service API | `erp/frontend/src/services/crudApi.js` | Fetch helpers for costing CRUD, item import, and template download |
+| Service API | `erp/frontend/src/services/crudApi.js` | Fetch helpers for costing CRUD, completed quotation lookup, item import, and template download |
 
 ### Key API routes
 
 | Method | Route | Description |
 |--------|-------|-------------|
 | `GET` | `/api/project-costing/` | List project costing summaries with quotation number and project code |
+| `GET` | `/api/project-costing/quotations/` | List completed quotations for the costing generation dropdown |
 | `POST` | `/api/project-costing/generate/` | Clone a quotation summary and its items into project costing |
 | `GET` | `/api/project-costing/<id>/` | Load costing summary detail and linked items |
 | `PATCH` | `/api/project-costing/<id>/` | Update costing summary fields |

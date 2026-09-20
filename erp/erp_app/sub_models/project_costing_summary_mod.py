@@ -5,20 +5,16 @@ from django.db import models
 
 from ..utils import calculate_summary_totals, normalize_text
 from .project import Project
+from .quotation_status_mod import QuotationStatusInfo, get_default_quotation_status_name
 from .project_quotation_summary_mod import ProjectQuotationSummaryInfo
 
 
 class ProjectCostingSummaryInfo(models.Model):
-    STATUS_WORK_IN_PROGRESS = "Work In Progress"
-    STATUS_COMPLETED = "Completed"
-    STATUS_HOLD = "Hold"
-    STATUS_CANCELLED = "Cancelled"
-    STATUS_CHOICES = [
-        (STATUS_WORK_IN_PROGRESS, STATUS_WORK_IN_PROGRESS),
-        (STATUS_COMPLETED, STATUS_COMPLETED),
-        (STATUS_HOLD, STATUS_HOLD),
-        (STATUS_CANCELLED, STATUS_CANCELLED),
-    ]
+    STATUS_WORK_IN_PROGRESS = QuotationStatusInfo.STATUS_WORK_IN_PROGRESS
+    STATUS_COMPLETED = QuotationStatusInfo.STATUS_COMPLETED
+    STATUS_HOLD = QuotationStatusInfo.STATUS_HOLD
+    STATUS_CANCELLED = QuotationStatusInfo.STATUS_CANCELLED
+    STATUS_CHOICES = QuotationStatusInfo.STATUS_CHOICES
 
     costing_id = models.CharField(max_length=20, unique=True, blank=True)
     quotation_number = models.ForeignKey(
@@ -28,7 +24,14 @@ class ProjectCostingSummaryInfo(models.Model):
     )
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="project_costing_summaries")
     project_name = models.CharField(max_length=200, blank=True)
-    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_WORK_IN_PROGRESS)
+    status = models.ForeignKey(
+        QuotationStatusInfo,
+        to_field="status_name",
+        db_column="status",
+        on_delete=models.PROTECT,
+        related_name="project_costing_summaries",
+        default=get_default_quotation_status_name,
+    )
 
     # Financial fields — cloned from ProjectQuotationSummaryInfo
     total_material_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
@@ -105,6 +108,8 @@ class ProjectCostingSummaryInfo(models.Model):
         if getattr(self, "project", None) is None:
             self.project = self.quotation_number.project
         self.project_name = normalize_text(getattr(self.project, "project_name", ""))
+        if not getattr(self, "status_id", None):
+            self.status_id = get_default_quotation_status_name()
 
         self.total_material_cost = self._as_decimal(self.total_material_cost)
         self.petrol_expenses = self._as_int(self.petrol_expenses)
@@ -117,6 +122,18 @@ class ProjectCostingSummaryInfo(models.Model):
         self.installation = self._as_int(self.installation)
         self.business_development = self._as_int(self.business_development)
         self.markup = self._as_decimal(self.markup)
+        status_name = getattr(getattr(self, "status", None), "status_name", self.status_id or "")
+        if status_name == self.STATUS_COMPLETED:
+            existing_status_name = ""
+            if self.pk:
+                existing_status_name = str(
+                    type(self).objects.filter(pk=self.pk).values_list("status_id", flat=True).first() or ""
+                )
+            has_items = bool(self.pk and self.quotation_items.exists())
+            allow_without_items = bool(getattr(self, "_allow_completed_without_items", False))
+            transitioning_to_completed = not self.pk or existing_status_name != self.STATUS_COMPLETED
+            if transitioning_to_completed and not has_items and not allow_without_items:
+                raise ValidationError({"status": "Quotation cannot be marked Completed when no quotation items exist."})
         self._recalculate_derived_fields()
 
     def save(self, *args, **kwargs):

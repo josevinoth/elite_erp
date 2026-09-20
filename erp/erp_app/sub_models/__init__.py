@@ -20,6 +20,7 @@ from .project_costing_items_mod import ProjectCostingItemInfo
 from .project_costing_summary_mod import ProjectCostingSummaryInfo
 from .project_quotation_items_mod import ProjectQuotationItemInfo
 from .project_quotation_summary_mod import ProjectQuotationSummaryInfo
+from .quotation_status_mod import QuotationStatusInfo
 from .project_layout_drawing import ProjectLayoutDrawing
 from .place_stock_order_mod import PlaceStockOrderInfo, PlaceStockOrderItem
 from .stock_maintenance_type_option import StockMaintenanceTypeOption
@@ -63,6 +64,7 @@ __all__ = [
     "ProjectInfo",
     "ProjectCostingSummaryInfo",
     "ProjectCostingItemInfo",
+    "QuotationStatusInfo",
     "ProjectQuotationSummaryInfo",
     "ProjectQuotationItemInfo",
     "ProjectLayoutDrawing",

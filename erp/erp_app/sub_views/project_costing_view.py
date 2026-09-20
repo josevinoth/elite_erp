@@ -89,7 +89,6 @@ class ProjectCostingSummaryView:
     def _serialize_summary(self, summary):
         return {
             **ProjectCostingSummarySerializer(summary, context=self.get_serializer_context()).data,
-            "status": "success",
         }
 
     def list_payload(self):
@@ -114,8 +113,8 @@ class ProjectCostingSummaryView:
             "retrieval_statuses": self._serialize_retrieval_statuses(),
             "cost_types": ct["cost_types"],
             "material_cost_type_id": ct["material_cost_type_id"],
-            "status": "success",
-            "message": "Project costing loaded successfully.",
+            "validation_status": "success",
+            "validation_message": "Project costing loaded successfully.",
         }
 
     @transaction.atomic
@@ -201,8 +200,8 @@ class ProjectCostingItemView:
             "project_id": summary.project_id,
             "project_name": summary.project_name,
             "items": ProjectCostingItemSerializer(items, many=True, context=self.get_serializer_context()).data,
-            "status": "success",
-            "message": "Project costing items loaded successfully.",
+            "validation_status": "success",
+            "validation_message": "Project costing items loaded successfully.",
         }
 
     def stock_retrieval_payload(self):

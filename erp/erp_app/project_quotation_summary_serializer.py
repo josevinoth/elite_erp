@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .sub_models import Project
+from .sub_models.quotation_status_mod import QuotationStatusInfo
 from .sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
 
 
@@ -16,11 +17,22 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
             "incorrect_type": "Project is required.",
         },
     )
-    quotation_status = serializers.ChoiceField(
+    quotation_status = serializers.SlugRelatedField(
         source="status",
-        choices=ProjectQuotationSummaryInfo.STATUS_CHOICES,
+        slug_field="status_name",
+        queryset=QuotationStatusInfo.objects.all(),
         required=False,
     )
+    status = serializers.CharField(required=False, write_only=True)
+    quotation_status_id = serializers.CharField(source="status_id", read_only=True)
+    quotation_status_name = serializers.CharField(source="status.status_name", read_only=True)
+
+    @staticmethod
+    def _allow_completed_without_items(instance=None, context=None):
+        return bool(
+            getattr(instance, "_allow_completed_without_items", False)
+            or (context or {}).get("allow_completed_without_items", False)
+        )
 
     class Meta:
         model = ProjectQuotationSummaryInfo
@@ -28,6 +40,9 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
             "id",
             "quotation_number",
             "quotation_status",
+            "status",
+            "quotation_status_id",
+            "quotation_status_name",
             "project_id",
             "project_name",
             "total_material_cost",
@@ -68,6 +83,19 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        raw_status_name = attrs.get("status")
+        if isinstance(raw_status_name, str):
+            normalized_status_name = raw_status_name.strip()
+            if not normalized_status_name:
+                attrs.pop("status", None)
+            else:
+                resolved_status = QuotationStatusInfo.objects.filter(
+                    status_name__iexact=normalized_status_name
+                ).first()
+                if not resolved_status:
+                    raise serializers.ValidationError({"status": ["Invalid quotation status."]})
+                attrs["status"] = resolved_status
+
         if self.instance is None and "project" not in attrs:
             raise serializers.ValidationError({"project_id": ["Project is required."]})
 
@@ -105,6 +133,11 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
             value = attrs[field_name] if field_name in attrs else getattr(source, field_name, None)
             setattr(candidate, field_name, value)
 
+        candidate._allow_completed_without_items = self._allow_completed_without_items(
+            instance=self.instance,
+            context=getattr(self, "context", {}),
+        )
+
         try:
             candidate.full_clean()
         except DjangoValidationError as exc:
@@ -120,6 +153,10 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
         target = instance or ProjectQuotationSummaryInfo()
         for field, value in validated_data.items():
             setattr(target, field, value)
+        target._allow_completed_without_items = self._allow_completed_without_items(
+            instance=instance,
+            context=getattr(self, "context", {}),
+        )
         try:
             target.full_clean()
         except DjangoValidationError as exc:

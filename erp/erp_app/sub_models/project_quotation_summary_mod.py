@@ -5,24 +5,27 @@ from django.db import models
 
 from ..utils import calculate_summary_totals, normalize_text
 from .project import Project
+from .quotation_status_mod import QuotationStatusInfo, get_default_quotation_status_name
 
 
 class ProjectQuotationSummaryInfo(models.Model):
-    STATUS_WORK_IN_PROGRESS = "Work In Progress"
-    STATUS_COMPLETED = "Completed"
-    STATUS_HOLD = "Hold"
-    STATUS_CANCELLED = "Cancelled"
-    STATUS_CHOICES = [
-        (STATUS_WORK_IN_PROGRESS, STATUS_WORK_IN_PROGRESS),
-        (STATUS_COMPLETED, STATUS_COMPLETED),
-        (STATUS_HOLD, STATUS_HOLD),
-        (STATUS_CANCELLED, STATUS_CANCELLED),
-    ]
+    STATUS_WORK_IN_PROGRESS = QuotationStatusInfo.STATUS_WORK_IN_PROGRESS
+    STATUS_COMPLETED = QuotationStatusInfo.STATUS_COMPLETED
+    STATUS_HOLD = QuotationStatusInfo.STATUS_HOLD
+    STATUS_CANCELLED = QuotationStatusInfo.STATUS_CANCELLED
+    STATUS_CHOICES = QuotationStatusInfo.STATUS_CHOICES
 
     quotation_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="project_quotation_summaries")
     project_name = models.CharField(max_length=200, blank=True)
-    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_WORK_IN_PROGRESS)
+    status = models.ForeignKey(
+        QuotationStatusInfo,
+        to_field="status_name",
+        db_column="status",
+        on_delete=models.PROTECT,
+        related_name="quotation_summaries",
+        default=get_default_quotation_status_name,
+    )
 
     total_material_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     petrol_expenses = models.IntegerField(default=0)
@@ -75,10 +78,13 @@ class ProjectQuotationSummaryInfo(models.Model):
     def _material_items_total(self):
         if not self.pk:
             return Decimal("0")
+        quotation_items = getattr(self, "quotation_items", None)
+        if quotation_items is None:
+            return Decimal("0")
         return sum(
             (
                 self._as_decimal(total_cost)
-                for total_cost in self.quotation_items.filter(cost_type__name__iexact="MATERIAL").values_list(
+                for total_cost in quotation_items.filter(cost_type__name__iexact="MATERIAL").values_list(
                     "total_cost",
                     flat=True,
                 )
@@ -120,6 +126,8 @@ class ProjectQuotationSummaryInfo(models.Model):
             raise ValidationError({"project": "Project is required."})
 
         self._sync_project_snapshot()
+        if not getattr(self, "status_id", None):
+            self.status_id = get_default_quotation_status_name()
         self.total_material_cost = self._as_decimal(self.total_material_cost)
         self.petrol_expenses = self._as_int(self.petrol_expenses)
         self.transport_installation_team = self._as_int(self.transport_installation_team)
@@ -132,10 +140,18 @@ class ProjectQuotationSummaryInfo(models.Model):
         self.business_development = self._as_int(self.business_development)
         self.markup = self._as_decimal(self.markup)
 
-        if self.status == self.STATUS_COMPLETED:
-            has_items = bool(self.pk and self.quotation_items.exists())
+        status_name = getattr(getattr(self, "status", None), "status_name", self.status_id or "")
+        if status_name == self.STATUS_COMPLETED:
+            existing_status_name = ""
+            if self.pk:
+                existing_status_name = str(
+                    type(self).objects.filter(pk=self.pk).values_list("status_id", flat=True).first() or ""
+                )
+            quotation_items = getattr(self, "quotation_items", None)
+            has_items = bool(self.pk and quotation_items is not None and quotation_items.exists())
             allow_without_items = bool(getattr(self, "_allow_completed_without_items", False))
-            if not has_items and not allow_without_items:
+            transitioning_to_completed = not self.pk or existing_status_name != self.STATUS_COMPLETED
+            if transitioning_to_completed and not has_items and not allow_without_items:
                 raise ValidationError({"status": "Quotation cannot be marked Completed when no quotation items exist."})
 
         if self.pk:
