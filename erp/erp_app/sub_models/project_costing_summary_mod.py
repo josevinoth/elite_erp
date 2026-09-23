@@ -21,6 +21,7 @@ class ProjectCostingSummaryInfo(models.Model):
         ProjectQuotationSummaryInfo,
         on_delete=models.PROTECT,
         related_name="project_costing_summaries",
+        unique=True,
     )
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="project_costing_summaries")
     project_name = models.CharField(max_length=200, blank=True)
@@ -129,11 +130,12 @@ class ProjectCostingSummaryInfo(models.Model):
                 existing_status_name = str(
                     type(self).objects.filter(pk=self.pk).values_list("status_id", flat=True).first() or ""
                 )
-            has_items = bool(self.pk and self.quotation_items.exists())
+            costing_items = getattr(self, "costing_items", None)
+            has_items = bool(self.pk and costing_items is not None and costing_items.exists())
             allow_without_items = bool(getattr(self, "_allow_completed_without_items", False))
             transitioning_to_completed = not self.pk or existing_status_name != self.STATUS_COMPLETED
             if transitioning_to_completed and not has_items and not allow_without_items:
-                raise ValidationError({"status": "Quotation cannot be marked Completed when no quotation items exist."})
+                raise ValidationError({"status": "Project costing cannot be marked Completed when no costing items exist."})
         self._recalculate_derived_fields()
 
     def save(self, *args, **kwargs):

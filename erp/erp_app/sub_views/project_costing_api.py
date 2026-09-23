@@ -142,6 +142,12 @@ def _item_not_found():
     return JsonResponse({"status": "error", "message": "Project costing item not found."}, status=404)
 
 
+def _allow_completed_without_items_requested(payload):
+    if not isinstance(payload, dict):
+        return False
+    return str(payload.get("confirm_completed_without_items") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def _update_costing_items_from_payload(request, summary, items_payload):
     if items_payload in (None, ""):
         return None
@@ -218,9 +224,11 @@ def project_costing_quotations_api_view(request):
         return not_allowed
 
     project_id = normalize_text(request.GET.get("project_id"))
+    # Filter quotations by Completed status and exclude those that already have a costing summary
     quotations = (
         ProjectQuotationSummaryInfo.objects.select_related("project", "status")
         .filter(status__status_name__iexact="Completed")
+        .exclude(project_costing_summaries__isnull=False)
         .order_by("project__project_id", "id")
     )
     if project_id:
@@ -228,6 +236,7 @@ def project_costing_quotations_api_view(request):
 
     payload = [
         {
+            "id": row.pk,
             "quotation_id": row.pk,
             "quotation_number": row.quotation_number,
             "project_id": row.project_id,
@@ -250,7 +259,10 @@ def project_costing_api_view(request):
         payload = ProjectCostingSummaryView(request).list_payload()
         return Response(payload, status=status.HTTP_200_OK)
 
-    serializer = ProjectCostingSummarySerializer(data=request.data)
+    serializer = ProjectCostingSummarySerializer(
+        data=request.data,
+        context={"allow_completed_without_items": _allow_completed_without_items_requested(request.data)},
+    )
     if not serializer.is_valid():
         return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
 
@@ -267,7 +279,7 @@ def project_costing_detail_api_view(request, pk):
         return not_allowed
 
     try:
-        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").get(pk=pk)
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
     except ProjectCostingSummaryInfo.DoesNotExist:
         return _summary_not_found()
 
@@ -293,7 +305,12 @@ def project_costing_detail_api_view(request, pk):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    serializer = ProjectCostingSummarySerializer(summary, data=request.data, partial=True)
+    serializer = ProjectCostingSummarySerializer(
+        summary,
+        data=request.data,
+        partial=True,
+        context={"allow_completed_without_items": _allow_completed_without_items_requested(request.data)},
+    )
     if not serializer.is_valid():
         return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
 
@@ -310,7 +327,7 @@ def project_costing_edit_api_view(request, pk):
         return not_allowed
 
     try:
-        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").get(pk=pk)
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
     except ProjectCostingSummaryInfo.DoesNotExist:
         return _summary_not_found()
 
@@ -340,7 +357,12 @@ def project_costing_edit_api_view(request, pk):
     with transaction.atomic():
         updated_summary = summary
         if summary_payload:
-            serializer = ProjectCostingSummarySerializer(summary, data=summary_payload, partial=True)
+            serializer = ProjectCostingSummarySerializer(
+                summary,
+                data=summary_payload,
+                partial=True,
+                context={"allow_completed_without_items": _allow_completed_without_items_requested(summary_payload)},
+            )
             if not serializer.is_valid():
                 return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
             updated_summary = serializer.save()
@@ -364,7 +386,7 @@ def project_costing_status_api_view(request, pk):
         return not_allowed
 
     try:
-        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").get(pk=pk)
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
     except ProjectCostingSummaryInfo.DoesNotExist:
         return _summary_not_found()
 
@@ -400,25 +422,84 @@ def project_costing_status_api_view(request, pk):
             )
 
     allow_without_items = str(request.data.get("confirm_completed_without_items") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    allow_invalid_retrieval = str(request.data.get("confirm_invalid_retrieval_status") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
     requested_completed = resolved_status == ProjectCostingSummaryInfo.STATUS_COMPLETED
-    has_items = ProjectCostingItemInfo.objects.filter(costing_id=summary).exists()
+    items = ProjectCostingItemInfo.objects.filter(costing_id=summary)
+    has_items = items.exists()
 
-    if requested_completed and not has_items and not allow_without_items:
-        payload = ProjectCostingSummaryView(request).detail_payload(summary)
+    # Validation for Completed status: costing items and retrieval status checks
+    if requested_completed:
+        # Check 1: Costing items list cannot be empty
+        if not has_items and not allow_without_items:
+            payload = ProjectCostingSummaryView(request).detail_payload(summary)
+            return Response(
+                {
+                    "success": False,
+                    "status": "warning",
+                    "message": "No costing items added. Do you still want to save as Completed?",
+                    "requires_confirmation": True,
+                    "is_admin": is_admin,
+                    "can_edit": True,
+                    **payload,
+                },
+                status=status.HTTP_200_OK,
+            )
+        
+        # Check 2: Validate retrieval status of each item (only if items exist and not confirmed)
+        if has_items and not allow_invalid_retrieval:
+            # Items must NOT be in incomplete/in-progress states
+            # Rejected items are also not allowed to complete costing
+            blocked_statuses = {
+                RetrievalStatusInfo.STATUS_NO_ACTION,           # "No Action" - not processed
+                RetrievalStatusInfo.STATUS_ITEM_REQUESTED,      # "Item Requested" - in process
+                RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,       # "Item Supplied" - in process
+                RetrievalStatusInfo.STATUS_REQUEST_REJECTED,    # "Item Rejected" - rejected
+            }
+            invalid_items = items.filter(
+                retrieval_status__status_name__in=blocked_statuses
+            ).select_related("retrieval_status", "item_code")
+            
+            if invalid_items.exists():
+                invalid_item_details = [
+                    {
+                        "item_id": item.pk,
+                        "item_code": str(getattr(item.item_code, "item_code", "")),
+                        "retrieval_status": str(getattr(item.retrieval_status, "status_name", "Unknown"))
+                    }
+                    for item in invalid_items[:10]  # Show first 10 invalid items
+                ]
+                payload = ProjectCostingSummaryView(request).detail_payload(summary)
+                return Response(
+                    {
+                        "success": False,
+                        "status": "warning",
+                        "message": f"Cannot mark costing as Completed. {invalid_items.count()} item(s) have incomplete retrieval status. See details below.",
+                        "requires_confirmation": True,
+                        "invalid_items": invalid_item_details,
+                        "invalid_count": invalid_items.count(),
+                        "warning_type": "invalid_retrieval_status",
+                        "is_admin": is_admin,
+                        "can_edit": True,
+                        **payload,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+    # Fetch the QuotationStatusInfo object to ensure proper object relationships
+    try:
+        resolved_status_obj = QuotationStatusInfo.objects.get(status_name=resolved_status)
+        summary.status = resolved_status_obj
+    except QuotationStatusInfo.DoesNotExist:
         return Response(
             {
-                "success": False,
-                "status": "warning",
-                "message": "No costing items added. Do you still want to save as Completed?",
-                "requires_confirmation": True,
+                "status": "error",
+                "message": f"Status '{resolved_status}' is not configured in the system.",
                 "is_admin": is_admin,
                 "can_edit": True,
-                **payload,
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_400_BAD_REQUEST,
         )
-
-    summary.status = resolved_status
+    
     summary._allow_completed_without_items = allow_without_items
     try:
         summary.save()
@@ -469,10 +550,18 @@ def generate_project_costing_api_view(request):
     except ProjectQuotationSummaryInfo.DoesNotExist:
         return Response({"status": "error", "message": "Quotation summary not found."}, status=404)
 
+    # Check if a costing already exists for this quotation (enforce unique constraint)
     existing = ProjectCostingSummaryInfo.objects.filter(quotation_number=quotation).first()
     if existing:
         payload = ProjectCostingSummaryView(request).detail_payload(existing)
-        return Response({"success": True, "message": "Project costing already exists.", **payload}, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "success": True,
+                "message": "Project costing already exists for this quotation. Only one costing summary per quotation is allowed.",
+                **payload,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     costing = ProjectCostingSummaryView(request).clone_from_quotation(quotation)
     payload = ProjectCostingSummaryView(request).detail_payload(costing)
@@ -487,7 +576,7 @@ def project_costing_items_api_view(request, pk):
         return not_allowed
 
     try:
-        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").get(pk=pk)
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
     except ProjectCostingSummaryInfo.DoesNotExist:
         return _summary_not_found()
 
@@ -772,7 +861,7 @@ def import_costing_items_excel_api_view(request, pk):
         return not_allowed
 
     try:
-        costing = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").get(pk=pk)
+        costing = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
     except ProjectCostingSummaryInfo.DoesNotExist:
         return _summary_not_found()
 

@@ -17,6 +17,7 @@ from ..sub_models.CostType_mod import CostTypeInfo
 from ..sub_models.lab_furniture_item import LabFurnitureItem
 from ..sub_models.project_quotation_items_mod import ProjectQuotationItemInfo, validate_project_quotation_hierarchy
 from ..sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
+from ..sub_models.quotation_status_mod import QuotationStatusInfo
 from ..sub_models.room_data_mod import RoomDataInfo
 from ..utils import normalize_text
 from .project_quotation_view import ProjectQuotationItemView, ProjectQuotationSummaryView
@@ -387,7 +388,21 @@ def quotation_status_api_view(request, pk):
             status=status.HTTP_200_OK,
         )
 
-    summary.status_id = resolved_status
+    # Fetch the QuotationStatusInfo object to ensure proper object relationships
+    try:
+        resolved_status_obj = QuotationStatusInfo.objects.get(status_name=resolved_status)
+        summary.status = resolved_status_obj
+    except QuotationStatusInfo.DoesNotExist:
+        return Response(
+            {
+                "status": "error",
+                "message": f"Status '{resolved_status}' is not configured in the system.",
+                "is_admin": is_admin,
+                "can_edit": True,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
     summary._allow_completed_without_items = allow_without_items
     try:
         summary.save()
@@ -474,7 +489,21 @@ def quotation_summary_save_api_view(request, pk):
             status=status.HTTP_200_OK,
         )
 
-    summary.status_id = resolved_status
+    # Fetch the QuotationStatusInfo object to ensure proper object relationships
+    try:
+        resolved_status_obj = QuotationStatusInfo.objects.get(status_name=resolved_status)
+        summary.status = resolved_status_obj
+    except QuotationStatusInfo.DoesNotExist:
+        return Response(
+            {
+                "status": "error",
+                "message": f"Status '{resolved_status}' is not configured in the system.",
+                "is_admin": is_admin,
+                "can_edit": True,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
     summary._allow_completed_without_items = allow_without_items
     payload_data = dict(request.data)
     payload_data.pop("quotation_status", None)

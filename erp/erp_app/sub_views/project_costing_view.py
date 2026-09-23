@@ -92,7 +92,7 @@ class ProjectCostingSummaryView:
         }
 
     def list_payload(self):
-        summaries = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").order_by("-id")
+        summaries = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").order_by("-id")
         return {
             "costings": [self._serialize_summary(row) for row in summaries],
             "retrieval_statuses": self._serialize_retrieval_statuses(),
@@ -101,6 +101,8 @@ class ProjectCostingSummaryView:
         }
 
     def detail_payload(self, summary):
+        if getattr(summary, "pk", None):
+            summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=summary.pk)
         items = list(
             ProjectCostingItemInfo.objects.filter(costing_id=summary)
             .select_related("cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")

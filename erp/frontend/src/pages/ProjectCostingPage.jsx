@@ -20,10 +20,10 @@ import {
   getItemCostPreview,
   getProjectCosting,
   importCostingItemsExcel,
+  listCompletedQuotationSummaries,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
   listProjectCostings,
-  listQuotationSummaries,
   listRooms,
   updateProjectCosting,
   updateProjectCostingStatus,
@@ -41,6 +41,8 @@ const STATUS_ITEM_SUPPLIED = "Item Supplied";
 const STATUS_ITEM_RETURN = "Item Return";
 const STATUS_ITEM_RETURN_ACCEPTED = "Item Return Accepted";
 const MATERIAL_NAME = "MATERIAL";
+
+const COSTING_STATUS_OPTIONS = ["Work in Progress", "Completed", "Hold", "Cancelled"];
 
 const toNumber = (value) => {
   const numeric = Number(value);
@@ -146,6 +148,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     isAdmin || ["engineering team", "engineering", "engg team"].includes(teamName);
   const normalizeStatusName = useCallback((value) => String(value || "").trim().toLowerCase(), []);
 
+
   // list
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -191,6 +194,11 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   const [savingRoom, setSavingRoom] = useState(false);
   const [roomPopup, setRoomPopup] = useState({ type: "", message: "" });
   const [itemColumnFilters, setItemColumnFilters] = useState({});
+
+  // Computed values
+  const isCostingReadOnly = editingCosting && normalizeStatusName(editingCosting?.status_name || editingCosting?.status) === "completed" && !isAdmin;
+  const isStatusDropdownDisabled = isCostingReadOnly;
+
   useEffect(() => {
     if (!onStatusChange) return;
     onStatusChange(status || { type: "", message: "" });
@@ -329,10 +337,12 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     const activeProjectId = embedded && projectId ? projectId : null;
     const [costingData, quotationData] = await Promise.all([
       listProjectCostings(),
-      listQuotationSummaries(activeProjectId),
+      listCompletedQuotationSummaries(activeProjectId),
     ]);
     setCostings(Array.isArray(costingData?.costings) ? costingData.costings : []);
-    setQuotationOptions(Array.isArray(quotationData?.quotations) ? quotationData.quotations : []);
+    // quotationData is returned directly as an array from the API
+    const quotations = Array.isArray(quotationData) ? quotationData : [];
+    setQuotationOptions(quotations);
   }, [embedded, projectId]);
 
   useEffect(() => {
@@ -374,12 +384,9 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         normalizeStatusName(c?.status_name || c?.status) === "completed" && !isAdmin
           ? { type: "warning", message: "Status is Completed. Only admin can edit this form." }
           : { type: "" , message: "" }
-      );
+       );
        setCostTypes(Array.isArray(data?.cost_types) ? data.cost_types : []);
        setMaterialCostTypeId(data?.material_cost_type_id ? String(data.material_cost_type_id) : "");
-      if (Array.isArray(data?.retrieval_statuses) && data.retrieval_statuses.length) {
-        setRetrievalStatuses(data.retrieval_statuses);
-      }
     } catch (err) {
       setStatus({ type: "error", message: err.message || "Failed to load costing detail." });
     }
@@ -1115,28 +1122,19 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               <span className="project-costing-field__label">Project Name</span>
               <span className="project-costing-field__value">{c.project_name || "—"}</span>
             </div>
-          </div>
-
-          <div className="project-costing-form-section">
-            <h3 className="project-costing-form-section__title project-costing-form-section__title--material">
-              <span className="project-costing-form-section__title-icon" aria-hidden="true"><BsCheckCircleFill /></span>
-              <span>Status</span>
-            </h3>
-            <div className="project-costing-form-grid">
-              <label className="project-costing-form-label">
-                Status
-                <select
-                  className="project-costing-select"
-                  value={summaryForm.status || "Work in Progress"}
-                  onChange={handleSummaryStatusSelect}
-                  disabled={isStatusDropdownDisabled || summarySaving}
-                >
-                  {COSTING_STATUS_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            <label className="project-costing-form-label project-costing-field">
+              <span className="project-costing-field__label">Status</span>
+              <select
+                className="project-costing-select"
+                value={summaryForm.status || "Work in Progress"}
+                onChange={handleSummaryStatusSelect}
+                disabled={isStatusDropdownDisabled || summarySaving}
+              >
+                {COSTING_STATUS_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           {/* Editable financial inputs */}
