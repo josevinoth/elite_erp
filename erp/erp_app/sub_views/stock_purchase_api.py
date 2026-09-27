@@ -1,11 +1,12 @@
 import json
 from decimal import Decimal, InvalidOperation
 
+from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import ItemCategory, ItemType_info, LabFurnitureItem, LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import ItemCategory, ItemType_info, LabFurnitureItem, LCECostDetail, LCEEstimate, ProjectCostingItemAllocation, RetrievalStatusInfo, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -145,6 +146,7 @@ def _serialize_item(item, item_master_by_code=None):
     resolved_item_type = getattr(item_master, "item_type", None)
     item_type_name = getattr(resolved_item_type, "it_name", None) or "BUY"
     item_type_id = getattr(resolved_item_type, "pk", None)
+    purchase_qty = getattr(item, "purchase_qty", None) or item.quantity
 
     return {
         "id": item.id,
@@ -158,6 +160,7 @@ def _serialize_item(item, item_master_by_code=None):
         "item_type": item_type_name,
         "item_type_id": item_type_id,
         "quantity": str(item.quantity),
+        "purchase_qty": str(purchase_qty),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
         "lce_cost": str(item.lce_cost),
@@ -205,6 +208,143 @@ def _serialize(obj):
         "total_price": str(first_item.total_price) if first_item else "0",
         "status": None,
     }
+
+
+def _resolve_item_master_by_code_or_id(item_code):
+    normalized = normalize_text(item_code)
+    if not normalized:
+        return None
+    if normalized.isdigit():
+        return LabFurnitureItem.objects.filter(pk=int(normalized)).first()
+    return LabFurnitureItem.objects.filter(item_code__iexact=normalized).first()
+
+
+def _purchase_items_for_item_master(item_master):
+    code_value = normalize_text(getattr(item_master, "item_code", ""))
+    qs = StockPurchaseItem.objects.select_related("vendor_detail__vendor", "item_code")
+    if code_value:
+        return list(
+            qs.filter(
+                Q(item_code=item_master) | Q(item_code__item_code__iexact=code_value)
+            )
+            .order_by("vendor_detail__invoice_date", "id")
+            .distinct()
+        )
+    return list(qs.filter(item_code=item_master).order_by("vendor_detail__invoice_date", "id"))
+
+
+def _allocation_totals_for_purchase_items(purchase_item_ids):
+    accepted_rows = ProjectCostingItemAllocation.objects.filter(
+        purchase_item_id__in=purchase_item_ids,
+        retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+        costing_item__retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+    )
+    returned_rows = ProjectCostingItemAllocation.objects.filter(
+        purchase_item_id__in=purchase_item_ids,
+        retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        costing_item__retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN,
+    )
+
+    accepted_by_id = {}
+    for row in accepted_rows.values("purchase_item_id", "allocated_qty"):
+        pid = row["purchase_item_id"]
+        accepted_by_id[pid] = accepted_by_id.get(pid, Decimal("0")) + Decimal(str(row["allocated_qty"] or 0))
+
+    returned_by_id = {}
+    for row in returned_rows.values("purchase_item_id", "allocated_qty"):
+        pid = row["purchase_item_id"]
+        returned_by_id[pid] = returned_by_id.get(pid, Decimal("0")) + Decimal(str(row["allocated_qty"] or 0))
+
+    consumed_by_id = {}
+    for pid in purchase_item_ids:
+        consumed_by_id[pid] = accepted_by_id.get(pid, Decimal("0")) - returned_by_id.get(pid, Decimal("0"))
+        if consumed_by_id[pid] < 0:
+            consumed_by_id[pid] = Decimal("0")
+    return consumed_by_id
+
+
+@require_GET
+def purchase_item_grns_api_view(request, item_code):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    item_master = _resolve_item_master_by_code_or_id(item_code)
+    if not item_master:
+        return JsonResponse({"message": "Item code not found."}, status=404)
+
+    purchase_items = _purchase_items_for_item_master(item_master)
+    consumed_by_id = _allocation_totals_for_purchase_items([row.id for row in purchase_items])
+
+    payload = []
+    for row in purchase_items:
+        purchased_qty = Decimal(str(getattr(row, "purchase_qty", None) or row.quantity or 0))
+        consumed_qty = consumed_by_id.get(row.id, Decimal("0"))
+        balance_qty = purchased_qty - consumed_qty
+        if balance_qty < 0:
+            balance_qty = Decimal("0")
+        payload.append(
+            {
+                "id": row.id,
+                "grn_number": row.grn_number,
+                "vendor": getattr(getattr(row, "vendor_detail", None), "vendor", None).name if getattr(getattr(row, "vendor_detail", None), "vendor", None) else "",
+                "purchase_date": str(getattr(getattr(row, "vendor_detail", None), "invoice_date", "") or ""),
+                "purchase_qty": str(purchased_qty),
+                "cost": str(row.unit_price),
+                "consumed_qty": str(consumed_qty),
+                "balance_qty": str(balance_qty),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "item_code": item_master.item_code,
+            "item_code_id": item_master.pk,
+            "grns": payload,
+        }
+    )
+
+
+@require_GET
+def stock_item_summary_api_view(request, item_code):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    item_master = _resolve_item_master_by_code_or_id(item_code)
+    if not item_master:
+        return JsonResponse({"message": "Item code not found."}, status=404)
+
+    purchase_items = _purchase_items_for_item_master(item_master)
+    consumed_by_id = _allocation_totals_for_purchase_items([row.id for row in purchase_items])
+
+    summary_rows = []
+    for row in purchase_items:
+        purchased_qty = Decimal(str(getattr(row, "purchase_qty", None) or row.quantity or 0))
+        consumed_qty = consumed_by_id.get(row.id, Decimal("0"))
+        balance_qty = purchased_qty - consumed_qty
+        if balance_qty < 0:
+            balance_qty = Decimal("0")
+        summary_rows.append(
+            {
+                "purchase_item_id": row.id,
+                "grn_number": row.grn_number,
+                "vendor": getattr(getattr(row, "vendor_detail", None), "vendor", None).name if getattr(getattr(row, "vendor_detail", None), "vendor", None) else "",
+                "purchase_date": str(getattr(getattr(row, "vendor_detail", None), "invoice_date", "") or ""),
+                "purchased_qty": str(purchased_qty),
+                "consumed_qty": str(consumed_qty),
+                "balance_qty": str(balance_qty),
+                "unit_price": str(row.unit_price),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "item_code": item_master.item_code,
+            "item_code_id": item_master.pk,
+            "summary": summary_rows,
+        }
+    )
 
 
 def _resolve_vendor_detail(payload):

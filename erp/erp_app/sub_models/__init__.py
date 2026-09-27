@@ -16,7 +16,7 @@ from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .room_data_mod import RoomDataInfo
 from .project import Project
 from .project_mod import ProjectInfo
-from .project_costing_items_mod import ProjectCostingItemInfo
+from .project_costing_items_mod import ProjectCostingItemAllocation, ProjectCostingItemInfo
 from .project_costing_summary_mod import ProjectCostingSummaryInfo
 from .project_quotation_items_mod import ProjectQuotationItemInfo
 from .project_quotation_summary_mod import ProjectQuotationSummaryInfo
@@ -64,6 +64,7 @@ __all__ = [
     "ProjectInfo",
     "ProjectCostingSummaryInfo",
     "ProjectCostingItemInfo",
+    "ProjectCostingItemAllocation",
     "QuotationStatusInfo",
     "ProjectQuotationSummaryInfo",
     "ProjectQuotationItemInfo",

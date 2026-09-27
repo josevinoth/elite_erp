@@ -275,18 +275,26 @@ Clone approved quotation summaries and items into project costing records, then 
 | `GET/PATCH` | `/api/project-costing/<id>/edit/` | Compatibility edit endpoint for summary + linked item updates |
 | `GET/POST` | `/api/project-costing/<id>/items/` | List or create costing items for a summary |
 | `PATCH/DELETE` | `/api/project-costing/<costing_id>/items/<item_id>/` | Update or delete a costing item |
+| `GET` | `/api/purchase-items/<item_code>/grns/` | List GRNs and available balance for a selected item code |
+| `GET` | `/api/stock/<item_code>/summary/` | Stock summary by GRN (Purchased / Consumed / Balance) |
 | `GET` | `/api/stock-retrieval/` | List costing items with retrieval status `Item Requested` |
 | `GET` | `/api/stock-return/` | List costing items with retrieval status `Item Return` |
 
 ### UI behavior
 
 - `Generate Project Costing` clones quotation summary financial fields and quotation item rows.
-- New costing item rows default `retrieval_status` to `No Action`.
+- New costing item rows default `retrieval_status` to `Item Requested`.
+- Material item selection now requires GRN-aware allocation from Stock Purchase (`/api/purchase-items/<item_code>/grns/`).
+- Requested Qty can be split across multiple GRNs in the Costing Item editor; total split must equal Requested Qty.
+- `StockPurchaseItem.purchase_qty` stores the original purchase quantity and remains immutable during costing allocation.
+- Consumption is tracked in `ProjectCostingItem` (`accepted_qty`) using GRN allocations without mutating original purchase quantity.
+- `StocksListPage.jsx` shows GRN-level Purchased Qty, Consumed Qty, and Balance Qty.
 - Rows marked `Item Accepted` are frozen for non-admin users.
 - Rows marked `Item Return` flow into the Stock Return module.
 - `ProjectCostingPage.jsx` keeps all styles in `ProjectCosting.css` with badge/popup classes only.
 - `StockRetrievalPage.jsx` now displays `purchase_qty`, `length`, `width`, `height`, and `volume`.
 - In Stock Retrieval, `retrieval_status` is read-only when `stock_status = No Stock` (legacy `Not Purchased` rows are still recognized).
+- Stock Retrieval actions use `Item Requested` -> `Item Accepted` (Accept) and `Item Return` (Reject).
 
 ### Django API Routes
 
@@ -461,3 +469,175 @@ Handle post-supply stock acceptance decisions for Project Costing items.
 - Project add/edit page (`erp/frontend/src/pages/ProjectsAddPage.jsx`) includes **Project Owner** dropdown populated by `/api/projects/meta/`.
 
 ---
+
+## Stock Retrieval Workflow
+
+Complete stock retrieval workflow with GRN references and status transitions for project costing items.
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Item model | `erp/erp_app/sub_models/project_costing_items_mod.py` | `ProjectCostingItemInfo` with `retrieval_status` FK and `accepted_qty` field |
+| Status model | `erp/erp_app/sub_models/retrieval_status_mod.py` | `RetrievalStatusInfo` defines 7 retrieval workflow statuses |
+| API views | `erp/erp_app/sub_views/project_costing_api.py` | List and update endpoints for retrieval, acceptance, and return |
+| URL registration | `erp/erp_app/urls.py` | Registers retrieval/acceptance/return endpoints |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Retrieval page | `erp/frontend/src/pages/StockRetrievalPage.jsx` | Shows `Item Requested` items with Accept/Reject actions |
+| Acceptance page | `erp/frontend/src/pages/StockAcceptancePage.jsx` | Shows `Item Supplied` items with Accept/Reject actions |
+| Return page | `erp/frontend/src/pages/StockReturnPage.jsx` | Shows `Item Return` items with Accept/Reject actions |
+| Stock list page | `erp/frontend/src/pages/StocksListPage.jsx` | Shows GRN-level purchased/consumed/balance quantities |
+| Confirmation component | `erp/frontend/src/components/ActionConfirmationPage.jsx` | Summary screen after action submission |
+| Service API | `erp/frontend/src/services/crudApi.js` | Service functions for all retrieval/acceptance/return endpoints |
+
+### Retrieval Status Lifecycle
+
+```
+┌─────────────────┐
+│  No Action      │  (initial/rejected state)
+└────────┬────────┘
+         ▼
+┌──────────────────────┐
+│  Item Requested      │  (engineering creates item in costing)
+└────────┬─────────────┘
+         │ Accept
+         ▼
+┌──────────────────────┐
+│  Item Supplied       │  (stock team confirms supply)
+└────────┬─────────────┘
+         │ Accept       │ Reject
+         ▼              ▼
+┌──────────────────────┐  ┌──────────────────────┐
+│  Item Accepted       │  │  Item Requested      │
+└────────┬─────────────┘  └──────────────────────┘
+         │ Initiate Return
+         ▼
+┌──────────────────────┐
+│  Item Return         │  (material is returned to vendor)
+└────────┬─────────────┘
+         │ Accept       │ Reject
+         ▼              ▼
+┌──────────────────────────┐  ┌──────────────────────┐
+│  Item Return Accepted    │  │  Item Accepted       │
+└──────────────────────────┘  └──────────────────────┘
+(return processed, stock updated)
+```
+
+### Retrieval Status Transitions
+
+| Status | Source | Accept Action | Reject Action | Notes |
+|--------|--------|---------------|---------------|-------|
+| **Item Requested** | Engineering (create costing item) | → Item Supplied | → No Action | Stock team reviews request |
+| **Item Supplied** | Stock team (retrieval list) | → Item Accepted | → Item Requested | Acceptance workflow step |
+| **Item Accepted** | Acceptance workflow | → Item Return | — | Item is consumed; can initiate return |
+| **Item Return** | Accepted items (manual initiation) | → Item Return Accepted | → Item Accepted | Return is being processed |
+| **Item Return Accepted** | Return workflow approved | (terminal) | — | Return approved; stock balance updated |
+| **No Action** | Rejection | (idle) | — | Item is not processed further |
+
+### API Endpoints
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/stock-retrieval/` | List costing items with `retrieval_status = "Item Requested"` |
+| `PATCH` | `/api/stock-retrieval/<id>/` | Accept/Reject item in retrieval (→ Item Supplied / → No Action) |
+| `GET` | `/api/stock-acceptance/` | List costing items with `retrieval_status = "Item Supplied"` |
+| `PATCH` | `/api/stock-acceptance/edit/` | Accept/Reject item in acceptance (→ Item Accepted / → Item Requested) |
+| `GET` | `/api/stock-return/` | List costing items with `retrieval_status = "Item Return"` |
+| `PATCH` | `/api/stock-return/<id>/` | Accept/Reject return (→ Item Return Accepted / → Item Accepted) |
+
+### Workflow Steps
+
+#### 1. Retrieval List → Stock Acceptance
+- **Page:** `/stock-retrieval`
+- **Status:** Shows only items with `retrieval_status = "Item Requested"`
+- **Actions:**
+  - **Accept:** Set status to `"Item Supplied"` → Item moves to Stock Acceptance list
+  - **Reject:** Set status to `"No Action"` → Item removed from workflow
+- **Permissions:** Project owner, admin, or stock team
+
+#### 2. Stock Acceptance → Return (Optional)
+- **Page:** `/stock-acceptance`
+- **Status:** Shows only items with `retrieval_status = "Item Supplied"`
+- **Actions:**
+  - **Accept:** Set status to `"Item Accepted"` → Item is consumed
+  - **Reject:** Set status to `"Item Requested"` → Item goes back to retrieval list
+- **Permissions:** Project owner, admin, or stock team
+- **Note:** Once accepted, item can be marked for return if needed
+
+#### 3. Return Workflow (When Item Needs Return)
+- **Page:** `/stock-return`
+- **Status:** Shows only items with `retrieval_status = "Item Return"`
+- **Actions:**
+  - **Accept Return:** Set status to `"Item Return Accepted"` → Decreases consumed qty; increases balance for that GRN
+  - **Reject Return:** Set status to `"Item Accepted"` → Item remains consumed; no stock balance change
+- **Permissions:** Project owner, admin, or stock team
+- **Effect on Stock:**
+  - Balance Qty = Purchased Qty − Consumed Qty + Returned Qty
+  - Upon return acceptance, `accepted_qty` is decreased by returned quantity
+
+#### 4. Stock List Display
+- **Page:** `/stocks`
+- **Content:** For each Item Code + GRN combination:
+  - **Purchased Qty:** `StockPurchaseItem.purchase_qty` (immutable)
+  - **Consumed Qty:** Sum of `ProjectCostingItem.accepted_qty` where `retrieval_status = "Item Accepted"` 
+  - **Balance Qty:** Purchased − Consumed + Returned
+  - **GRN Number, Vendor, Unit Price, Total Price, LCE Cost**
+- **Visibility:** All users can view (filtered by project owner if non-admin)
+
+### Implementation Details
+
+#### Model Fields
+- **`ProjectCostingItemInfo.retrieval_status`** (FK → `RetrievalStatusInfo`)
+  - Tracks workflow state for each costing item
+  - Initialized to `"No Action"` on creation
+  - Updated via retrieval/acceptance/return workflows
+
+- **`ProjectCostingItemInfo.accepted_qty`** (Decimal)
+  - Stores quantity accepted in the Item Accepted state
+  - Used to calculate consumed qty for stock balance
+  - Decremented when item return is accepted
+
+- **`ProjectCostingItemInfo.purchase_item`** (FK → `StockPurchaseItem`)
+  - Links costing item to original GRN
+  - Enables stock balance tracking per GRN
+  - Facilitates returned qty updates
+
+#### Service Functions (Frontend crudApi.js)
+```javascript
+// Retrieval
+listStockRetrievalItems()
+updateStockRetrievalItem(id, {action: "accept"|"reject", rejection_comment: ""})
+
+// Acceptance
+listStockAcceptanceItems()
+updateStockAcceptanceItem(id, payload)
+
+// Return
+listStockReturnItems()
+updateStockReturnItem(id, {action: "accept"|"reject"})
+```
+
+#### Permission Model
+- **Non-admin users:** See only items linked to their project (where `project_owner = user`)
+- **Admin users:** See all items
+- **Stock team members:** Can update status in retrieval/acceptance/return workflows
+- **Project owners:** Can update status if they own the project
+- **Non-authorized users:** Receive 403 Forbidden response
+
+#### Validation Rules
+- Only `Item Requested` items can be acted upon in Stock Retrieval
+- Only `Item Supplied` items can be acted upon in Stock Acceptance
+- Only `Item Return` items can be acted upon in Stock Return
+- Accept action changes status forward; Reject reverses to previous logical state
+- Stock balance calculations exclude items not in `Item Accepted` or `Item Return Accepted` states
+
+### Backward Compatibility
+
+- Existing costing items default to `retrieval_status = "No Action"` on first load
+- Items without a `retrieval_status` are skipped in retrieval/acceptance/return lists
+- Stock list calculation filters by `retrieval_status` to ensure only completed items affect balance
+- No required schema changes for existing quotation/costing records

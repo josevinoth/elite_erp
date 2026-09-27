@@ -21,6 +21,7 @@ from .project_quotation_items_mod import (
 )
 from .retrieval_status_mod import RetrievalStatusInfo
 from .room_data_mod import RoomDataInfo
+from .stock_purchase import StockPurchaseItem
 from .stock_status_mod import StockStatusInfo
 
 
@@ -60,8 +61,16 @@ class ProjectCostingItemInfo(models.Model):
         blank=True,
         related_name="project_costing_items",
     )
+    purchase_item = models.ForeignKey(
+        StockPurchaseItem,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="project_costing_items",
+    )
     purchase_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     requested_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    accepted_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     cost_per_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     max_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     min_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
@@ -113,6 +122,7 @@ class ProjectCostingItemInfo(models.Model):
 
         self.item_name = normalize_text(self.item_name)
         self.requested_qty = _as_decimal(self.requested_qty)
+        self.accepted_qty = _as_decimal(self.accepted_qty)
         self.purchase_qty = _as_decimal(self.purchase_qty)
         self.cost_per_qty = _as_decimal(self.cost_per_qty)
         self.max_cost = _as_decimal(self.max_cost)
@@ -125,6 +135,8 @@ class ProjectCostingItemInfo(models.Model):
 
         if self.requested_qty < 0:
             raise ValidationError({"requested_qty": "Requested Qty must be 0 or greater."})
+        if self.accepted_qty < 0:
+            raise ValidationError({"accepted_qty": "Accepted Qty must be 0 or greater."})
         if self.cost_per_qty < 0:
             raise ValidationError({"cost_per_qty": "Cost per Qty must be 0 or greater."})
         if self.actual_cost < 0:
@@ -161,6 +173,13 @@ class ProjectCostingItemInfo(models.Model):
             self.purchase_qty = _resolve_purchase_qty(resolved_master, fallback=self.purchase_qty)
             _sync_dimensions_from_item_master(self, resolved_master)
 
+            if self.purchase_item_id:
+                if self.purchase_item.item_code_id != resolved_master.pk:
+                    raise ValidationError({"purchase_item": "Selected GRN does not belong to the chosen item code."})
+                self.purchase_qty = _as_decimal(
+                    getattr(self.purchase_item, "purchase_qty", None) or getattr(self.purchase_item, "quantity", 0)
+                )
+
             actual_override = None if self.actual_cost == 0 else self.actual_cost
             costs = calculate_costs(resolved_master, self.requested_qty, actual_cost=actual_override)
             self.max_cost = costs["max_cost"]
@@ -168,10 +187,11 @@ class ProjectCostingItemInfo(models.Model):
             self.actual_cost = costs["actual_cost"]
             self.cost_per_qty = costs["cost_per_qty"]
             self.total_cost = costs["total_cost"]
+            stock_basis_qty = self.accepted_qty if self.accepted_qty > 0 else self.purchase_qty
             status_name = _resolve_stock_status_name(
                 resolved_master,
                 requested_qty=self.requested_qty,
-                purchase_qty=self.purchase_qty,
+                purchase_qty=stock_basis_qty,
             )
             self.stock_status = _resolve_stock_status(status_name)
         else:
@@ -187,6 +207,47 @@ class ProjectCostingItemInfo(models.Model):
             self.cost_per_qty = costs["cost_per_qty"]
             self.total_cost = costs["total_cost"]
             self.stock_status = _resolve_stock_status(StockStatusInfo.STATUS_IN_STOCK)
+
+
+class ProjectCostingItemAllocation(models.Model):
+    costing_item = models.ForeignKey(
+        ProjectCostingItemInfo,
+        on_delete=models.CASCADE,
+        related_name="grn_allocations",
+    )
+    purchase_item = models.ForeignKey(
+        StockPurchaseItem,
+        on_delete=models.PROTECT,
+        related_name="costing_allocations",
+    )
+    allocated_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    retrieval_status = models.ForeignKey(
+        RetrievalStatusInfo,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="project_costing_item_allocations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = (("costing_item", "purchase_item"),)
+        ordering = ["costing_item_id", "id"]
+
+    def clean(self):
+        self.allocated_qty = _as_decimal(self.allocated_qty)
+        if self.allocated_qty < 0:
+            raise ValidationError({"allocated_qty": "Allocated Qty must be 0 or greater."})
+        if not self.retrieval_status_id:
+            parent_status = getattr(getattr(self, "costing_item", None), "retrieval_status", None)
+            self.retrieval_status = parent_status or RetrievalStatusInfo.objects.filter(
+                status_name__iexact=RetrievalStatusInfo.STATUS_NO_ACTION
+            ).first()
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         self.full_clean()

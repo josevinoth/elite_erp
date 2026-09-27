@@ -7,12 +7,19 @@
 .project-costing-toolbar,
 .project-costing-summary-toolbar,
 .project-costing-filters,
-.project-costing-actions,
-.project-costing-row-actions {
+.project-costing-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+}
+
+.project-costing-row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
 }
 
 .project-costing-card,
@@ -663,4 +670,64 @@
 
 .project-costing-modal-actions {
   justify-content: flex-end;
+}
+
+/* Status badge styling for list view */
+.project-costing-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.project-costing-status-badge--work-in-progress {
+  background: rgba(59, 130, 246, 0.15);
+  color: #1e40af;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.project-costing-status-badge--completed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #166534;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.project-costing-status-badge--hold {
+  background: rgba(217, 119, 6, 0.15);
+  color: #92400e;
+  border-color: rgba(217, 119, 6, 0.35);
+}
+
+.project-costing-status-badge--cancelled {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.project-costing-grn-editor {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 260px;
+}
+
+.project-costing-grn-editor__rows {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.project-costing-grn-editor__row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 90px auto auto;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.project-costing-text--error {
+  color: #b91c1c;
+  font-weight: 600;
 }

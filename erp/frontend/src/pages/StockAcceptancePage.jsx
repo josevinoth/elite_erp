@@ -143,8 +143,8 @@ function StockAcceptancePage() {
       setStatus({ type: "", message: "" });
       setConfirmation({
         open: true,
-        alertType: nextStatus === "No Action" ? "warning" : "success",
-        message: nextStatus === "No Action" ? "Stock returned to vendor and moved back to No Action." : "Stock accepted successfully.",
+        alertType: nextStatus === "Item Return" ? "warning" : "success",
+        message: nextStatus === "Item Return" ? "Stock moved to Item Return." : "Stock accepted successfully.",
         summary: buildSummary(row),
       });
       setConfirmModal({ open: false, row: null, nextStatus: "" });
@@ -206,7 +206,7 @@ function StockAcceptancePage() {
              <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
              <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
              <p><strong>Current Status:</strong> {confirmModal.row?.retrieval_status?.status_name || "Stock Supplied"}</p>
-             <p><strong>New Status:</strong> <span className={getStatusHighlightClass(confirmModal.nextStatus === "No Action" ? "Item Return" : confirmModal.nextStatus)}>{confirmModal.nextStatus === "No Action" ? "No Action" : confirmModal.nextStatus}</span></p>
+              <p><strong>New Status:</strong> <span className={getStatusHighlightClass(confirmModal.nextStatus)}>{confirmModal.nextStatus}</span></p>
            </div>
          </ConfirmPopupModal>
        ) : null}
@@ -289,8 +289,8 @@ function StockAcceptancePage() {
                         type="button"
                         className="modal-btn modal-btn--cancel"
                         disabled={!row.can_edit || savingId === String(row.id)}
-                        onClick={() => onUpdateStatus(row, "No Action")}
-                        title="Mark as No Action"
+                        onClick={() => onUpdateStatus(row, "Item Return")}
+                        title="Mark as Item Return"
                       >
                         ↩ Return
                       </button>

@@ -54,6 +54,7 @@ class ProjectCostingSummarySerializer(serializers.ModelSerializer):
     project_code = serializers.CharField(source="project.project_id", read_only=True)
     status_id = serializers.CharField(read_only=True)
     status_name = serializers.CharField(source="status.status_name", read_only=True)
+    updated_by = serializers.StringRelatedField(read_only=True)
 
     class Meta:
         model = ProjectCostingSummaryInfo
@@ -89,6 +90,7 @@ class ProjectCostingSummarySerializer(serializers.ModelSerializer):
             "factor",
             "created_at",
             "updated_at",
+            "updated_by",
         ]
         read_only_fields = [
             "id",
@@ -107,6 +109,7 @@ class ProjectCostingSummarySerializer(serializers.ModelSerializer):
             "factor",
             "created_at",
             "updated_at",
+            "updated_by",
         ]
 
     @staticmethod
@@ -189,10 +192,18 @@ class ProjectCostingSummarySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         instance = self._build_instance(validated_data)
+        # Set updated_by from request user
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            instance.updated_by = request.user
         instance.save()
         return instance
 
     def update(self, instance, validated_data):
         instance = self._build_instance(validated_data, instance=instance)
+        # Set updated_by from request user
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            instance.updated_by = request.user
         instance.save()
         return instance

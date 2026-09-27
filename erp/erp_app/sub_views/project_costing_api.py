@@ -14,7 +14,7 @@ from ..project_costing_items_serializer import ProjectCostingItemSerializer
 from ..project_costing_summary_serializer import ProjectCostingSummarySerializer
 from ..sub_models.CostType_mod import CostTypeInfo
 from ..sub_models.lab_furniture_item import LabFurnitureItem
-from ..sub_models.project_costing_items_mod import ProjectCostingItemInfo
+from ..sub_models.project_costing_items_mod import ProjectCostingItemAllocation, ProjectCostingItemInfo
 from ..sub_models.project_costing_summary_mod import ProjectCostingSummaryInfo
 from ..sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
 from ..sub_models.quotation_status_mod import QuotationStatusInfo
@@ -261,7 +261,10 @@ def project_costing_api_view(request):
 
     serializer = ProjectCostingSummarySerializer(
         data=request.data,
-        context={"allow_completed_without_items": _allow_completed_without_items_requested(request.data)},
+        context={
+            "allow_completed_without_items": _allow_completed_without_items_requested(request.data),
+            "request": request,
+        },
     )
     if not serializer.is_valid():
         return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
@@ -309,7 +312,10 @@ def project_costing_detail_api_view(request, pk):
         summary,
         data=request.data,
         partial=True,
-        context={"allow_completed_without_items": _allow_completed_without_items_requested(request.data)},
+        context={
+            "allow_completed_without_items": _allow_completed_without_items_requested(request.data),
+            "request": request,
+        },
     )
     if not serializer.is_valid():
         return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
@@ -361,7 +367,10 @@ def project_costing_edit_api_view(request, pk):
                 summary,
                 data=summary_payload,
                 partial=True,
-                context={"allow_completed_without_items": _allow_completed_without_items_requested(summary_payload)},
+                context={
+                    "allow_completed_without_items": _allow_completed_without_items_requested(summary_payload),
+                    "request": request,
+                },
             )
             if not serializer.is_valid():
                 return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
@@ -501,6 +510,7 @@ def project_costing_status_api_view(request, pk):
         )
     
     summary._allow_completed_without_items = allow_without_items
+    summary.updated_by = request.user
     try:
         summary.save()
     except Exception as exc:
@@ -618,7 +628,20 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
         return _summary_not_found()
 
     try:
-        item = ProjectCostingItemInfo.objects.select_related("item_category", "item_code__item_type", "stock_status", "retrieval_status", "costing_id", "requested_by").get(pk=item_pk, costing_id=summary)
+        item = (
+            ProjectCostingItemInfo.objects.select_related(
+                "item_category",
+                "item_code__item_type",
+                "stock_status",
+                "retrieval_status",
+                "costing_id",
+                "requested_by",
+                "purchase_item",
+                "purchase_item__vendor_detail__vendor",
+            )
+            .prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
+            .get(pk=item_pk, costing_id=summary)
+        )
     except ProjectCostingItemInfo.DoesNotExist:
         return _item_not_found()
 
@@ -677,126 +700,231 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
 
 
 @api_view(["GET"])
+@csrf_protect
 def stock_retrieval_api_view(request):
+    """List costing items with retrieval status = 'Item Requested'"""
     not_allowed = _ensure_authenticated(request)
     if not_allowed:
         return not_allowed
-    payload = ProjectCostingItemView(request).stock_retrieval_payload()
-    return Response(payload, status=status.HTTP_200_OK)
+
+    requested_status = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED
+    ).first()
+
+    queryset = ProjectCostingItemInfo.objects.select_related(
+        "costing_id",
+        "costing_id__quotation_number",
+        "costing_id__project",
+        "cost_type",
+        "item_category",
+        "item_code__item_type",
+        "room_name",
+        "stock_status",
+        "retrieval_status",
+        "purchase_item",
+        "purchase_item__vendor_detail__vendor",
+    ).prefetch_related("grn_allocations__retrieval_status")
+
+    if requested_status:
+        queryset = queryset.filter(retrieval_status=requested_status)
+    else:
+        queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED)
+
+    if not _is_admin_user(request.user):
+        queryset = queryset.filter(costing_id__project__project_owner=request.user)
+
+    items = queryset.order_by("id")
+    data = ProjectCostingItemSerializer(items, many=True, context={"request": request}).data
+    return Response(
+        {"items": data, "status": "success", "message": "Stock retrieval items loaded successfully."},
+        status=status.HTTP_200_OK,
+    )
 
 
-@api_view(["PATCH"])
+@api_view(["GET", "PATCH"])
 @csrf_protect
 def stock_retrieval_item_detail_api_view(request, item_pk):
+    """Get or update a retrieval item. On PATCH, change status to Item Supplied (Accept) or No Action (Reject)"""
     not_allowed = _ensure_authenticated(request)
     if not_allowed:
         return not_allowed
+
     try:
-        item = ProjectCostingItemInfo.objects.select_related("costing_id", "retrieval_status", "requested_by").get(pk=item_pk)
+        item = ProjectCostingItemInfo.objects.select_related(
+            "costing_id__project",
+            "stock_status",
+            "retrieval_status",
+        ).get(pk=item_pk)
     except ProjectCostingItemInfo.DoesNotExist:
-        return _item_not_found()
+        return Response({"status": "error", "message": "Project costing item not found."}, status=404)
 
-    if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
-        return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
-    if not _can_edit_stock_retrieval(request.user):
-        return Response({"status": "error", "message": "Only stock team or admin can update retrieval status."}, status=403)
+    if request.method == "GET":
+        serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+        return Response(serialized, status=status.HTTP_200_OK)
 
-    new_status_name = request.data.get("retrieval_status_name") or request.data.get("retrieval_status")
-    if not new_status_name:
-        return Response({"status": "error", "message": "retrieval_status_name is required."}, status=400)
+    # PATCH: Update retrieval status
+    is_admin = _is_admin_user(request.user)
+    is_owner = item.costing_id.project.project_owner_id == request.user.id
+    is_stock_team = _can_edit_stock_retrieval(request.user)
 
-    status_obj = _status_obj(new_status_name)
-    if not status_obj:
-        return Response({"status": "error", "message": "Invalid retrieval status."}, status=400)
-    current_name = getattr(item.retrieval_status, "status_name", "")
-    if not _is_valid_status_transition(current_name, status_obj.status_name, "retrieval"):
-        return Response({"status": "error", "message": "Invalid status transition from Stock Retrieval."}, status=400)
-
-    action_name = normalize_text(request.data.get("action")).lower()
-    rejection_comment = normalize_text(request.data.get("rejection_comment"))
-    if action_name == "reject" and not rejection_comment:
+    if not (is_admin or is_owner or is_stock_team):
         return Response(
-            {"status": "error", "message": "Rejection comment is required when action is Reject."},
+            {"status": "error", "message": "Only project owner, admin, or stock team can update stock retrieval status."},
+            status=403,
+        )
+
+    # Only allow actions from "Item Requested" status
+    current_status = str(getattr(item.retrieval_status, "status_name", "") or "").strip().lower()
+    if current_status != RetrievalStatusInfo.STATUS_ITEM_REQUESTED.lower():
+        return Response(
+            {"status": "error", "message": "Only Item Requested items can be updated from Stock Retrieval."},
             status=400,
         )
-    if action_name != "reject":
-        # Only reject action is allowed to persist a rejection reason.
-        rejection_comment = ""
 
-    was_requested = current_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED
-    item.retrieval_status = status_obj
-    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED and not was_requested:
-        item.requested_by = request.user
-        item.requested_on = timezone.now()
-    if action_name == "reject" and status_obj.status_name == RetrievalStatusInfo.STATUS_NO_ACTION:
-        item.rejection_comment = rejection_comment
-    elif status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
-        item.rejection_comment = rejection_comment
-    if status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
-        item.rejection_comment = rejection_comment
-    elif status_obj.status_name != RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
-        item.rejection_comment = ""
-    item.save()
-    return Response({"success": True, "item": ProjectCostingItemSerializer(item).data}, status=status.HTTP_200_OK)
+    action = request.data.get("action", "").strip().lower()
+    if action not in {"accept", "reject"}:
+        return Response(
+            {"status": "error", "message": "Action must be 'accept' or 'reject'."},
+            status=400,
+        )
+
+    if action == "accept":
+        # Item Requested -> Item Supplied
+        target_status_name = RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
+    else:  # reject
+        # Item Requested -> No Action
+        target_status_name = RetrievalStatusInfo.STATUS_NO_ACTION
+
+    target_status = RetrievalStatusInfo.objects.filter(status_name__iexact=target_status_name).first()
+    if not target_status:
+        target_status = RetrievalStatusInfo.objects.create(status_name=target_status_name)
+
+    item.retrieval_status = target_status
+    item.requested_by = request.user
+    item.requested_on = timezone.now()
+    if action == "reject":
+        item.rejection_comment = request.data.get("rejection_comment", "")
+    item.save(update_fields=["retrieval_status", "requested_by", "requested_on", "rejection_comment", "updated_at"])
+
+    serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+    message = "Item accepted and moved to Stock Acceptance." if action == "accept" else "Item rejected."
+    return Response(
+        {"success": True, "item": serialized, "message": message},
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["GET"])
+@csrf_protect
 def stock_return_api_view(request):
+    """List costing items with retrieval status = 'Item Return'"""
     not_allowed = _ensure_authenticated(request)
     if not_allowed:
         return not_allowed
-    payload = ProjectCostingItemView(request).stock_return_payload()
-    return Response(payload, status=status.HTTP_200_OK)
+
+    return_status = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN
+    ).first()
+
+    queryset = ProjectCostingItemInfo.objects.select_related(
+        "costing_id",
+        "costing_id__quotation_number",
+        "costing_id__project",
+        "cost_type",
+        "item_category",
+        "item_code__item_type",
+        "room_name",
+        "stock_status",
+        "retrieval_status",
+        "purchase_item",
+        "purchase_item__vendor_detail__vendor",
+    ).prefetch_related("grn_allocations__retrieval_status")
+
+    if return_status:
+        queryset = queryset.filter(retrieval_status=return_status)
+    else:
+        queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN)
+
+    if not _is_admin_user(request.user):
+        queryset = queryset.filter(costing_id__project__project_owner=request.user)
+
+    items = queryset.order_by("id")
+    data = ProjectCostingItemSerializer(items, many=True, context={"request": request}).data
+    return Response(
+        {"items": data, "status": "success", "message": "Stock return items loaded successfully."},
+        status=status.HTTP_200_OK,
+    )
 
 
-@api_view(["PATCH"])
+@api_view(["GET", "PATCH"])
 @csrf_protect
 def stock_return_item_detail_api_view(request, item_pk):
+    """Get or update a return item. On PATCH, change status to Item Return Accepted (Accept) or back to Item Accepted (Reject)"""
     not_allowed = _ensure_authenticated(request)
     if not_allowed:
         return not_allowed
+
     try:
-        item = ProjectCostingItemInfo.objects.select_related("costing_id", "retrieval_status").get(pk=item_pk)
+        item = ProjectCostingItemInfo.objects.select_related(
+            "costing_id__project",
+            "stock_status",
+            "retrieval_status",
+        ).get(pk=item_pk)
     except ProjectCostingItemInfo.DoesNotExist:
-        return _item_not_found()
+        return Response({"status": "error", "message": "Project costing item not found."}, status=404)
 
-    if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
-        return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
-    if not _can_edit_stock_retrieval(request.user):
-        return Response({"status": "error", "message": "Only stock team or admin can update return status."}, status=403)
+    if request.method == "GET":
+        serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+        return Response(serialized, status=status.HTTP_200_OK)
 
-    new_status_name = request.data.get("retrieval_status_name") or request.data.get("retrieval_status")
-    if not new_status_name:
-        return Response({"status": "error", "message": "retrieval_status_name is required."}, status=400)
+    # PATCH: Update return status
+    is_admin = _is_admin_user(request.user)
+    is_owner = item.costing_id.project.project_owner_id == request.user.id
+    is_stock_team = _can_edit_stock_retrieval(request.user)
 
-    status_obj = _status_obj(new_status_name)
-    if not status_obj:
-        return Response({"status": "error", "message": "Invalid retrieval status."}, status=400)
-    current_name = getattr(item.retrieval_status, "status_name", "")
-    if not _is_valid_status_transition(current_name, status_obj.status_name, "return"):
-        return Response({"status": "error", "message": "Invalid status transition from Stock Return."}, status=400)
-    action_name = normalize_text(request.data.get("action")).lower()
-    rejection_comment = normalize_text(request.data.get("rejection_comment"))
-    if action_name == "reject" and not rejection_comment:
+    if not (is_admin or is_owner or is_stock_team):
         return Response(
-            {"status": "error", "message": "Rejection comment is required when action is Reject."},
+            {"status": "error", "message": "Only project owner, admin, or stock team can update stock return status."},
+            status=403,
+        )
+
+    # Only allow actions from "Item Return" status
+    current_status = str(getattr(item.retrieval_status, "status_name", "") or "").strip().lower()
+    if current_status != RetrievalStatusInfo.STATUS_ITEM_RETURN.lower():
+        return Response(
+            {"status": "error", "message": "Only Item Return items can be updated from Stock Return."},
             status=400,
         )
-    if action_name != "reject":
-        # Only reject action is allowed to persist a rejection reason.
-        rejection_comment = ""
 
-    was_requested = current_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED
-    item.retrieval_status = status_obj
-    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED and not was_requested:
-        item.requested_by = request.user
-        item.requested_on = timezone.now()
-    if action_name == "reject" and status_obj.status_name == RetrievalStatusInfo.STATUS_NO_ACTION:
-        item.rejection_comment = rejection_comment
-    elif status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED:
-        item.rejection_comment = ""
-    item.save()
-    return Response({"success": True, "item": ProjectCostingItemSerializer(item).data}, status=status.HTTP_200_OK)
+    action = request.data.get("action", "").strip().lower()
+    if action not in {"accept", "reject"}:
+        return Response(
+            {"status": "error", "message": "Action must be 'accept' or 'reject'."},
+            status=400,
+        )
+
+    if action == "accept":
+        # Item Return -> Item Return Accepted (marks return as approved)
+        target_status_name = RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED
+    else:  # reject
+        # Item Return -> Item Accepted (reject the return, go back to accepted)
+        target_status_name = RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+
+    target_status = RetrievalStatusInfo.objects.filter(status_name__iexact=target_status_name).first()
+    if not target_status:
+        target_status = RetrievalStatusInfo.objects.create(status_name=target_status_name)
+
+    item.retrieval_status = target_status
+    item.requested_by = request.user
+    item.requested_on = timezone.now()
+    item.save(update_fields=["retrieval_status", "requested_by", "requested_on", "updated_at"])
+
+    serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+    message = "Return approved and stock balance updated." if action == "accept" else "Return rejected; item moved back to accepted."
+    return Response(
+        {"success": True, "item": serialized, "message": message},
+        status=status.HTTP_200_OK,
+    )
 
 
 def _costing_items_import_template_bytes():
@@ -1032,6 +1160,3 @@ def import_costing_items_excel_api_view(request, pk):
         },
         status=status.HTTP_200_OK,
     )
-
-
-

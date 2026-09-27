@@ -88,10 +88,13 @@ def _resolve_lab_item(item_category, item_description, item_code):
 
 def _compute_costs(item_code, qty):
     normalized_code = normalize_text(item_code).upper()
-    costs = [
-        _to_decimal(value, Decimal("0"))
-        for value in StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).values_list("lce_cost", flat=True)
-    ]
+    costs = []
+    for row in StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).values_list("lce_cost", "unit_price"):
+        lce_cost, unit_price = row
+        resolved_cost = _to_decimal(lce_cost, Decimal("0"))
+        if resolved_cost <= Decimal("0"):
+          resolved_cost = _to_decimal(unit_price, Decimal("0"))
+        costs.append(resolved_cost)
 
     if not costs:
         cost_max = Decimal("0")

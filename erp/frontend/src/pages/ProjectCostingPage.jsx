@@ -23,6 +23,7 @@ import {
   listCompletedQuotationSummaries,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
+  listPurchaseItemGRNs,
   listProjectCostings,
   listRooms,
   updateProjectCosting,
@@ -55,6 +56,31 @@ const toMoney = (value, decimals = 2) => (
 
 const normalizeText = (value) => String(value || "").trim();
 
+const sumAllocatedQty = (allocations = []) => (
+  allocations.reduce((sum, row) => sum + toNumber(row?.allocated_qty), 0)
+);
+
+const getAllocatedQtyValue = (row) => {
+  const allocations = normalizeAllocationRows(row?.grn_allocations || []);
+  if (allocations.length) return sumAllocatedQty(allocations);
+  return toNumber(row?.accepted_qty);
+};
+
+const normalizeAllocationRows = (allocations = []) => (
+  (Array.isArray(allocations) ? allocations : []).map((row) => ({
+    id: row?.id,
+    purchase_item_id: String(row?.purchase_item_id || row?.purchase_item?.id || ""),
+    allocated_qty: String(row?.allocated_qty ?? "0"),
+    retrieval_status_id: row?.retrieval_status_id || null,
+    retrieval_status_name: row?.retrieval_status_name || STATUS_ITEM_ACCEPTED,
+    grn_number: row?.grn_number || row?.purchase_item?.grn_number || "",
+    vendor: row?.vendor_name || row?.vendor || row?.purchase_item?.vendor_name || "",
+    purchase_qty: String(row?.purchase_qty ?? row?.purchase_item?.purchase_qty ?? "0"),
+    balance_qty: String(row?.balance_qty ?? row?.purchase_qty ?? row?.purchase_item?.purchase_qty ?? "0"),
+    cost: String(row?.cost ?? row?.unit_price ?? "0"),
+  }))
+);
+
 const emptyDimensions = {
   length: "0",
   width: "0",
@@ -72,6 +98,10 @@ const buildDraftItem = (materialCostTypeId) => ({
   item_code_id: "",
   item_type: "",
   room_name_id: "",
+  purchase_item_id: "",
+  accepted_qty: "0",
+  grn_options: [],
+  grn_allocations: [],
   retrieval_status_name: STATUS_NO_ACTION,
   stock_status_name: "In-Stock",
   requested_qty: "0",
@@ -228,6 +258,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
 
   const getItemColumnValue = useCallback((item, key) => {
     if (key === "room_name") return item?.room_name?.room_name || "";
+    if (key === "allocated_qty") return getAllocatedQtyValue(item);
     if (key === "stock_status") return getStockStatusName(item);
     if (key === "retrieval_status") return item?.retrieval_status?.status_name || "";
     return item?.[key] ?? "";
@@ -254,7 +285,9 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
 
   const getEditableRetrievalOptions = useCallback((currentStatusName) => {
     const current = String(currentStatusName || "").trim().toLowerCase();
-    if (!current || current === STATUS_NO_ACTION.toLowerCase()) return [STATUS_ITEM_REQUESTED];
+    if (!current || current === STATUS_NO_ACTION.toLowerCase()) {
+      return [STATUS_NO_ACTION, STATUS_ITEM_REQUESTED];
+    }
     if (current === STATUS_ITEM_SUPPLIED.toLowerCase()) return [STATUS_ITEM_RETURN];
     if (current === STATUS_ITEM_RETURN_ACCEPTED.toLowerCase()) return [STATUS_ITEM_RETURN_ACCEPTED];
     return [String(currentStatusName || STATUS_NO_ACTION)];
@@ -493,6 +526,13 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     setSummaryAlert({ type: "", message: "" });
   }, [normalizeStatusName, openStatusConfirmation, summaryForm.status]);
 
+  // Update the costings list with the updated costing data
+  const updateCostingInList = useCallback((updatedCosting) => {
+    setCostings((prev) =>
+      prev.map((c) => (String(c.id) === String(updatedCosting.id) ? updatedCosting : c))
+    );
+  }, []);
+
   const handleSaveSummary = useCallback(async () => {
     if (!editingCosting) return;
     setSummarySaving(true);
@@ -506,6 +546,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       const updated = response?.costing || null;
       if (updated) {
         setEditingCosting(updated);
+        updateCostingInList(updated);
         setSummaryForm(summaryFormFromCosting(updated));
         setSummaryAlert(
           normalizeStatusName(updated?.status_name || updated?.status) === "completed" && !isAdmin
@@ -519,7 +560,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     } finally {
       setSummarySaving(false);
     }
-  }, [acceptedMaterialCost, editingCosting, isAdmin, normalizeStatusName, summaryForm]);
+  }, [acceptedMaterialCost, editingCosting, isAdmin, normalizeStatusName, summaryForm, updateCostingInList]);
 
   const cancelStatusConfirmation = useCallback(() => {
     setStatusConfirmation({
@@ -543,18 +584,19 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         status: nextStatus,
         confirm_completed_without_items: statusConfirmation.allowCompletedWithoutItems,
       });
-      const updated = response?.costing || response?.quotation || response?.summary || null;
-      if (updated) {
-        setEditingCosting(updated);
-        setEditingItems(Array.isArray(response?.items) ? response.items : editingItems);
-        setSummaryForm(summaryFormFromCosting(updated));
-        setSummaryAlert(
-          normalizeStatusName(updated?.status_name || updated?.status) === "completed" && !isAdmin
-            ? { type: "warning", message: "Status is Completed. Only admin can edit this form." }
-            : { type: "", message: "" }
-        );
-        setStatus({ type: response?.status || "success", message: response?.message || "Costing status updated." });
-      }
+       const updated = response?.costing || response?.quotation || response?.summary || null;
+       if (updated) {
+         setEditingCosting(updated);
+         updateCostingInList(updated);
+         setEditingItems(Array.isArray(response?.items) ? response.items : editingItems);
+         setSummaryForm(summaryFormFromCosting(updated));
+         setSummaryAlert(
+           normalizeStatusName(updated?.status_name || updated?.status) === "completed" && !isAdmin
+             ? { type: "warning", message: "Status is Completed. Only admin can edit this form." }
+             : { type: "", message: "" }
+         );
+         setStatus({ type: response?.status || "success", message: response?.message || "Costing status updated." });
+       }
       setStatusConfirmation({
         open: false,
         nextStatus: "",
@@ -569,7 +611,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     } finally {
       setSummarySaving(false);
     }
-  }, [editingCosting, editingItems, isAdmin, normalizeStatusName, statusConfirmation.allowCompletedWithoutItems, statusConfirmation.nextStatus, statusConfirmation.previousStatus]);
+   }, [editingCosting, editingItems, isAdmin, normalizeStatusName, statusConfirmation.allowCompletedWithoutItems, statusConfirmation.nextStatus, statusConfirmation.previousStatus, updateCostingInList]);
 
   // ── Item edit ────────────────────────────────────────────
   const startEditItem = useCallback((item) => {
@@ -581,22 +623,29 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     const editableStatusOptions = getEditableRetrievalOptions(currentRetrievalStatus);
     setDraftRow(null);
     setEditingItemId(item.id);
+    const normalizedAllocations = normalizeAllocationRows(item.grn_allocations || []);
     setEditingRow({
       ...item,
       cost_type_id: String(item.cost_type_id || ""),
       item_category_id: String(item.item_category_id || ""),
       item_code_id: String(item.item_code_id || ""),
       room_name_id: String(item.room_name?.id || item.room_name_id || ""),
+      purchase_item_id: String(item.purchase_item_id || item.purchase_item?.id || normalizedAllocations[0]?.purchase_item_id || ""),
       item_type: item.item_type || "",
       stock_status_name: getStockStatusName(item),
       purchase_qty: String(item.purchase_qty ?? "0"),
       requested_qty: String(item.requested_qty ?? ""),
+      accepted_qty: String(item.accepted_qty ?? item.requested_qty ?? "0"),
+      grn_options: [],
+      grn_allocations: normalizedAllocations,
       cost_per_qty: String(item.cost_per_qty ?? "0"),
       max_cost: String(item.max_cost ?? "0"),
       min_cost: String(item.min_cost ?? "0"),
       actual_cost: String(item.actual_cost ?? "0"),
       total_cost: String(item.total_cost ?? "0"),
-      retrieval_status_name: editableStatusOptions[0] || currentRetrievalStatus || STATUS_NO_ACTION,
+      retrieval_status_name: editableStatusOptions.includes(currentRetrievalStatus)
+        ? currentRetrievalStatus
+        : (editableStatusOptions[0] || currentRetrievalStatus || STATUS_NO_ACTION),
       length: String(item.length ?? "0"),
       width: String(item.width ?? "0"),
       height: String(item.height ?? "0"),
@@ -614,11 +663,18 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     item_category_id: isMaterialCostType(row.cost_type_id) ? row.item_category_id || null : null,
     item_name: row.item_name || "",
     item_code_id: isMaterialCostType(row.cost_type_id) ? row.item_code_id || null : null,
+    purchase_item_id: isMaterialCostType(row.cost_type_id) ? row.purchase_item_id || null : null,
     room_name_id: row.room_name_id || null,
     requested_qty: row.requested_qty || "0",
     purchase_qty: row.purchase_qty || "0",
+    accepted_qty: row.accepted_qty || String(sumAllocatedQty(row.grn_allocations || [])),
     actual_cost: row.actual_cost || "0",
     retrieval_status_name: row.retrieval_status_name || STATUS_NO_ACTION,
+    grn_allocations: normalizeAllocationRows(row.grn_allocations || []).map((allocation) => ({
+      purchase_item_id: allocation.purchase_item_id || null,
+      allocated_qty: allocation.allocated_qty || "0",
+      retrieval_status_id: allocation.retrieval_status_id || null,
+    })),
   }), [isMaterialCostType]);
 
   const validateItemRow = useCallback((row) => {
@@ -631,6 +687,31 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       if (!normalizeText(row.item_category_id)) return { type: "error", message: "Item category is required for MATERIAL." };
       if (!normalizeText(row.item_name)) return { type: "error", message: "Item name is required for MATERIAL." };
       if (!normalizeText(row.item_code_id)) return { type: "error", message: "Item code is required for MATERIAL." };
+
+      const allocations = normalizeAllocationRows(row.grn_allocations || []);
+      if (!allocations.length) {
+        return { type: "error", message: "Allocate requested qty to at least one GRN." };
+      }
+
+      for (const allocation of allocations) {
+        if (!normalizeText(allocation.purchase_item_id)) {
+          return { type: "error", message: "Each GRN allocation requires a GRN selection." };
+        }
+        if (toNumber(allocation.allocated_qty) < 0) {
+          return { type: "error", message: "Allocated Qty must be 0 or greater." };
+        }
+        if (toNumber(allocation.allocated_qty) > toNumber(allocation.balance_qty)) {
+          return {
+            type: "error",
+            message: `Allocated Qty exceeds balance for GRN ${allocation.grn_number || allocation.purchase_item_id}.`,
+          };
+        }
+      }
+
+      const allocatedTotal = sumAllocatedQty(allocations);
+      if (Math.abs(allocatedTotal - toNumber(row.requested_qty)) > 0.0001) {
+        return { type: "error", message: "Total allocated qty across GRNs must match Requested Qty." };
+      }
 
       const duplicate = editingItems.some(
         (candidate) => String(candidate.item_code_id || "") === String(row.item_code_id || "")
@@ -797,16 +878,121 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     const current = String(row?.stock_status_name || "In-Stock").trim();
     const purchaseQty = toNumber(row?.purchase_qty);
     const requestedQty = toNumber(row?.requested_qty);
+    const allocatedQty = getAllocatedQtyValue(row);
+    if (allocatedQty > 0) {
+      if (requestedQty > allocatedQty) return "Partial Stock";
+      return "In-Stock";
+    }
     if (purchaseQty <= 0) return current || "No Stock";
     if (requestedQty > purchaseQty) return "Partial Stock";
     return "In-Stock";
   }, []);
+
+  const fetchGrnOptions = useCallback(async (itemCodeId) => {
+    if (!itemCodeId) return [];
+    const response = await listPurchaseItemGRNs(itemCodeId);
+    const rows = Array.isArray(response?.grns) ? response.grns : [];
+    return rows.map((row) => ({
+      id: String(row.id),
+      grn_number: row.grn_number || "",
+      vendor: row.vendor || "",
+      purchase_qty: String(row.purchase_qty ?? "0"),
+      consumed_qty: String(row.consumed_qty ?? "0"),
+      balance_qty: String(row.balance_qty ?? "0"),
+      cost: String(row.cost ?? "0"),
+    }));
+  }, []);
+
+  const upsertAllocationDefaults = useCallback((row, options) => {
+    const currentAllocations = normalizeAllocationRows(row?.grn_allocations || []);
+    if (currentAllocations.length) {
+      return currentAllocations.map((allocation) => {
+        const opt = options.find((entry) => String(entry.id) === String(allocation.purchase_item_id));
+        return {
+          ...allocation,
+          grn_number: opt?.grn_number || allocation.grn_number,
+          vendor: opt?.vendor || allocation.vendor,
+          purchase_qty: opt?.purchase_qty || allocation.purchase_qty,
+          balance_qty: opt?.balance_qty || allocation.balance_qty,
+          cost: opt?.cost || allocation.cost,
+        };
+      });
+    }
+    if (!options.length) return [];
+    return [{
+      purchase_item_id: options[0].id,
+      allocated_qty: String(row?.requested_qty || "0"),
+      retrieval_status_name: STATUS_ITEM_ACCEPTED,
+      retrieval_status_id: null,
+      grn_number: options[0].grn_number,
+      vendor: options[0].vendor,
+      purchase_qty: options[0].purchase_qty,
+      balance_qty: options[0].balance_qty,
+      cost: options[0].cost,
+    }];
+  }, []);
+
+  useEffect(() => {
+    const itemCodeId = editingRow?.item_code_id;
+    if (!itemCodeId || (Array.isArray(editingRow?.grn_options) && editingRow.grn_options.length)) return;
+    let active = true;
+    fetchGrnOptions(itemCodeId)
+      .then((options) => {
+        if (!active) return;
+        setEditingRow((prev) => {
+          if (!prev || String(prev.item_code_id || "") !== String(itemCodeId)) return prev;
+          const nextAllocations = upsertAllocationDefaults(prev, options);
+          return {
+            ...prev,
+            grn_options: options,
+            grn_allocations: nextAllocations,
+            purchase_item_id: prev.purchase_item_id || nextAllocations[0]?.purchase_item_id || "",
+            purchase_qty: String(options.reduce((sum, row) => sum + toNumber(row.balance_qty), 0)),
+            accepted_qty: String(sumAllocatedQty(nextAllocations)),
+          };
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [editingRow?.item_code_id, editingRow?.grn_options, fetchGrnOptions, upsertAllocationDefaults]);
+
+  useEffect(() => {
+    const itemCodeId = draftRow?.item_code_id;
+    if (!itemCodeId || (Array.isArray(draftRow?.grn_options) && draftRow.grn_options.length)) return;
+    let active = true;
+    fetchGrnOptions(itemCodeId)
+      .then((options) => {
+        if (!active) return;
+        setDraftRow((prev) => {
+          if (!prev || String(prev.item_code_id || "") !== String(itemCodeId)) return prev;
+          const nextAllocations = upsertAllocationDefaults(prev, options);
+          return {
+            ...prev,
+            grn_options: options,
+            grn_allocations: nextAllocations,
+            purchase_item_id: prev.purchase_item_id || nextAllocations[0]?.purchase_item_id || "",
+            purchase_qty: String(options.reduce((sum, row) => sum + toNumber(row.balance_qty), 0)),
+            accepted_qty: String(sumAllocatedQty(nextAllocations)),
+          };
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [draftRow?.item_code_id, draftRow?.grn_options, fetchGrnOptions, upsertAllocationDefaults]);
 
   const applyMaterialSelection = useCallback(async (itemCodeId, applyPatch) => {
     const master = getMasterById(itemCodeId);
     if (!master) {
       applyPatch({
         item_code_id: "",
+        purchase_item_id: "",
+        accepted_qty: "0",
+        grn_options: [],
+        grn_allocations: [],
         item_type: "",
         stock_status_name: "No Stock",
         purchase_qty: "0",
@@ -822,14 +1008,26 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
 
     const quantity = String(master.available_qty ?? "0");
     const hasNoPurchaseData = toNumber(quantity) <= 0;
+    let grnOptions = [];
+    try {
+      grnOptions = await fetchGrnOptions(itemCodeId);
+    } catch (_error) {
+      grnOptions = [];
+    }
+    const totalBalance = grnOptions.reduce((sum, row) => sum + toNumber(row.balance_qty), 0);
+    const allocations = upsertAllocationDefaults({ requested_qty: "0", grn_allocations: [], ...master }, grnOptions);
 
     applyPatch({
       item_category_id: String(master.item_category_id || ""),
       item_name: master.item_name || "",
       item_code_id: String(master.id),
+      purchase_item_id: allocations[0]?.purchase_item_id || "",
+      accepted_qty: String(sumAllocatedQty(allocations)),
+      grn_options: grnOptions,
+      grn_allocations: allocations,
       item_type: master.item_type || "",
       stock_status_name: hasNoPurchaseData ? "No Stock" : "In-Stock",
-      purchase_qty: quantity,
+      purchase_qty: String(totalBalance || quantity),
       length: String(master.length ?? "0"),
       width: String(master.width ?? "0"),
       height: String(master.height ?? "0"),
@@ -844,17 +1042,19 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     try {
       const preview = await getItemCostPreview(master.item_code, 1);
       const previewCost = String(preview?.cost ?? "0");
+      const previewMax = String(preview?.cost_max ?? preview?.cost ?? "0");
+      const previewMin = String(preview?.cost_min ?? preview?.cost ?? "0");
       applyPatch({
         cost_per_qty: previewCost,
-        max_cost: previewCost,
-        min_cost: previewCost,
+        max_cost: previewMax,
+        min_cost: previewMin,
         actual_cost: previewCost,
       });
       setItemAlert({ type: "success", message: "Requested Qty is within Purchase Qty." });
     } catch (_error) {
       applyPatch({ cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0" });
     }
-  }, [getMasterById]);
+  }, [fetchGrnOptions, getMasterById, upsertAllocationDefaults]);
 
   const patchDraftRow = useCallback((patch) => {
     setDraftRow((prev) => {
@@ -922,9 +1122,26 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     const material = isMaterialCostType(row.cost_type_id);
     const itemNames = material ? getNamesForCategory(row.item_category_id) : [];
     const itemCodes = material ? getCodesForSelection(row.item_category_id, row.item_name) : [];
+    const grnOptions = Array.isArray(row.grn_options) ? row.grn_options : [];
+    const grnAllocations = normalizeAllocationRows(row.grn_allocations || []);
+    const totalAllocated = sumAllocatedQty(grnAllocations);
+    const requestedQty = toNumber(row.requested_qty);
 
     return (
       <>
+        <td>
+          <select
+            className="project-costing-select"
+            value={row.room_name_id || ""}
+            disabled={disabled}
+            onChange={(event) => patchFn({ room_name_id: event.target.value })}
+          >
+            <option value="">Select room</option>
+            {roomOptions.map((option) => (
+              <option key={option.id} value={String(option.id)}>{option.room_name}</option>
+            ))}
+          </select>
+        </td>
         <td>
           <select
             className="project-costing-select"
@@ -935,6 +1152,10 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               item_category_id: "",
               item_name: "",
               item_code_id: "",
+              purchase_item_id: "",
+              accepted_qty: "0",
+              grn_options: [],
+              grn_allocations: [],
               item_type: "",
               room_name_id: row.room_name_id || "",
               purchase_qty: "0",
@@ -961,6 +1182,10 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               item_category_id: event.target.value,
               item_name: "",
               item_code_id: "",
+                purchase_item_id: "",
+                accepted_qty: "0",
+                grn_options: [],
+                grn_allocations: [],
               item_type: "",
               purchase_qty: "0",
               cost_per_qty: "0",
@@ -986,6 +1211,10 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               onChange={(event) => patchFn({
                 item_name: event.target.value,
                 item_code_id: "",
+                purchase_item_id: "",
+                accepted_qty: "0",
+                grn_options: [],
+                grn_allocations: [],
                 item_type: "",
                 purchase_qty: "0",
                 cost_per_qty: "0",
@@ -1012,41 +1241,148 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         </td>
         <td>
           {material ? (
-            <select
-              className="project-costing-select"
-              value={row.item_code_id || ""}
-              disabled={disabled || !row.item_name}
-              onChange={(event) => applyMaterialSelection(event.target.value, patchFn)}
-            >
-              <option value="">Select item code</option>
-              {itemCodes.map((option) => (
-                <option key={option.id} value={String(option.id)}>{option.item_code}</option>
-              ))}
-            </select>
+            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
+          ) : (
+            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
+          )}
+        </td>
+        <td>
+          {material ? (
+            <div className="project-costing-grn-editor">
+              <select
+                className="project-costing-select"
+                value={row.item_code_id || ""}
+                disabled={disabled || !row.item_name}
+                onChange={(event) => applyMaterialSelection(event.target.value, patchFn)}
+              >
+                <option value="">Select item code</option>
+                {itemCodes.map((option) => (
+                  <option key={option.id} value={String(option.id)}>{option.item_code}</option>
+                ))}
+              </select>
+
+              {grnAllocations.length ? (
+                <div className="project-costing-grn-editor__rows">
+                  {grnAllocations.map((allocation, index) => {
+                    const rowOptions = grnOptions.length ? grnOptions : [allocation].filter(Boolean);
+                    const selectedOpt = rowOptions.find((opt) => String(opt.purchase_item_id || opt.id) === String(allocation.purchase_item_id));
+                    return (
+                      <div key={`${allocation.purchase_item_id || "new"}-${index}`} className="project-costing-grn-editor__row">
+                        <select
+                          className="project-costing-select"
+                          value={allocation.purchase_item_id || ""}
+                          disabled={disabled}
+                          onChange={(event) => {
+                            const selected = rowOptions.find((opt) => String(opt.purchase_item_id || opt.id) === String(event.target.value));
+                            const nextAllocations = grnAllocations.map((entry, pos) => (
+                              pos === index
+                                ? {
+                                  ...entry,
+                                  purchase_item_id: event.target.value,
+                                  grn_number: selected?.grn_number || "",
+                                  vendor: selected?.vendor || "",
+                                  purchase_qty: selected?.purchase_qty || "0",
+                                  balance_qty: selected?.balance_qty || "0",
+                                  cost: selected?.cost || "0",
+                                }
+                                : entry
+                            ));
+                            patchFn({
+                              purchase_item_id: nextAllocations[0]?.purchase_item_id || "",
+                              grn_allocations: nextAllocations,
+                              accepted_qty: String(sumAllocatedQty(nextAllocations)),
+                            });
+                          }}
+                        >
+                          <option value="">Select GRN</option>
+                          {rowOptions.map((opt) => (
+                            <option key={opt.purchase_item_id || opt.id} value={String(opt.purchase_item_id || opt.id)}>
+                              {(opt.grn_number || opt.id)} | Bal {opt.balance_qty}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className="project-costing-input project-costing-input--numeric"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={allocation.allocated_qty || "0"}
+                          disabled={disabled}
+                          onChange={(event) => {
+                            const nextAllocations = grnAllocations.map((entry, pos) => (
+                              pos === index ? { ...entry, allocated_qty: event.target.value } : entry
+                            ));
+                            patchFn({
+                              grn_allocations: nextAllocations,
+                              accepted_qty: String(sumAllocatedQty(nextAllocations)),
+                            });
+                          }}
+                        />
+                        <span className="project-costing-muted">
+                          Bal: {selectedOpt?.balance_qty || allocation.balance_qty || "0"}
+                        </span>
+                        <button
+                          type="button"
+                          className="users-action users-action--delete"
+                          disabled={disabled || grnAllocations.length <= 1}
+                          onClick={() => {
+                            const nextAllocations = grnAllocations.filter((_, pos) => pos !== index);
+                            patchFn({
+                              purchase_item_id: nextAllocations[0]?.purchase_item_id || "",
+                              grn_allocations: nextAllocations,
+                              accepted_qty: String(sumAllocatedQty(nextAllocations)),
+                            });
+                          }}
+                        >
+                          <BsTrashFill aria-hidden="true" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="crud-add-btn"
+                    disabled={disabled || !grnOptions.length}
+                    onClick={() => {
+                      const first = grnOptions[0];
+                      if (!first) return;
+                      const nextAllocations = [
+                        ...grnAllocations,
+                        {
+                          purchase_item_id: first.id,
+                          allocated_qty: "0",
+                          retrieval_status_name: STATUS_ITEM_ACCEPTED,
+                          grn_number: first.grn_number,
+                          vendor: first.vendor,
+                          purchase_qty: first.purchase_qty,
+                          balance_qty: first.balance_qty,
+                          cost: first.cost,
+                        },
+                      ];
+                      patchFn({
+                        grn_allocations: nextAllocations,
+                        accepted_qty: String(sumAllocatedQty(nextAllocations)),
+                      });
+                    }}
+                  >
+                    Split Across GRN
+                  </button>
+                  <span className={`project-costing-muted ${Math.abs(totalAllocated - requestedQty) > 0.0001 ? "project-costing-text--error" : ""}`}>
+                    Allocated: {totalAllocated} / Requested: {requestedQty}
+                  </span>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <span className="project-costing-muted">—</span>
           )}
         </td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={toMoney(totalAllocated)} readOnly disabled /></td>
         <td><input className="project-costing-input" value={row.item_type || ""} readOnly disabled /></td>
-        <td>
-          <select
-            className="project-costing-select"
-            value={row.room_name_id || ""}
-            disabled={disabled}
-            onChange={(event) => patchFn({ room_name_id: event.target.value })}
-          >
-            <option value="">Select room</option>
-            {roomOptions.map((option) => (
-              <option key={option.id} value={String(option.id)}>{option.room_name}</option>
-            ))}
-          </select>
-        </td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.length || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.width || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.height || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.volume || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.purchase_qty || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value })} /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.cost_per_qty || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.max_cost || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.min_cost || "0"} readOnly disabled /></td>
@@ -1335,18 +1671,18 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
             <table className="users-table users-table--quotation project-costing-table project-costing-table--quotation project-costing-items-table">
               <thead>
                 <tr>
+                  <th>Room</th>
                   <th>Cost Type</th>
                   <th>Item Category</th>
                   <th>Item Name</th>
+                  <th className="project-costing-table__right">Requested Qty</th>
                   <th>Item Code</th>
+                  <th className="project-costing-table__right">Allocated Qty</th>
                   <th>Item Type</th>
-                  <th>Room</th>
                   <th className="project-costing-table__right">L</th>
                   <th className="project-costing-table__right">W</th>
                   <th className="project-costing-table__right">H</th>
                   <th className="project-costing-table__right">Vol</th>
-                  <th className="project-costing-table__right">Purchase Qty</th>
-                  <th className="project-costing-table__right">Requested Qty</th>
                   <th className="project-costing-table__right">Cost/Qty</th>
                   <th className="project-costing-table__right">Max Cost</th>
                   <th className="project-costing-table__right">Min Cost</th>
@@ -1358,18 +1694,18 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                   <th className="project-costing-table__center">Actions</th>
                 </tr>
                 <tr>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.room_name ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, room_name: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_type ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_type: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_category ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_category: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_name ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_name: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.allocated_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, allocated_qty: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
-                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.room_name ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, room_name: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.length ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, length: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.width ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, width: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.height ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, height: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.volume ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, volume: event.target.value }))} /></th>
-                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
-                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_per_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_per_qty: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.max_cost ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, max_cost: event.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.min_cost ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, min_cost: event.target.value }))} /></th>
@@ -1429,18 +1765,25 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
 
                   return (
                     <tr key={item.id} className={frozen ? "project-costing-frozen" : ""}>
+                      <td>{item.room_name?.room_name || "—"}</td>
                       <td>{item.cost_type || "—"}</td>
                       <td>{item.item_category || "—"}</td>
                       <td>{item.item_name || "—"}</td>
-                      <td>{item.item_code || "—"}</td>
+                      <td className="project-costing-table__right">{item.requested_qty}</td>
+                      <td>
+                        <div>{item.item_code || "—"}</div>
+                        {Array.isArray(item.grn_allocations) && item.grn_allocations.length ? (
+                          <div className="project-costing-muted">
+                            {item.grn_allocations.map((allocation) => `${allocation.grn_number || allocation.purchase_item_id}: ${allocation.allocated_qty}`).join(" | ")}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="project-costing-table__right">{item.accepted_qty ?? toMoney(getAllocatedQtyValue(item))}</td>
                       <td>{item.item_type || "—"}</td>
-                      <td>{item.room_name?.room_name || "—"}</td>
                       <td className="project-costing-table__right">{item.length}</td>
                       <td className="project-costing-table__right">{item.width}</td>
                       <td className="project-costing-table__right">{item.height}</td>
                       <td className="project-costing-table__right">{item.volume}</td>
-                      <td className="project-costing-table__right">{item.purchase_qty}</td>
-                      <td className="project-costing-table__right">{item.requested_qty}</td>
                       <td className="project-costing-table__right">{item.cost_per_qty}</td>
                       <td className="project-costing-table__right">{item.max_cost}</td>
                       <td className="project-costing-table__right">{item.min_cost}</td>
@@ -1567,54 +1910,72 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       {!loading ? (
         <div className="project-costing-table-wrap">
           <table className="users-table project-costing-table">
-            <thead>
-              <tr>
-                <th>Costing ID</th>
-                <th>Quotation Number</th>
-                <th>Project ID</th>
-                <th>Project Name</th>
-                <th className="project-costing-table__right">Material Cost</th>
-                <th className="project-costing-table__right">Planned Order Value</th>
-                <th className="project-costing-table__center">Actions</th>
-              </tr>
-              <tr>
-                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.costing_id ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, costing_id: event.target.value }))} /></th>
-                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.quotation_number ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, quotation_number: event.target.value }))} /></th>
-                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_code ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_code: event.target.value }))} /></th>
-                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_name ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_name: event.target.value }))} /></th>
-                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.total_material_cost ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, total_material_cost: event.target.value }))} /></th>
-                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.planned_order_value ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, planned_order_value: event.target.value }))} /></th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCostings.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="project-costing-empty">No project costing records found.</td>
-                </tr>
-              ) : filteredCostings.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.costing_id || "—"}</td>
-                  <td>{row.quotation_number || "—"}</td>
-                  <td>{row.project_code || "—"}</td>
-                  <td>{row.project_name || "—"}</td>
-                  <td className="project-costing-table__right">{row.total_material_cost ?? "—"}</td>
-                  <td className="project-costing-table__right">{row.planned_order_value ?? "—"}</td>
-                  <td className="project-costing-table__center">
-                    <div className="project-costing-row-actions">
-                      <button type="button" className="users-action users-action--edit" title="Edit costing"
-                        disabled={saving} onClick={() => openCosting(row.id)}>
-                        <BsPencilSquare aria-hidden="true" />
-                      </button>
-                      <button type="button" className="users-action users-action--delete" title="Delete costing"
-                        disabled={saving} onClick={() => handleDeleteCosting(row.id)}>
-                        <BsTrashFill aria-hidden="true" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+             <thead>
+               <tr>
+                 <th>Costing ID</th>
+                 <th>Quotation Number</th>
+                 <th>Project ID</th>
+                 <th>Project Name</th>
+                 <th>Status</th>
+                 <th>Updated On</th>
+                 <th>Updated By</th>
+                 <th className="project-costing-table__right">Material Cost</th>
+                 <th className="project-costing-table__right">Planned Order Value</th>
+                 <th className="project-costing-table__center">Actions</th>
+               </tr>
+               <tr>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.costing_id ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, costing_id: event.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.quotation_number ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, quotation_number: event.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_code ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_code: event.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_name ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_name: event.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.status_name ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, status_name: event.target.value }))} /></th>
+                 <th></th>
+                 <th></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.total_material_cost ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, total_material_cost: event.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.planned_order_value ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, planned_order_value: event.target.value }))} /></th>
+                 <th></th>
+               </tr>
+             </thead>
+             <tbody>
+               {filteredCostings.length === 0 ? (
+                 <tr>
+                   <td colSpan={10} className="project-costing-empty">No project costing records found.</td>
+                 </tr>
+               ) : filteredCostings.map((row) => {
+                 const statusName = row.status_name || row.status || "—";
+                 const updatedOn = row.updated_at ? new Date(row.updated_at).toLocaleString() : "—";
+                 const updatedBy = row.updated_by || "—";
+                 return (
+                   <tr key={row.id}>
+                     <td>{row.costing_id || "—"}</td>
+                     <td>{row.quotation_number || "—"}</td>
+                     <td>{row.project_code || "—"}</td>
+                     <td>{row.project_name || "—"}</td>
+                     <td>
+                       <span className={`project-costing-status-badge project-costing-status-badge--${String(statusName).toLowerCase().replace(/\s+/g, '-')}`}>
+                         {statusName}
+                       </span>
+                     </td>
+                     <td>{updatedOn}</td>
+                     <td>{updatedBy}</td>
+                     <td className="project-costing-table__right">{row.total_material_cost ?? "—"}</td>
+                     <td className="project-costing-table__right">{row.planned_order_value ?? "—"}</td>
+                     <td className="project-costing-table__center">
+                       <div className="project-costing-row-actions">
+                         <button type="button" className="users-action users-action--edit" title="Edit costing"
+                           disabled={saving} onClick={() => openCosting(row.id)}>
+                           <BsPencilSquare aria-hidden="true" />
+                         </button>
+                         <button type="button" className="users-action users-action--delete" title="Delete costing"
+                           disabled={saving} onClick={() => handleDeleteCosting(row.id)}>
+                           <BsTrashFill aria-hidden="true" />
+                         </button>
+                       </div>
+                     </td>
+                   </tr>
+                 );
+               })}
+             </tbody>
           </table>
         </div>
       ) : null}

@@ -31,6 +31,81 @@ export async function listUoms() {
   return parseJson(res);
 }
 
+// ── Stock Retrieval ──────────────────────────────
+export async function listStockRetrievalItems() {
+  const res = await fetch("/api/stock-retrieval/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function updateStockRetrievalItem(id, payload) {
+  const headers = await csrfHeaders();
+  const normalizedPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : {
+          retrieval_status_name: payload,
+          rejection_comment: arguments[2] ?? "",
+          action: arguments[3] ?? "",
+          purchase_item_id: arguments[4] ?? null,
+        };
+  const res = await fetch(`/api/stock-retrieval/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(normalizedPayload),
+  });
+  return parseJson(res);
+}
+
+// ── Stock Acceptance ─────────────────────────────
+export async function listStockAcceptanceItems() {
+  const res = await fetch("/api/stock-acceptance/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function updateStockAcceptanceItem(id, payload) {
+  const headers = await csrfHeaders();
+  const normalizedPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? { ...payload, item_id: payload.item_id ?? id }
+      : {
+          item_id: id,
+          stock_status_name: payload,
+        };
+  const res = await fetch("/api/stock-acceptance/edit/", {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(normalizedPayload),
+  });
+  return parseJson(res);
+}
+
+// ── Stock Return ─────────────────────────────────
+export async function listStockReturnItems() {
+  const res = await fetch("/api/stock-return/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function updateStockReturnItem(id, payload) {
+  const headers = await csrfHeaders();
+  const normalizedPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : {
+          retrieval_status_name: payload,
+          rejection_comment: arguments[2] ?? "",
+          action: arguments[3] ?? "",
+        };
+  const res = await fetch(`/api/stock-return/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(normalizedPayload),
+  });
+  return parseJson(res);
+}
+
 // ── Item Types ─────────────────────────────────────────────
 export async function listItemTypes() {
   const res = await fetch("/api/item-types/", { credentials: "include" });
@@ -437,64 +512,6 @@ export async function downloadCostingItemsImportTemplate() {
   window.URL.revokeObjectURL(downloadUrl);
 }
 
-export async function listStockRetrievalItems() {
-  const res = await fetch("/api/stock-retrieval/", { credentials: "include" });
-  return parseJson(res);
-}
-
-export async function updateStockRetrievalItem(itemId, retrievalStatusName, rejectionComment = "", action = "") {
-  const headers = await csrfHeaders();
-  const res = await fetch(`/api/stock-retrieval/${itemId}/`, {
-    method: "PATCH",
-    credentials: "include",
-    headers,
-    body: JSON.stringify({
-      retrieval_status_name: retrievalStatusName,
-      rejection_comment: rejectionComment,
-      action,
-    }),
-  });
-  return parseJson(res);
-}
-
-export async function listStockAcceptanceItems() {
-  const res = await fetch("/api/stock-acceptance/", { credentials: "include" });
-  return parseJson(res);
-}
-
-export async function updateStockAcceptanceItem(itemId, stockStatusName) {
-  const headers = await csrfHeaders();
-  const res = await fetch("/api/stock-acceptance/edit/", {
-    method: "PATCH",
-    credentials: "include",
-    headers,
-    body: JSON.stringify({
-      item_id: itemId,
-      stock_status_name: stockStatusName,
-    }),
-  });
-  return parseJson(res);
-}
-
-export async function listStockReturnItems() {
-  const res = await fetch("/api/stock-return/", { credentials: "include" });
-  return parseJson(res);
-}
-
-export async function updateStockReturnItem(itemId, retrievalStatusName, rejectionComment = "", action = "") {
-  const headers = await csrfHeaders();
-  const res = await fetch(`/api/stock-return/${itemId}/`, {
-    method: "PATCH",
-    credentials: "include",
-    headers,
-    body: JSON.stringify({ 
-      retrieval_status_name: retrievalStatusName,
-      rejection_comment: rejectionComment,
-      action: action
-    }),
-  });
-  return parseJson(res);
-}
 
 export async function listRooms() {
   const res = await fetch("/api/rooms/", { credentials: "include" });
@@ -893,6 +910,16 @@ export async function deleteStockPurchase(id) {
     credentials: "include",
     headers,
   });
+  return parseJson(res);
+}
+
+export async function listPurchaseItemGRNs(itemCode) {
+  const res = await fetch(`/api/purchase-items/${encodeURIComponent(itemCode)}/grns/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getStockItemSummary(itemCode) {
+  const res = await fetch(`/api/stock/${encodeURIComponent(itemCode)}/summary/`, { credentials: "include" });
   return parseJson(res);
 }
 

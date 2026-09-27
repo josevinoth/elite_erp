@@ -15,16 +15,17 @@ def _resolve_target_retrieval_status(value):
     mapping = {
         "stock accepted": RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
         "item accepted": RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
-        "stock returned": RetrievalStatusInfo.STATUS_NO_ACTION,
-        "item return": RetrievalStatusInfo.STATUS_NO_ACTION,
+        "stock returned": RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        "item return": RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        "no action": RetrievalStatusInfo.STATUS_ITEM_RETURN,
     }
     return mapping.get(normalized)
 
 
-def _is_stock_supplied_item(item):
+def _is_stock_acceptance_item(item):
     retrieval_name = str(getattr(getattr(item, "retrieval_status", None), "status_name", "") or "").strip().lower()
     stock_name = str(getattr(getattr(item, "stock_status", None), "status_name", "") or "").strip().lower()
-    return retrieval_name == RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower() or stock_name == "stock supplied"
+    return retrieval_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED.lower() or stock_name == "stock supplied"
 
 
 @api_view(["GET"])
@@ -33,8 +34,8 @@ def stock_acceptance_api_view(request):
     if not_allowed:
         return not_allowed
 
-    supplied_status = RetrievalStatusInfo.objects.filter(
-        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
+    accepted_status = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
     ).first()
 
     queryset = ProjectCostingItemInfo.objects.select_related(
@@ -49,9 +50,9 @@ def stock_acceptance_api_view(request):
         "retrieval_status",
     )
 
-    if supplied_status:
+    if accepted_status:
         queryset = queryset.filter(
-            Q(retrieval_status=supplied_status) | Q(stock_status__status_name__iexact="Stock Supplied")
+            Q(retrieval_status=accepted_status) | Q(stock_status__status_name__iexact="Stock Supplied")
         )
     else:
         queryset = queryset.filter(stock_status__status_name__iexact="Stock Supplied")
@@ -59,7 +60,7 @@ def stock_acceptance_api_view(request):
     if not _is_admin_user(request.user):
         queryset = queryset.filter(costing_id__project__project_owner=request.user)
 
-    items = [row for row in queryset.order_by("id") if _is_stock_supplied_item(row)]
+    items = [row for row in queryset.order_by("id") if _is_stock_acceptance_item(row)]
     data = ProjectCostingItemSerializer(items, many=True, context={"request": request}).data
     return Response(
         {"items": data, "status": "success", "message": "Stock acceptance items loaded successfully."},
@@ -95,9 +96,9 @@ def stock_acceptance_edit_api_view(request):
             status=403,
         )
 
-    if not _is_stock_supplied_item(item):
+    if not _is_stock_acceptance_item(item):
         return Response(
-            {"status": "error", "message": "Only Stock Supplied items can be updated from Stock Acceptance."},
+            {"status": "error", "message": "Only Item Accepted items can be updated from Stock Acceptance."},
             status=400,
         )
 
@@ -108,7 +109,7 @@ def stock_acceptance_edit_api_view(request):
         return Response(
             {
                 "status": "error",
-                "message": "stock_status_name must be Stock Accepted or Stock Returned.",
+                "message": "stock_status_name must be Stock Accepted or Stock Returned (Item Return).",
             },
             status=400,
         )

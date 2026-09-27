@@ -105,7 +105,18 @@ class ProjectCostingSummaryView:
             summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=summary.pk)
         items = list(
             ProjectCostingItemInfo.objects.filter(costing_id=summary)
-            .select_related("cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")
+            .select_related(
+                "cost_type",
+                "item_category",
+                "item_code__item_type",
+                "room_name",
+                "stock_status",
+                "retrieval_status",
+                "requested_by",
+                "purchase_item",
+                "purchase_item__vendor_detail__vendor",
+            )
+            .prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
             .order_by("id")
         )
         ct = self._cost_types_payload()
@@ -213,7 +224,18 @@ class ProjectCostingItemView:
                 status_name=RetrievalStatusInfo.STATUS_ITEM_REQUESTED
             ).values_list("id", flat=True)
         )
-        queryset = ProjectCostingItemInfo.objects.select_related("costing_id", "cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")
+        queryset = ProjectCostingItemInfo.objects.select_related(
+            "costing_id",
+            "cost_type",
+            "item_category",
+            "item_code__item_type",
+            "room_name",
+            "stock_status",
+            "retrieval_status",
+            "requested_by",
+            "purchase_item",
+            "purchase_item__vendor_detail__vendor",
+        ).prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
         queryset = queryset.filter(retrieval_status_id__in=allowed_status_ids)
         items = list(queryset.order_by("id"))
         return {
@@ -224,7 +246,17 @@ class ProjectCostingItemView:
 
     def stock_return_payload(self):
         status_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN).first()
-        queryset = ProjectCostingItemInfo.objects.select_related("costing_id", "cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status")
+        queryset = ProjectCostingItemInfo.objects.select_related(
+            "costing_id",
+            "cost_type",
+            "item_category",
+            "item_code__item_type",
+            "room_name",
+            "stock_status",
+            "retrieval_status",
+            "purchase_item",
+            "purchase_item__vendor_detail__vendor",
+        ).prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
         if status_obj:
             queryset = queryset.filter(retrieval_status=status_obj)
         items = list(queryset.order_by("id"))

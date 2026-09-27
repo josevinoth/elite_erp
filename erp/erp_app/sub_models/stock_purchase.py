@@ -61,6 +61,7 @@ class StockPurchaseItem(models.Model):
     item_name = models.CharField(max_length=200)
     item_code = models.ForeignKey(LabFurnitureItem,on_delete=models.PROTECT,null=True,blank=True,related_name="stock_purchase_items",)
     quantity = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    purchase_qty = models.DecimalField(max_digits=12, decimal_places=0, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     lce_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -110,6 +111,9 @@ class StockPurchaseItem(models.Model):
                 self.uom_id = resolved_master.uom_id
         self.item_name = normalize_text(self.item_name)
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
+        # Keep purchase_qty as the immutable reference quantity used for stock allocation.
+        if self.pk is None and self.purchase_qty in (None, "", 0, "0"):
+            self.purchase_qty = self.quantity or 0
 
         # Normalize legacy GRN values (e.g. 0000001) to prefixed format (GRN0001).
         if self.grn_number and not str(self.grn_number).upper().startswith("GRN"):
