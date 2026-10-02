@@ -409,41 +409,42 @@ function CostingPage() {
     setStatus("");
 
     const resolveAndLoad = async () => {
-      const [metaData, recordData] = await Promise.all([
-        listLceEstimateMeta(),
-        lceId ? getLceEstimateById(lceId) : Promise.resolve(null),
-      ]);
-      if (!alive) return;
+      try {
+        const metaData = await listLceEstimateMeta();
+        if (!alive) return;
 
-      const metaChargeTypes = Array.isArray(metaData?.charge_types) ? metaData.charge_types : [];
-      const EXCLUDED = ["OTHER CHARGES 1", "OTHER CHARGES 2", "OTHER CHARGES 3", "OTHER CHARGES 4"];
-      const defaultChargeTypes = ["EMPTY CONTAINER WEIGHING CHARGE", "CONTAINER LOADING FEE", "LOADED CONTAINER WEIGHING CHARGE"];
-      const mergedChargeTypes = [...new Set([...metaChargeTypes.map((r) => r.name), ...defaultChargeTypes])]
-        .filter((name) => !EXCLUDED.includes(name.toUpperCase()));
-      setChargeTypeOptions(mergedChargeTypes.map((name) => ({ value: name, label: name })));
+        const metaChargeTypes = Array.isArray(metaData?.charge_types) ? metaData.charge_types : [];
+        const EXCLUDED = ["OTHER CHARGES 1", "OTHER CHARGES 2", "OTHER CHARGES 3", "OTHER CHARGES 4"];
+        const defaultChargeTypes = ["EMPTY CONTAINER WEIGHING CHARGE", "CONTAINER LOADING FEE", "LOADED CONTAINER WEIGHING CHARGE"];
+        const mergedChargeTypes = [...new Set([...metaChargeTypes.map((r) => r.name), ...defaultChargeTypes])]
+          .filter((name) => !EXCLUDED.includes(name.toUpperCase()));
+        setChargeTypeOptions(mergedChargeTypes.map((name) => ({ value: name, label: name })));
 
-      const currencies = Array.isArray(metaData?.currencies) ? metaData.currencies : [];
-      setCurrencyOptions(currencies.map((row) => ({
-        value: String(row.id),
-        label: row.label || `${row.country_name} - ${row.currency_code}`,
-        currencyCode: String(row.currency_code || "").trim().toUpperCase(),
-      })));
+        const currencies = Array.isArray(metaData?.currencies) ? metaData.currencies : [];
+        setCurrencyOptions(currencies.map((row) => ({
+          value: String(row.id),
+          label: row.label || `${row.country_name} - ${row.currency_code}`,
+          currencyCode: String(row.currency_code || "").trim().toUpperCase(),
+        })));
 
-      let purchases = Array.isArray(metaData?.stock_purchases) ? metaData.stock_purchases : [];
-      if (purchases.length === 0) {
-        const stockListData = await listStockPurchases();
-        purchases = Array.isArray(stockListData?.stock_purchases) ? stockListData.stock_purchases : [];
+        let purchases = Array.isArray(metaData?.stock_purchases) ? metaData.stock_purchases : [];
+        if (purchases.length === 0) {
+          const stockListData = await listStockPurchases();
+          purchases = Array.isArray(stockListData?.stock_purchases) ? stockListData.stock_purchases : [];
+        }
+        setStockPurchaseOptions(
+          purchases
+            .map((row) => ({
+              value: String(row.id),
+              label: row?.label || formatPurchaseOption(row).label,
+            }))
+            .filter((row) => row.value)
+        );
+      } catch (metaErr) {
+        console.error("Failed to load LCE meta:", metaErr);
       }
-      setStockPurchaseOptions(
-        purchases
-          .map((row) => ({
-            value: String(row.id),
-            label: row?.label || formatPurchaseOption(row).label,
-          }))
-          .filter((row) => row.value)
-      );
 
-      if (!recordData) {
+      if (!lceId) {
         setForm(applyFormulas({ ...DEFAULT_FORM }));
         setBalanceSettlements([emptySettlementRow(1)]);
         setNextSettlementRowId(2);
@@ -451,26 +452,30 @@ function CostingPage() {
         return;
       }
 
-      const estimate = recordData.lce_estimate || {};
-      const merged = { ...DEFAULT_FORM };
-      [...EDITABLE_FIELDS, ...FORMULA_FIELDS].forEach(([key]) => { merged[key] = String(estimate[key] ?? merged[key]); });
-      EXTRA_FIELDS.forEach((key) => { merged[key] = String(estimate[key] ?? merged[key] ?? ""); });
-      const items = Array.isArray(estimate.purchase_items) ? estimate.purchase_items : [];
-      setLinkedItems(items);
-      setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
-      const settlementRows = mapSettlementRows(estimate.balance_settlements, merged.foreign_currency_id || "");
-      setBalanceSettlements(settlementRows);
-      // Recalculate formulas using loaded settlements
-      setForm((prevForm) => applyFormulas(applyLinkedItemsToForm(merged, items), settlementRows));
-      setNextSettlementRowId((settlementRows.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
-      setLoading(false);
+      try {
+        const recordData = await getLceEstimateById(lceId);
+        if (!alive) return;
+
+        const estimate = recordData?.lce_estimate || {};
+        const merged = { ...DEFAULT_FORM };
+        [...EDITABLE_FIELDS, ...FORMULA_FIELDS].forEach(([key]) => { merged[key] = String(estimate[key] ?? merged[key]); });
+        EXTRA_FIELDS.forEach((key) => { merged[key] = String(estimate[key] ?? merged[key] ?? ""); });
+        const items = Array.isArray(estimate.purchase_items) ? estimate.purchase_items : [];
+        setLinkedItems(items);
+        setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
+        const settlementRows = mapSettlementRows(estimate.balance_settlements, merged.foreign_currency_id || "");
+        setBalanceSettlements(settlementRows);
+        setForm((prevForm) => applyFormulas(applyLinkedItemsToForm(merged, items), settlementRows));
+        setNextSettlementRowId((settlementRows.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
+      } catch (err) {
+        if (!alive) return;
+        setStatus(err.message || "Failed to load LCE details.");
+      } finally {
+        if (alive) setLoading(false);
+      }
     };
 
-    resolveAndLoad().catch((err) => {
-      if (!alive) return;
-      setStatus(err.message || "Failed to load LCE details.");
-      setLoading(false);
-    });
+    resolveAndLoad();
 
     return () => { alive = false; };
   }, [lceId]);
