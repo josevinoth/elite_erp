@@ -86,6 +86,7 @@ def _resolve_lab_item(item_category, item_description, item_code):
     return qs.first()
 
 
+
 def _compute_costs(item_code, qty):
     normalized_code = normalize_text(item_code).upper()
     costs = []
