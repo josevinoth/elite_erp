@@ -68,13 +68,17 @@ def _serialize_purchase_item(item):
     raw_grn = str(item.grn_number or "").strip()
     if raw_grn and not raw_grn.upper().startswith("GRN"):
         raw_grn = f"GRN{item.pk:04d}"
+    cat_name = getattr(item.item_category, "name", "") if item.item_category else ""
+    code_val = getattr(item.item_code, "item_code", "") if item.item_code else (str(item.item_code or ""))
+    sp_num = f"SPV{item.vendor_detail_id:04d}" if item.vendor_detail_id else ""
     return {
         "id": item.id,
         "grn_number": raw_grn,
+        "purchase_number": sp_num,
         "invoice_number": item.vendor_detail.invoice_number if item.vendor_detail else "",
-        "item_category": item.item_category,
+        "item_category": cat_name,
         "item_name": item.item_name,
-        "item_code": item.item_code,
+        "item_code": code_val,
         "quantity": str(item.quantity),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
@@ -221,7 +225,9 @@ def _calculate_totals(values):
 
 def _serialize(obj):
     linked_items = list(
-        StockPurchaseItem.objects.filter(lce_estimate=obj).select_related("vendor_detail")
+        StockPurchaseItem.objects.filter(lce_estimate=obj).select_related(
+            "vendor_detail", "item_category", "item_code"
+        )
     )
     ex_works_total = Decimal(str(obj.ex_works_material_cost or 0))
     total_value = Decimal(str(obj.total or 0))
@@ -314,7 +320,11 @@ def lce_purchase_items_api_view(request, purchase_id):
     if not_allowed:
         return not_allowed
 
-    items = StockPurchaseItem.objects.filter(vendor_detail_id=purchase_id).order_by("id")
+    items = (
+        StockPurchaseItem.objects.filter(vendor_detail_id=purchase_id)
+        .select_related("vendor_detail", "item_category", "item_code")
+        .order_by("id")
+    )
     return JsonResponse({"items": [_serialize_purchase_item(i) for i in items]})
 
 
