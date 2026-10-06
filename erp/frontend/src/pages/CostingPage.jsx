@@ -26,12 +26,12 @@ const EDITABLE_FIELDS = [
   ["advance_payment_value", "Advance Payment Value"],
   ["bank_muscat_charge_advance_payment", "Total Advance Payment (OMR)"],
   // ["bank_muscat_charge_balance_payment", "Balance Payment (OMR)"], // Removed as per user request
-   ["freight_charge", "Freight Charge (OMR)"],
+  ["freight_charge", "Freight Charge (OMR)"],
   ["customs_duty_omr", "Customs Duty (OMR)"],
   ["oman_customs_boe_charge_omr", "Oman Customs Boe Charge (OMR)"],
-   ["rop_customs_inspection_charge", "Rop Customs Inspection Charge (OMR)"],
-   ["unloading_charge_muscat_stores_1", "Unloading Charge @ Muscat Stores 1 (OMR)"],
-   ["unloading_charge_muscat_stores_2", "Unloading Charge @ Muscat Stores 2 (OMR)"],
+  ["rop_customs_inspection_charge", "Rop Customs Inspection Charge (OMR)"],
+  ["unloading_charge_muscat_stores_1", "Unloading Charge @ Muscat Stores 1 (OMR)"],
+  ["unloading_charge_muscat_stores_2", "Unloading Charge @ Muscat Stores 2 (OMR)"],
   ["loading_charge_muscat_stores_delivery", "Loading Charge @ Muscat Stores At The Time Of Customer Delivery"],
 ];
 
@@ -40,10 +40,11 @@ const FORMULA_FIELDS = [
   ["balance_payment_value", "Balance Payment Value"],
   // ["balance_payment_value_omr", "Balance Payment Value (OMR)"], // Removed as per user request
   ["total_supplier_price_omr", "LCE COST (OMR)"],
-   ["total", "Total (OMR)"],
+  ["total", "Total (OMR)"],
   ["cost_factor", "Cost Factor"],
 ];
 
+// test
 const EXTRA_FIELDS = ["other_charges_1_type", "other_charges_2_type", "other_charges_3_type", "other_charges_4_type", "foreign_currency_id"];
 const DEFAULT_FORM = Object.fromEntries([...EDITABLE_FIELDS, ...FORMULA_FIELDS].map(([k]) => [k, "0"]));
 EXTRA_FIELDS.forEach((key) => { DEFAULT_FORM[key] = ""; });
@@ -609,9 +610,9 @@ function CostingPage() {
 
     const keepRows = linkedItems.filter((row) => !modalIds.has(row.id));
     const pickedRows = modalItems.filter((row) => ids.includes(row.id));
-      const nextLinkedItems = [...keepRows, ...pickedRows];
-      setLinkedItems(nextLinkedItems);
-      setForm((prev) => applyLinkedItemsToForm(prev, nextLinkedItems));
+    const nextLinkedItems = [...keepRows, ...pickedRows];
+    setLinkedItems(nextLinkedItems);
+    setForm((prev) => applyLinkedItemsToForm(prev, nextLinkedItems));
     setModalOpen(false);
   };
 
@@ -795,56 +796,56 @@ function CostingPage() {
                   </div>
                 );
               }
-               // Make Advance Payment Value always read-only and calculated
-               if (key === "advance_payment_value") {
-                 return [
-                   <label key={key} className="lce-form-card">
-                     <span className="lce-form-card__label">
-                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small className="costing-inline-note">(sum of Payment Amount (OMR) in Payment History)</small>
-                     </span>
-                     <input
-                       type="number"
-                       className="auth-input lce-form-card__input lce-form-card__input--readonly"
-                       step="any"
-                       value={form[key]}
-                       disabled
-                       readOnly
-                     />
-                   </label>,
-                   // Insert Balance Payment Value (EUR) field here
-                   <label key="balance_payment_value" className="lce-form-card">
-                      <span className="lce-form-card__label">
-                        <strong>{withForeignCurrencyLabel("balance_payment_value", "Balance Payment Value")}</strong>
-                      </span>
-                     <input
-                       type="number"
-                       className="auth-input lce-form-card__input lce-form-card__input--readonly"
-                       step="any"
-                       value={form["balance_payment_value"]}
-                       disabled
-                       readOnly
-                     />
-                   </label>
-                 ];
-               }
-               // Make Total Advance Payment (OMR) always disabled and read-only
-               if (key === "bank_muscat_charge_advance_payment") {
-                 return (
-                   <label key={key} className="lce-form-card">
-                     <span className="lce-form-card__label">
-                       <strong>{withForeignCurrencyLabel(key, label)}</strong> <small className="costing-inline-note">(sum of Amount (OMR) in Payment History)</small>
-                     </span>
-                     <input
-                       type="number"
-                       className="auth-input lce-form-card__input lce-form-card__input--readonly"
-                       step="any"
-                       value={form[key]}
-                       disabled
-                       readOnly
-                     />
-                   </label>
-                 );
-               }
+              // Make Advance Payment Value always read-only and calculated
+              if (key === "advance_payment_value") {
+                return [
+                  <label key={key} className="lce-form-card">
+                    <span className="lce-form-card__label">
+                      <strong>{withForeignCurrencyLabel(key, label)}</strong> <small className="costing-inline-note">(sum of Payment Amount (OMR) in Payment History)</small>
+                    </span>
+                    <input
+                      type="number"
+                      className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                      step="any"
+                      value={form[key]}
+                      disabled
+                      readOnly
+                    />
+                  </label>,
+                  // Insert Balance Payment Value (EUR) field here
+                  <label key="balance_payment_value" className="lce-form-card">
+                    <span className="lce-form-card__label">
+                      <strong>{withForeignCurrencyLabel("balance_payment_value", "Balance Payment Value")}</strong>
+                    </span>
+                    <input
+                      type="number"
+                      className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                      step="any"
+                      value={form["balance_payment_value"]}
+                      disabled
+                      readOnly
+                    />
+                  </label>
+                ];
+              }
+              // Make Total Advance Payment (OMR) always disabled and read-only
+              if (key === "bank_muscat_charge_advance_payment") {
+                return (
+                  <label key={key} className="lce-form-card">
+                    <span className="lce-form-card__label">
+                      <strong>{withForeignCurrencyLabel(key, label)}</strong> <small className="costing-inline-note">(sum of Amount (OMR) in Payment History)</small>
+                    </span>
+                    <input
+                      type="number"
+                      className="auth-input lce-form-card__input lce-form-card__input--readonly"
+                      step="any"
+                      value={form[key]}
+                      disabled
+                      readOnly
+                    />
+                  </label>
+                );
+              }
               return (
                 <label key={key} className="lce-form-card">
                   <span className="lce-form-card__label">{withForeignCurrencyLabel(key, label)}</span>
@@ -869,77 +870,77 @@ function CostingPage() {
               <h3 className="costing-section-card__title">Payment History</h3>
               <button type="button" className="crud-add-btn" onClick={addSettlementRow}>+ Add Settlement</button>
             </div>
-             <p className="costing-help-text costing-help-text--mt">
-               Final Value (OMR) = Factor x Amount.
-             </p>
+            <p className="costing-help-text costing-help-text--mt">
+              Final Value (OMR) = Factor x Amount.
+            </p>
 
-                    <div className="users-table-wrap">
-                      <table className="users-table">
-                        <thead>
-                          <tr>
-                            <th>Payment Date</th>
-                            {/* Removed Foreign Currency column */}
-                              <th>{`Payment Amount (${selectedForeignCurrencyCode})`}</th>
-                            <th>BANK EXCHANGE RATE (MUSCAT)</th>
-                              <th>Payment Amount (OMR)</th>
-                            <th className="costing-col-action">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {settlementRowsWithValue.map((row) => (
-                            <tr key={row.rowId}>
-                              <td>
-                                <input
-                                  type="date"
-                                  className="auth-input"
-                                  value={row.settlement_date}
-                                  onChange={(e) => handleSettlementChange(row.rowId, "settlement_date", e.target.value)}
-                                />
-                              </td>
-                              {/* Removed Foreign Currency cell */}
-                              <td>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  className="auth-input"
-                                  value={row.payment_amount}
-                                  onChange={(e) => handleSettlementChange(row.rowId, "payment_amount", e.target.value)}
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  className="auth-input"
-                                  value={row.factor}
-                                  onChange={(e) => handleSettlementChange(row.rowId, "factor", e.target.value)}
-                                  aria-label="BANK EXCHANGE RATE (MUSCAT)"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  className="auth-input"
-                                  value={toFixed(toNumber(row.payment_amount) * toNumber(row.factor), 2)}
-                                  readOnly
-                                  disabled
-                                />
-                              </td>
-                              <td>
-                                <button
-                                  type="button"
-                                  className="crud-add-btn crud-add-btn--neutral costing-btn--full"
-                                  onClick={() => removeSettlementRow(row.rowId)}
-                                  disabled={settlementRowsWithValue.length <= 1}
-                                >
-                                  Remove
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+            <div className="users-table-wrap">
+              <table className="users-table">
+                <thead>
+                  <tr>
+                    <th>Payment Date</th>
+                    {/* Removed Foreign Currency column */}
+                    <th>{`Payment Amount (${selectedForeignCurrencyCode})`}</th>
+                    <th>BANK EXCHANGE RATE (MUSCAT)</th>
+                    <th>Payment Amount (OMR)</th>
+                    <th className="costing-col-action">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {settlementRowsWithValue.map((row) => (
+                    <tr key={row.rowId}>
+                      <td>
+                        <input
+                          type="date"
+                          className="auth-input"
+                          value={row.settlement_date}
+                          onChange={(e) => handleSettlementChange(row.rowId, "settlement_date", e.target.value)}
+                        />
+                      </td>
+                      {/* Removed Foreign Currency cell */}
+                      <td>
+                        <input
+                          type="number"
+                          step="any"
+                          className="auth-input"
+                          value={row.payment_amount}
+                          onChange={(e) => handleSettlementChange(row.rowId, "payment_amount", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="any"
+                          className="auth-input"
+                          value={row.factor}
+                          onChange={(e) => handleSettlementChange(row.rowId, "factor", e.target.value)}
+                          aria-label="BANK EXCHANGE RATE (MUSCAT)"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="auth-input"
+                          value={toFixed(toNumber(row.payment_amount) * toNumber(row.factor), 2)}
+                          readOnly
+                          disabled
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="crud-add-btn crud-add-btn--neutral costing-btn--full"
+                          onClick={() => removeSettlementRow(row.rowId)}
+                          disabled={settlementRowsWithValue.length <= 1}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <div className="costing-inline-actions costing-inline-actions--summary">
               {/* Settled Total display removed as per request */}
@@ -1026,23 +1027,23 @@ function CostingPage() {
                   </thead>
                   <tbody>
                     {linkedItems.map((item) => {
-                       const lceCost = toFixed(toNumber(item.total_price) * toNumber(form.cost_factor));
-                       const perUnitLceCost = (toNumber(item.quantity) > 0)
-                         ? toFixed(toNumber(lceCost) / toNumber(item.quantity))
-                         : "-";
-                       return (
-                         <tr key={item.id}>
-                           <td>{item.grn_number}</td>
-                           <td>{item.purchase_number || "-"}</td>
-                           <td>{item.invoice_number || "-"}</td>
-                           <td>{item.item_category}</td>
-                           <td>{item.item_name}</td>
-                           <td>{item.item_code}</td>
-                           <td>{item.quantity}</td>
-                           <td>{item.total_price} {selectedForeignCurrencyCode}</td>
-                           <td><strong>{perUnitLceCost}</strong></td>
-                         </tr>
-                       );
+                      const lceCost = toFixed(toNumber(item.total_price) * toNumber(form.cost_factor));
+                      const perUnitLceCost = (toNumber(item.quantity) > 0)
+                        ? toFixed(toNumber(lceCost) / toNumber(item.quantity))
+                        : "-";
+                      return (
+                        <tr key={item.id}>
+                          <td>{item.grn_number}</td>
+                          <td>{item.purchase_number || "-"}</td>
+                          <td>{item.invoice_number || "-"}</td>
+                          <td>{item.item_category}</td>
+                          <td>{item.item_name}</td>
+                          <td>{item.item_code}</td>
+                          <td>{item.quantity}</td>
+                          <td>{item.total_price} {selectedForeignCurrencyCode}</td>
+                          <td><strong>{perUnitLceCost}</strong></td>
+                        </tr>
+                      );
                     })}
                   </tbody>
                 </table>
@@ -1052,16 +1053,16 @@ function CostingPage() {
         </>
       ) : null}
 
-       {modalOpen ? (
-         <PurchaseItemModal
-           items={modalItems}
-           initialSelected={selectedItemIds}
-           onConfirm={handleModalConfirm}
-           onClose={() => setModalOpen(false)}
-           currentLceId={lceId}
-           selectedForeignCurrencyCode={selectedForeignCurrencyCode}
-         />
-       ) : null}
+      {modalOpen ? (
+        <PurchaseItemModal
+          items={modalItems}
+          initialSelected={selectedItemIds}
+          onConfirm={handleModalConfirm}
+          onClose={() => setModalOpen(false)}
+          currentLceId={lceId}
+          selectedForeignCurrencyCode={selectedForeignCurrencyCode}
+        />
+      ) : null}
     </section>
   );
 }
