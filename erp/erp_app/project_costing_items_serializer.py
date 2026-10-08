@@ -32,6 +32,7 @@ class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
     purchase_qty = serializers.SerializerMethodField(read_only=True)
     unit_price = serializers.CharField(source="purchase_item.unit_price", read_only=True)
     retrieval_status_name = serializers.CharField(source="retrieval_status.status_name", read_only=True)
+    remaining_accepted_qty = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = ProjectCostingItemAllocation
@@ -43,6 +44,9 @@ class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
             "purchase_qty",
             "unit_price",
             "allocated_qty",
+            "pending_return_qty",
+            "returned_qty",
+            "remaining_accepted_qty",
             "retrieval_status_id",
             "retrieval_status_name",
         ]
@@ -52,6 +56,14 @@ class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
         if not purchase_item:
             return "0"
         return str(getattr(purchase_item, "purchase_qty", None) or getattr(purchase_item, "quantity", 0) or 0)
+
+    def get_remaining_accepted_qty(self, obj):
+        allocated_qty = Decimal(str(getattr(obj, "allocated_qty", 0) or 0))
+        returned_qty = Decimal(str(getattr(obj, "returned_qty", 0) or 0))
+        remaining = allocated_qty - returned_qty
+        if remaining < 0:
+            remaining = Decimal("0")
+        return str(remaining)
 
 
 class ProjectCostingItemSerializer(serializers.ModelSerializer):
@@ -268,7 +280,16 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             )
             if candidate.pk:
                 duplicate_queryset = duplicate_queryset.exclude(pk=candidate.pk)
-            if duplicate_queryset.exists():
+            candidate_status_name = str(getattr(getattr(candidate, "retrieval_status", None), "status_name", "") or "")
+            allowed_duplicate_statuses = {
+                RetrievalStatusInfo.STATUS_ITEM_RETURN,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+            }
+            blocking_duplicates = [
+                row for row in duplicate_queryset.select_related("retrieval_status")
+                if str(getattr(getattr(row, "retrieval_status", None), "status_name", "") or "") not in allowed_duplicate_statuses
+            ]
+            if blocking_duplicates and candidate_status_name not in allowed_duplicate_statuses:
                 raise serializers.ValidationError(
                     {"item_code_id": ["Duplicate item code is not allowed for this project costing."]}
                 )
@@ -313,8 +334,14 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         normalized_rows = []
         total_allocated = Decimal("0")
         first_purchase_item = None
-        accepted_status = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED).first()
-        default_status = getattr(candidate, "retrieval_status", None) or accepted_status
+        requested_status = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED).first()
+        default_status = getattr(candidate, "retrieval_status", None) or requested_status
+        existing_allocations = {}
+        if candidate.pk:
+            existing_allocations = {
+                row.purchase_item_id: row
+                for row in ProjectCostingItemAllocation.objects.filter(costing_item_id=candidate.pk)
+            }
 
         for row in allocations_data:
             purchase_item = row.get("purchase_item")
@@ -327,6 +354,24 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             if qty < 0:
                 raise serializers.ValidationError({"grn_allocations": ["Allocated quantity must be 0 or greater."]})
 
+            existing_allocation = existing_allocations.get(getattr(purchase_item, "pk", None))
+            pending_return_qty = Decimal(
+                str(
+                    row.get(
+                        "pending_return_qty",
+                        getattr(existing_allocation, "pending_return_qty", 0),
+                    ) or 0
+                )
+            )
+            returned_qty = Decimal(
+                str(
+                    row.get(
+                        "returned_qty",
+                        getattr(existing_allocation, "returned_qty", 0),
+                    ) or 0
+                )
+            )
+
             status_obj = row.get("retrieval_status") or default_status
             if not status_obj:
                 raise serializers.ValidationError({"grn_allocations": ["Default retrieval status is not configured."]})
@@ -334,14 +379,26 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             purchased_qty = Decimal(
                 str(getattr(purchase_item, "purchase_qty", None) or getattr(purchase_item, "quantity", 0) or 0)
             )
-            consumed_qs = ProjectCostingItemAllocation.objects.select_related("retrieval_status").filter(
+            consumed_qs = ProjectCostingItemAllocation.objects.select_related("retrieval_status", "costing_item__retrieval_status").filter(
                 purchase_item=purchase_item,
-                retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
-                costing_item__retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                costing_item__retrieval_status__status_name__in=[
+                    RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                    RetrievalStatusInfo.STATUS_ITEM_RETURN,
+                    RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+                ],
             )
             if candidate.pk:
                 consumed_qs = consumed_qs.exclude(costing_item_id=candidate.pk)
-            consumed_qty = sum((Decimal(str(x.allocated_qty or 0)) for x in consumed_qs), Decimal("0"))
+            consumed_qty = sum(
+                (
+                    max(
+                        Decimal(str(x.allocated_qty or 0)) - Decimal(str(getattr(x, "returned_qty", 0) or 0)),
+                        Decimal("0"),
+                    )
+                    for x in consumed_qs
+                ),
+                Decimal("0"),
+            )
             available_qty = purchased_qty - consumed_qty
             if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and qty > available_qty:
                 raise serializers.ValidationError(
@@ -358,6 +415,8 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             normalized_rows.append({
                 "purchase_item": purchase_item,
                 "allocated_qty": qty,
+                "pending_return_qty": pending_return_qty,
+                "returned_qty": returned_qty,
                 "retrieval_status": status_obj,
             })
 
@@ -373,14 +432,17 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             )
 
         accepted_qty = Decimal("0")
-        returned_qty = Decimal("0")
         for row in normalized_rows:
             status_name = str(getattr(row["retrieval_status"], "status_name", "") or "")
-            if status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED:
-                accepted_qty += row["allocated_qty"]
-            elif status_name == RetrievalStatusInfo.STATUS_ITEM_RETURN:
-                returned_qty += row["allocated_qty"]
-        candidate.accepted_qty = accepted_qty - returned_qty
+            if status_name in {
+                RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN,
+            }:
+                returned_qty = Decimal(str(row.get("returned_qty", 0) or 0))
+                remaining = row["allocated_qty"] - returned_qty
+                if remaining > 0:
+                    accepted_qty += remaining
+        candidate.accepted_qty = accepted_qty
         if candidate.accepted_qty < 0:
             candidate.accepted_qty = Decimal("0")
 
@@ -411,7 +473,6 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         }
         retained = set()
         accepted_qty = Decimal("0")
-        returned_qty = Decimal("0")
 
         for row in allocations_data:
             purchase_item = row["purchase_item"]
@@ -419,21 +480,26 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             if allocation is None:
                 allocation = ProjectCostingItemAllocation(costing_item=instance, purchase_item=purchase_item)
             allocation.allocated_qty = row["allocated_qty"]
+            allocation.pending_return_qty = row.get("pending_return_qty", getattr(allocation, "pending_return_qty", 0))
+            allocation.returned_qty = row.get("returned_qty", getattr(allocation, "returned_qty", 0))
             allocation.retrieval_status = row["retrieval_status"]
             allocation.save()
             retained.add(purchase_item.pk)
 
             status_name = str(getattr(allocation.retrieval_status, "status_name", "") or "")
-            if status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED:
-                accepted_qty += Decimal(str(allocation.allocated_qty or 0))
-            elif status_name == RetrievalStatusInfo.STATUS_ITEM_RETURN:
-                returned_qty += Decimal(str(allocation.allocated_qty or 0))
+            if status_name in {
+                RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN,
+            }:
+                remaining = Decimal(str(allocation.allocated_qty or 0)) - Decimal(str(getattr(allocation, "returned_qty", 0) or 0))
+                if remaining > 0:
+                    accepted_qty += remaining
 
         stale_ids = [row.pk for pid, row in existing.items() if pid not in retained]
         if stale_ids:
             ProjectCostingItemAllocation.objects.filter(pk__in=stale_ids).delete()
 
-        instance.accepted_qty = accepted_qty - returned_qty
+        instance.accepted_qty = accepted_qty
         if instance.accepted_qty < 0:
             instance.accepted_qty = Decimal("0")
         instance.save(update_fields=["accepted_qty", "updated_at"])

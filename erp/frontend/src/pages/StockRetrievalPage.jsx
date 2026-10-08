@@ -8,6 +8,25 @@ import AlertMessage from "../components/AlertMessage";
 import TableSearchAndDownload from "../components/TableSearchAndDownload";
 import "../styles/StockRetrieval.css";
 
+const STATUS_NO_ACTION = "No Action";
+const STATUS_ITEM_REQUESTED = "Item Requested";
+
+const resolveRetrievalStatusName = (allocation, item) => {
+  const allocationStatus = String(allocation?.retrieval_status_name || "").trim();
+  const itemStatus = String(item?.retrieval_status?.status_name || item?.retrieval_status_name || "").trim();
+
+  if (allocationStatus && allocationStatus.toLowerCase() !== STATUS_NO_ACTION.toLowerCase()) {
+    return allocationStatus;
+  }
+  if (itemStatus) {
+    return itemStatus;
+  }
+  if (allocationStatus) {
+    return allocationStatus;
+  }
+  return STATUS_ITEM_REQUESTED;
+};
+
 const normalizeRejectedOption = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "item rejected" || normalized === "request rejected") {
@@ -26,6 +45,7 @@ function StockRetrievalPage() {
   const roleName = String(currentUser?.role || "").trim().toLowerCase();
   const teamName = String(currentUser?.team || "").trim().toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
+  const currentUserId = String(currentUser?.id || "").trim();
   const isStockRole = ["stock team", "stock", "stores team"].includes(roleName);
   const canEdit = isAdmin || isStockRole || ["stock team", "stock", "stores team"].includes(teamName);
     const [loading, setLoading] = useState(true);
@@ -67,7 +87,7 @@ function StockRetrievalPage() {
    const isPendingRequest = useCallback((row) => (
      String(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name || "")
        .trim()
-       .toLowerCase() === "item requested"
+       .toLowerCase() === STATUS_ITEM_REQUESTED.toLowerCase()
    ), []);
 
    const retrievalRows = useMemo(() => (
@@ -82,7 +102,7 @@ function StockRetrievalPage() {
          grn_purchase_item_id: allocation?.purchase_item_id || item?.purchase_item?.id || null,
          grn_purchase_qty: allocation?.purchase_qty || item?.purchase_qty || "0",
          grn_allocated_qty: allocation?.allocated_qty || item?.requested_qty || "0",
-         grn_retrieval_status_name: allocation?.retrieval_status_name || item?.retrieval_status?.status_name || "Item Requested",
+          grn_retrieval_status_name: resolveRetrievalStatusName(allocation, item),
        }));
      })
    ), [items]);
@@ -131,7 +151,7 @@ function StockRetrievalPage() {
      { key: "width", label: "W" },
      { key: "height", label: "H" },
      { key: "volume", label: "Volume" },
-     { key: "grn_retrieval_status_name", label: "Retrieval Status", exportValue: (row) => normalizeRejectedOption(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name || "Item Requested") },
+     { key: "grn_retrieval_status_name", label: "Retrieval Status", exportValue: (row) => normalizeRejectedOption(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name || STATUS_ITEM_REQUESTED) },
      { key: "rejection_comment", label: "Rejection Comments" },
    ];
 
@@ -167,7 +187,12 @@ function StockRetrievalPage() {
     const itemId = row?.id;
     setSavingId(String(itemId));
     try {
-      await updateStockRetrievalItem(itemId, retrievalStatusName, rejectionComment, action, purchaseItemId);
+      await updateStockRetrievalItem(itemId, {
+        retrieval_status_name: retrievalStatusName,
+        rejection_comment: rejectionComment,
+        action,
+        purchase_item_id: purchaseItemId,
+      });
       await loadItems();
       setStatus({ type: "", message: "" });
       setConfirmation({
@@ -204,10 +229,10 @@ function StockRetrievalPage() {
     setConfirmModal({ open: false, row: null, action: "", comment: "" });
     await submitStatusUpdate(
       row,
-      "Item Accepted",
+      "Item Supplied",
       "",
       "accept",
-      "Retrieval accepted successfully",
+      "GRN accepted and moved to Stock Acceptance.",
       "success",
       row?.grn_purchase_item_id || null
     );
@@ -226,10 +251,10 @@ function StockRetrievalPage() {
     }
     await submitStatusUpdate(
       row,
-      "Item Return",
+      STATUS_NO_ACTION,
       comment,
       "reject",
-      "Retrieval rejected and moved to Item Return",
+      "GRN rejected and moved to No Action.",
       "warning",
       row?.grn_purchase_item_id || null
     );
@@ -301,12 +326,13 @@ function StockRetrievalPage() {
            <div className="stock-retrieval-modal__content">
              <p><strong>Item:</strong> {confirmModal.row?.item_name || "-"}</p>
              <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
+             <p><strong>GRN Number:</strong> {confirmModal.row?.grn_number || "-"}</p>
              <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
              {confirmModal.action === "accept" ? (
-                <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--success">Item Accepted</span></p>
+                <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--success">Item Supplied</span></p>
              ) : (
                <>
-                  <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--danger">Item Return</span></p>
+                  <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--danger">No Action</span></p>
                  <label className="stock-retrieval-modal__label">
                    Rejection Comment:
                    <textarea
@@ -322,7 +348,7 @@ function StockRetrievalPage() {
            </div>
          </ConfirmPopupModal>
        ) : null}
-       {!confirmation.open && !canEdit ? <AlertMessage type="warning" message="Only stock team or admin can update retrieval status." /> : null}
+       {!confirmation.open && !canEdit ? <AlertMessage type="warning" message="Stock team, project owners, or admin can update retrieval status." /> : null}
        {!confirmation.open && loading ? <p className="users-status">Loading stock retrieval items...</p> : null}
         {!confirmation.open && !loading ? (
           <>
@@ -384,7 +410,9 @@ function StockRetrievalPage() {
                  <tr>
                    <td colSpan={19} className="stock-retrieval-empty">No retrieval items found.</td>
                  </tr>
-               ) : filteredItems.map((row) => (
+                ) : filteredItems.map((row) => {
+                 const canEditRow = canEdit || String(row?.project_owner_id || "") === currentUserId;
+                 return (
                 <tr key={row.row_key || row.id}>
                   <td>{row?.costing_ref || row?.costing_id || "-"}</td>
                   <td>{`${row?.project_code || "-"} - ${row?.project_name || "-"}`}</td>
@@ -408,7 +436,7 @@ function StockRetrievalPage() {
                       <button
                         type="button"
                         className="modal-btn modal-btn--save stock-retrieval-action-btn"
-                        disabled={!canEdit || savingId === String(row.id) || isNotPurchased(row) || !row?.grn_purchase_item_id || !isPendingRequest(row)}
+                         disabled={!canEditRow || savingId === String(row.id) || isNotPurchased(row) || !row?.grn_purchase_item_id || !isPendingRequest(row)}
                         onClick={() => acceptItem(row)}
                       >
                         Accept
@@ -416,7 +444,7 @@ function StockRetrievalPage() {
                       <button
                         type="button"
                         className="modal-btn modal-btn--cancel stock-retrieval-action-btn"
-                        disabled={!canEdit || savingId === String(row.id) || !row?.grn_purchase_item_id || !isPendingRequest(row)}
+                         disabled={!canEditRow || savingId === String(row.id) || !row?.grn_purchase_item_id || !isPendingRequest(row)}
                         onClick={() => rejectItem(row)}
                       >
                         Reject
@@ -425,7 +453,7 @@ function StockRetrievalPage() {
                   </td>
                   <td>{row?.rejection_comment || "-"}</td>
                 </tr>
-              ))}
+              )})}
             </tbody>
            </table>
            </div>

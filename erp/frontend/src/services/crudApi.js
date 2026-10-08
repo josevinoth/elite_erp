@@ -87,6 +87,17 @@ export async function listStockReturnItems() {
   return parseJson(res);
 }
 
+export async function createStockReturnRequest(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/stock-return/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
 export async function updateStockReturnItem(id, payload) {
   const headers = await csrfHeaders();
   const normalizedPayload =

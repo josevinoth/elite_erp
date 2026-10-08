@@ -134,6 +134,369 @@ def _apply_request_tracking(payload, item, status_obj, user):
         payload["rejection_comment"] = ""
 
 
+def _allocation_status_name(allocation):
+    return str(getattr(getattr(allocation, "retrieval_status", None), "status_name", "") or "").strip()
+
+
+def _item_status_name(item):
+    return str(getattr(getattr(item, "retrieval_status", None), "status_name", "") or "").strip()
+
+
+def _get_item_allocations(item):
+    return list(item.grn_allocations.select_related("retrieval_status", "purchase_item__vendor_detail").order_by("id"))
+
+
+def _allocation_pending_return_qty(allocation):
+    return Decimal(str(getattr(allocation, "pending_return_qty", 0) or 0))
+
+
+def _allocation_returned_qty(allocation):
+    return Decimal(str(getattr(allocation, "returned_qty", 0) or 0))
+
+
+def _allocation_remaining_consumed_qty(allocation):
+    allocated_qty = Decimal(str(getattr(allocation, "allocated_qty", 0) or 0))
+    remaining = allocated_qty - _allocation_returned_qty(allocation)
+    if remaining < 0:
+        remaining = Decimal("0")
+    return remaining
+
+
+def _allocation_fifo_sort_key(allocation):
+    vendor_detail = getattr(getattr(allocation, "purchase_item", None), "vendor_detail", None)
+    purchase_date = getattr(vendor_detail, "invoice_date", None)
+    grn_number = str(getattr(getattr(allocation, "purchase_item", None), "grn_number", "") or "")
+    return (purchase_date is None, purchase_date or "", grn_number.upper(), allocation.pk or 0)
+
+
+def _derive_item_status_name_from_allocations(item, allocations):
+    allocation_list = list(allocations or [])
+    status_names = [_allocation_status_name(row) or RetrievalStatusInfo.STATUS_NO_ACTION for row in allocation_list]
+    if not status_names:
+        return _item_status_name(item) or RetrievalStatusInfo.STATUS_NO_ACTION
+
+    if any(_allocation_pending_return_qty(row) > 0 for row in allocation_list):
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN
+
+    normalized = {name.lower(): name for name in status_names if name}
+    if len(normalized) == 1:
+        only_status = next(iter(normalized.values()))
+        if only_status == RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED and any(
+            _allocation_remaining_consumed_qty(row) > 0 for row in allocation_list
+        ):
+            return RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+        return only_status
+
+    retrieval_stage_statuses = {
+        RetrievalStatusInfo.STATUS_NO_ACTION.lower(),
+        RetrievalStatusInfo.STATUS_ITEM_REQUESTED.lower(),
+        RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower(),
+    }
+    allocation_statuses = set(normalized.keys())
+
+    if allocation_statuses.issubset(retrieval_stage_statuses):
+        if allocation_statuses == {RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower()}:
+            return RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
+        if allocation_statuses == {RetrievalStatusInfo.STATUS_NO_ACTION.lower()}:
+            return RetrievalStatusInfo.STATUS_NO_ACTION
+        return RetrievalStatusInfo.STATUS_ITEM_REQUESTED
+
+    if allocation_statuses == {RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED.lower()}:
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED
+    if RetrievalStatusInfo.STATUS_ITEM_ACCEPTED.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+    if RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED.lower() in allocation_statuses:
+        if any(_allocation_remaining_consumed_qty(row) > 0 for row in allocation_list):
+            return RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED
+    if RetrievalStatusInfo.STATUS_ITEM_RETURN.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN
+    if RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
+    if RetrievalStatusInfo.STATUS_ITEM_REQUESTED.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_REQUESTED
+    if RetrievalStatusInfo.STATUS_NO_ACTION.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_NO_ACTION
+    return status_names[0]
+
+
+def _calculate_item_accepted_qty(item, allocations):
+    allocation_list = list(allocations or [])
+    if not allocation_list:
+        return Decimal("0")
+    return sum(
+        (
+            _allocation_remaining_consumed_qty(row)
+            for row in allocation_list
+            if _allocation_status_name(row) in {
+                RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+            }
+        ),
+        Decimal("0"),
+    )
+
+
+def _save_item_from_allocations(item, allocations, *, request_user=None, rejection_comment=None):
+    next_status_name = _derive_item_status_name_from_allocations(item, allocations)
+    next_status = _status_obj(next_status_name)
+    accepted_qty = _calculate_item_accepted_qty(item, allocations)
+
+    fields = []
+    if next_status and item.retrieval_status_id != next_status.pk:
+        item.retrieval_status = next_status
+        fields.append("retrieval_status")
+    if item.accepted_qty != accepted_qty:
+        item.accepted_qty = accepted_qty
+        fields.append("accepted_qty")
+
+    if rejection_comment is not None:
+        comment_value = str(rejection_comment or "")
+        if item.rejection_comment != comment_value:
+            item.rejection_comment = comment_value
+            fields.append("rejection_comment")
+    elif next_status_name not in {
+        RetrievalStatusInfo.STATUS_NO_ACTION,
+        RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
+    } and item.rejection_comment:
+        item.rejection_comment = ""
+        fields.append("rejection_comment")
+
+    if request_user is not None and next_status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+        item.requested_by = request_user
+        item.requested_on = timezone.now()
+        fields.extend(["requested_by", "requested_on"])
+
+    if fields:
+        item.save(update_fields=[*dict.fromkeys([*fields, "updated_at"])] )
+    return item
+
+
+def _apply_allocation_status(item, target_status_name, *, purchase_item_id=None):
+    target_status = _status_obj(target_status_name)
+    if not target_status:
+        raise ValueError("Invalid retrieval status.")
+
+    allocations = _get_item_allocations(item)
+    if purchase_item_id is not None:
+        allocations = [row for row in allocations if str(row.purchase_item_id) == str(purchase_item_id)]
+        if not allocations:
+            raise ValueError("Selected GRN allocation was not found for this item.")
+
+    for allocation in allocations:
+        if allocation.retrieval_status_id != target_status.pk:
+            allocation.retrieval_status = target_status
+            allocation.save(update_fields=["retrieval_status", "updated_at"])
+    return target_status
+
+
+def _build_return_breakdown(item, allocations=None):
+    allocation_list = list(allocations or _get_item_allocations(item))
+    breakdown = []
+    total_pending = Decimal("0")
+    total_returned = Decimal("0")
+    for allocation in allocation_list:
+        pending_qty = _allocation_pending_return_qty(allocation)
+        returned_qty = _allocation_returned_qty(allocation)
+        remaining_qty = _allocation_remaining_consumed_qty(allocation)
+        total_pending += pending_qty
+        total_returned += returned_qty
+        purchase_item = getattr(allocation, "purchase_item", None)
+        vendor_detail = getattr(purchase_item, "vendor_detail", None)
+        breakdown.append({
+            "allocation_id": allocation.pk,
+            "purchase_item_id": getattr(allocation, "purchase_item_id", None),
+            "grn_number": getattr(purchase_item, "grn_number", "") or "-",
+            "purchase_date": str(getattr(vendor_detail, "invoice_date", "") or ""),
+            "allocated_qty": str(getattr(allocation, "allocated_qty", 0) or 0),
+            "pending_return_qty": str(pending_qty),
+            "returned_qty": str(returned_qty),
+            "remaining_consumed_qty": str(remaining_qty),
+            "retrieval_status_name": _allocation_status_name(allocation) or RetrievalStatusInfo.STATUS_NO_ACTION,
+        })
+    return {
+        "return_qty": str(total_pending),
+        "returned_qty": str(total_returned),
+        "return_breakdown": breakdown,
+    }
+
+
+def _sum_allocation_qty(allocations):
+    return sum((Decimal(str(getattr(row, "allocated_qty", 0) or 0)) for row in (allocations or [])), Decimal("0"))
+
+
+def _first_purchase_item(allocations, fallback=None):
+    for allocation in allocations or []:
+        purchase_item = getattr(allocation, "purchase_item", None)
+        if purchase_item is not None:
+            return purchase_item
+    return fallback
+
+
+def _save_costing_item_quantities(item, allocations, retrieval_status_name):
+    status_obj = _status_obj(retrieval_status_name)
+    item.retrieval_status = status_obj
+    item.requested_qty = _sum_allocation_qty(allocations)
+    item.accepted_qty = _calculate_item_accepted_qty(item, allocations)
+    item.purchase_item = _first_purchase_item(allocations, fallback=getattr(item, "purchase_item", None))
+    if item.purchase_item_id:
+        item.purchase_qty = Decimal(
+            str(getattr(item.purchase_item, "purchase_qty", None) or getattr(item.purchase_item, "quantity", 0) or 0)
+        )
+    else:
+        item.purchase_qty = Decimal("0")
+    item.save()
+    return item
+
+
+def _create_return_split_item(source_item, return_allocations):
+    return_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_RETURN)
+    first_purchase_item = return_allocations[0]["purchase_item"] if return_allocations else None
+    return_item = ProjectCostingItemInfo(
+        costing_id=source_item.costing_id,
+        cost_type=source_item.cost_type,
+        item_category=source_item.item_category,
+        item_name=source_item.item_name,
+        item_code=source_item.item_code,
+        item_type=source_item.item_type,
+        room_name=source_item.room_name,
+        purchase_item=first_purchase_item,
+        requested_qty=sum((row["qty"] for row in return_allocations), Decimal("0")),
+        accepted_qty=sum((row["qty"] for row in return_allocations), Decimal("0")),
+        actual_cost=source_item.actual_cost,
+        retrieval_status=return_status,
+        requested_by=source_item.requested_by,
+        requested_on=source_item.requested_on,
+        rejection_comment="",
+        split_from=source_item,
+    )
+    return_item.save()
+
+    for row in return_allocations:
+        ProjectCostingItemAllocation.objects.create(
+            costing_item=return_item,
+            purchase_item=row["purchase_item"],
+            allocated_qty=row["qty"],
+            pending_return_qty=row["qty"],
+            returned_qty=Decimal("0"),
+            retrieval_status=return_status,
+        )
+
+    allocations = _get_item_allocations(return_item)
+    _save_costing_item_quantities(return_item, allocations, RetrievalStatusInfo.STATUS_ITEM_RETURN)
+    return return_item
+
+
+def _merge_return_item_back_to_source(return_item):
+    source_item = getattr(return_item, "split_from", None)
+    if not source_item:
+        allocations = _get_item_allocations(return_item)
+        for allocation in allocations:
+            allocation.pending_return_qty = Decimal("0")
+            allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+            allocation.save(update_fields=["pending_return_qty", "retrieval_status", "updated_at"])
+        _save_costing_item_quantities(return_item, allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+        return return_item
+
+    source_allocations = {
+        row.purchase_item_id: row
+        for row in source_item.grn_allocations.select_related("purchase_item", "retrieval_status").all()
+    }
+    return_allocations = _get_item_allocations(return_item)
+    accepted_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+
+    for allocation in return_allocations:
+        source_allocation = source_allocations.get(allocation.purchase_item_id)
+        if source_allocation is None:
+            source_allocation = ProjectCostingItemAllocation(
+                costing_item=source_item,
+                purchase_item=allocation.purchase_item,
+                allocated_qty=Decimal("0"),
+                pending_return_qty=Decimal("0"),
+                returned_qty=Decimal("0"),
+                retrieval_status=accepted_status,
+            )
+        source_allocation.allocated_qty = Decimal(str(source_allocation.allocated_qty or 0)) + Decimal(str(allocation.allocated_qty or 0))
+        source_allocation.pending_return_qty = Decimal("0")
+        source_allocation.retrieval_status = accepted_status
+        source_allocation.save()
+        source_allocations[source_allocation.purchase_item_id] = source_allocation
+
+    merged_allocations = list(source_allocations.values())
+    _save_costing_item_quantities(source_item, merged_allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+    return_item.delete()
+    return source_item
+
+
+def _request_fifo_return(item, return_qty):
+    if return_qty <= 0:
+        raise ValueError("Return quantity must be greater than 0.")
+
+    allocations = sorted(_get_item_allocations(item), key=_allocation_fifo_sort_key)
+    if not allocations:
+        raise ValueError("No GRN allocations found for this item.")
+    if any(_allocation_pending_return_qty(row) > 0 for row in allocations):
+        raise ValueError("This item already has a pending return request.")
+
+    total_available = sum((_allocation_remaining_consumed_qty(row) for row in allocations), Decimal("0"))
+    if total_available <= 0:
+        raise ValueError("No consumed quantity is available for return.")
+    if return_qty > total_available:
+        raise ValueError(f"Return quantity {return_qty} exceeds consumed quantity {total_available}.")
+
+    item_return_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_RETURN)
+    remaining = return_qty
+    fifo_breakdown = []
+    for allocation in allocations:
+        available = _allocation_remaining_consumed_qty(allocation)
+        if available <= 0:
+            continue
+        if remaining <= 0:
+            break
+        fifo_qty = available if available <= remaining else remaining
+        fifo_breakdown.append({"purchase_item": allocation.purchase_item, "qty": fifo_qty, "source_allocation": allocation})
+        remaining -= fifo_qty
+
+    if remaining > 0:
+        raise ValueError("FIFO allocation failed to distribute the entire return quantity.")
+
+    if return_qty == total_available:
+        for allocation in allocations:
+            allocation.pending_return_qty = _allocation_remaining_consumed_qty(allocation)
+            allocation.retrieval_status = item_return_status
+            allocation.save(update_fields=["pending_return_qty", "retrieval_status", "updated_at"])
+        refreshed_allocations = _get_item_allocations(item)
+        _save_costing_item_quantities(item, refreshed_allocations, RetrievalStatusInfo.STATUS_ITEM_RETURN)
+        return item, refreshed_allocations
+
+    source_updated = False
+    for row in fifo_breakdown:
+        allocation = row["source_allocation"]
+        allocation.allocated_qty = Decimal(str(allocation.allocated_qty or 0)) - row["qty"]
+        allocation.pending_return_qty = Decimal("0")
+        allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+        if allocation.allocated_qty > 0:
+            allocation.save(update_fields=["allocated_qty", "pending_return_qty", "retrieval_status", "updated_at"])
+        else:
+            allocation.delete()
+        source_updated = True
+
+    if source_updated:
+        refreshed_source_allocations = _get_item_allocations(item)
+        _save_costing_item_quantities(item, refreshed_source_allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+
+    return_item = _create_return_split_item(item, fifo_breakdown)
+    return return_item, _get_item_allocations(return_item)
+
+
+def _parse_return_qty(value):
+    try:
+        return Decimal(str(value or 0))
+    except Exception as exc:
+        raise ValueError("return_qty must be a valid number.") from exc
+
+
 def _summary_not_found():
     return JsonResponse({"status": "error", "message": "Project costing summary not found."}, status=404)
 
@@ -669,12 +1032,11 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
-        return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
     if not (_is_admin_user(request.user) or _can_edit_costing_retrieval(request.user)):
         return Response({"status": "error", "message": "Only engineering team or admin can update costing items."}, status=403)
 
     payload = request.data.copy()
+    current_name = getattr(item.retrieval_status, "status_name", "")
 
     new_status_name = payload.get("retrieval_status_name")
     if new_status_name is None and request.data.get("retrieval_status_id") is not None:
@@ -684,11 +1046,40 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
         status_obj = _status_obj(new_status_name)
         if not status_obj:
             return Response({"status": "error", "message": "Invalid retrieval status."}, status=400)
-        current_name = getattr(item.retrieval_status, "status_name", "")
         if not _is_valid_status_transition(current_name, status_obj.status_name, "costing"):
             return Response({"status": "error", "message": "Invalid retrieval status transition from Project Costing."}, status=400)
+
+        is_return_request = (
+            str(current_name or "").strip().lower() == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED.lower()
+            and status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_RETURN
+        )
+        if is_return_request:
+            try:
+                return_qty = _parse_return_qty(request.data.get("return_qty"))
+                with transaction.atomic():
+                    return_item, _return_allocations = _request_fifo_return(item, return_qty)
+            except ValueError as exc:
+                return Response({"status": "error", "message": str(exc)}, status=400)
+
+            response_payload = ProjectCostingItemView(request).list_payload(summary)
+            return Response(
+                {
+                    "success": True,
+                    "item_id": return_item.pk,
+                    "message": "FIFO return request created successfully.",
+                    "return_qty": str(return_qty),
+                    **response_payload,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
+            return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
+
         payload["retrieval_status_id"] = status_obj.pk
         _apply_request_tracking(payload, item, status_obj, request.user)
+    elif item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
+        return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
 
     serializer = ProjectCostingItemSerializer(item, data=payload, partial=True)
     if not serializer.is_valid():
@@ -730,7 +1121,7 @@ def stock_retrieval_api_view(request):
     else:
         queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED)
 
-    if not _is_admin_user(request.user):
+    if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
         queryset = queryset.filter(costing_id__project__project_owner=request.user)
 
     items = queryset.order_by("id")
@@ -789,38 +1180,110 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
         )
 
     if action == "accept":
-        # Item Requested -> Item Supplied
         target_status_name = RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
-    else:  # reject
-        # Item Requested -> No Action
+        rejection_comment = ""
+    else:
         target_status_name = RetrievalStatusInfo.STATUS_NO_ACTION
+        rejection_comment = request.data.get("rejection_comment", "")
 
-    target_status = RetrievalStatusInfo.objects.filter(status_name__iexact=target_status_name).first()
-    if not target_status:
-        target_status = RetrievalStatusInfo.objects.create(status_name=target_status_name)
+    purchase_item_id = request.data.get("purchase_item_id")
 
-    item.retrieval_status = target_status
-    item.requested_by = request.user
-    item.requested_on = timezone.now()
-    if action == "reject":
-        item.rejection_comment = request.data.get("rejection_comment", "")
-    item.save(update_fields=["retrieval_status", "requested_by", "requested_on", "rejection_comment", "updated_at"])
+    try:
+        with transaction.atomic():
+            _apply_allocation_status(item, target_status_name, purchase_item_id=purchase_item_id)
+            allocations = _get_item_allocations(item)
+            _save_item_from_allocations(item, allocations, rejection_comment=rejection_comment)
+    except ValueError as exc:
+        return Response({"status": "error", "message": str(exc)}, status=400)
 
     serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
-    message = "Item accepted and moved to Stock Acceptance." if action == "accept" else "Item rejected."
+    message = "GRN supplied and moved toward Stock Acceptance." if action == "accept" else "GRN moved to No Action."
     return Response(
         {"success": True, "item": serialized, "message": message},
         status=status.HTTP_200_OK,
     )
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST"])
 @csrf_protect
 def stock_return_api_view(request):
-    """List costing items with retrieval status = 'Item Return'"""
+    """List pending return items or create a FIFO return request for an accepted item."""
     not_allowed = _ensure_authenticated(request)
     if not_allowed:
         return not_allowed
+
+    if request.method == "POST":
+        item_id = request.data.get("item_id")
+        item_code = normalize_text(request.data.get("item_code"))
+
+        try:
+            return_qty = _parse_return_qty(request.data.get("return_qty"))
+        except ValueError as exc:
+            return Response({"status": "error", "message": str(exc)}, status=400)
+
+        queryset = ProjectCostingItemInfo.objects.select_related(
+            "costing_id__project",
+            "retrieval_status",
+            "item_code",
+        ).prefetch_related("grn_allocations__purchase_item__vendor_detail", "grn_allocations__retrieval_status")
+
+        if item_id:
+            queryset = queryset.filter(pk=item_id)
+        elif item_code:
+            queryset = queryset.filter(item_code__item_code__iexact=item_code)
+        else:
+            return Response({"status": "error", "message": "item_id or item_code is required."}, status=400)
+
+        accepted_status = RetrievalStatusInfo.objects.filter(
+            status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+        ).first()
+        if accepted_status:
+            queryset = queryset.filter(retrieval_status=accepted_status)
+        else:
+            queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+
+        if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
+            queryset = queryset.filter(costing_id__project__project_owner=request.user)
+
+        items = list(queryset.order_by("id"))
+        if not items:
+            return Response({"status": "error", "message": "No accepted item found for the return request."}, status=404)
+        if not item_id and len(items) > 1:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Multiple accepted items found for this item code. Please submit item_id as well.",
+                },
+                status=400,
+            )
+
+        item = items[0]
+        is_admin = _is_admin_user(request.user)
+        is_owner = item.costing_id.project.project_owner_id == request.user.id
+        is_stock_team = _can_edit_stock_retrieval(request.user)
+        if not (is_admin or is_owner or is_stock_team):
+            return Response(
+                {"status": "error", "message": "Only project owner, admin, or stock team can create a return request."},
+                status=403,
+            )
+
+        try:
+            with transaction.atomic():
+                return_item, allocations = _request_fifo_return(item, return_qty)
+                breakdown = _build_return_breakdown(return_item, allocations)
+        except ValueError as exc:
+            return Response({"status": "error", "message": str(exc)}, status=400)
+
+        serialized = ProjectCostingItemSerializer(return_item, context={"request": request}).data
+        return Response(
+            {
+                "success": True,
+                "item": serialized,
+                "message": "FIFO return request created successfully.",
+                **breakdown,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     return_status = RetrievalStatusInfo.objects.filter(
         status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN
@@ -838,20 +1301,67 @@ def stock_return_api_view(request):
         "retrieval_status",
         "purchase_item",
         "purchase_item__vendor_detail__vendor",
-    ).prefetch_related("grn_allocations__retrieval_status")
+    ).prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
 
     if return_status:
         queryset = queryset.filter(retrieval_status=return_status)
     else:
         queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN)
 
-    if not _is_admin_user(request.user):
+    if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
         queryset = queryset.filter(costing_id__project__project_owner=request.user)
 
-    items = queryset.order_by("id")
+    items = list(queryset.order_by("id"))
     data = ProjectCostingItemSerializer(items, many=True, context={"request": request}).data
+
+    accepted_status = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+    ).first()
+    eligible_queryset = ProjectCostingItemInfo.objects.select_related(
+        "costing_id",
+        "costing_id__quotation_number",
+        "costing_id__project",
+        "cost_type",
+        "item_category",
+        "item_code__item_type",
+        "room_name",
+        "stock_status",
+        "retrieval_status",
+        "purchase_item",
+        "purchase_item__vendor_detail__vendor",
+    ).prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
+    if accepted_status:
+        eligible_queryset = eligible_queryset.filter(retrieval_status=accepted_status)
+    else:
+        eligible_queryset = eligible_queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+    eligible_queryset = eligible_queryset.filter(accepted_qty__gt=0)
+    if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
+        eligible_queryset = eligible_queryset.filter(costing_id__project__project_owner=request.user)
+    eligible_items = list(eligible_queryset.order_by("id"))
+    eligible_data = ProjectCostingItemSerializer(eligible_items, many=True, context={"request": request}).data
+
+    items_with_breakdown = [
+        {
+            **row,
+            **_build_return_breakdown(item),
+        }
+        for item, row in zip(items, data)
+    ]
+
+    eligible_with_breakdown = [
+        {
+            **row,
+            **_build_return_breakdown(item),
+        }
+        for item, row in zip(eligible_items, eligible_data)
+    ]
     return Response(
-        {"items": data, "status": "success", "message": "Stock return items loaded successfully."},
+        {
+            "items": items_with_breakdown,
+            "eligible_items": eligible_with_breakdown,
+            "status": "success",
+            "message": "Stock return items loaded successfully.",
+        },
         status=status.HTTP_200_OK,
     )
 
@@ -904,25 +1414,52 @@ def stock_return_item_detail_api_view(request, item_pk):
         )
 
     if action == "accept":
-        # Item Return -> Item Return Accepted (marks return as approved)
         target_status_name = RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED
     else:  # reject
-        # Item Return -> Item Accepted (reject the return, go back to accepted)
         target_status_name = RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
 
-    target_status = RetrievalStatusInfo.objects.filter(status_name__iexact=target_status_name).first()
-    if not target_status:
-        target_status = RetrievalStatusInfo.objects.create(status_name=target_status_name)
+    try:
+        with transaction.atomic():
+            if action == "reject" and item.split_from_id:
+                item = _merge_return_item_back_to_source(item)
+                refreshed_allocations = _get_item_allocations(item)
+                breakdown = _build_return_breakdown(item, refreshed_allocations)
+            else:
+                allocations = _get_item_allocations(item)
+                pending_allocations = [row for row in allocations if _allocation_pending_return_qty(row) > 0]
+                if not pending_allocations:
+                    raise ValueError("No pending FIFO return quantities found for this item.")
 
-    item.retrieval_status = target_status
-    item.requested_by = request.user
-    item.requested_on = timezone.now()
-    item.save(update_fields=["retrieval_status", "requested_by", "requested_on", "updated_at"])
+                target_status = _status_obj(target_status_name)
+                for allocation in pending_allocations:
+                    pending_qty = _allocation_pending_return_qty(allocation)
+                    if action == "accept":
+                        allocation.returned_qty = _allocation_returned_qty(allocation) + pending_qty
+                    allocation.pending_return_qty = Decimal("0")
+
+                    remaining = _allocation_remaining_consumed_qty(allocation)
+                    if remaining > 0:
+                        allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+                    else:
+                        allocation.retrieval_status = target_status
+                    allocation.save(update_fields=["returned_qty", "pending_return_qty", "retrieval_status", "updated_at"])
+
+                if action == "reject":
+                    for allocation in allocations:
+                        if _allocation_status_name(allocation) == RetrievalStatusInfo.STATUS_ITEM_RETURN and _allocation_pending_return_qty(allocation) <= 0:
+                            allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+                            allocation.save(update_fields=["retrieval_status", "updated_at"])
+
+                refreshed_allocations = _get_item_allocations(item)
+                _save_item_from_allocations(item, refreshed_allocations, rejection_comment="")
+                breakdown = _build_return_breakdown(item, refreshed_allocations)
+    except ValueError as exc:
+        return Response({"status": "error", "message": str(exc)}, status=400)
 
     serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
     message = "Return approved and stock balance updated." if action == "accept" else "Return rejected; item moved back to accepted."
     return Response(
-        {"success": True, "item": serialized, "message": message},
+        {"success": True, "item": serialized, "message": message, **breakdown},
         status=status.HTTP_200_OK,
     )
 

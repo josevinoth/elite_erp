@@ -165,9 +165,9 @@ class ProjectCostingSummaryView:
             "stock_status",
             "room_name",
         )
-        default_retrieval = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_NO_ACTION).first()
+        default_retrieval = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED).first()
         if not default_retrieval:
-            default_retrieval = RetrievalStatusInfo.objects.create(status_name=RetrievalStatusInfo.STATUS_NO_ACTION)
+            default_retrieval = RetrievalStatusInfo.objects.create(status_name=RetrievalStatusInfo.STATUS_ITEM_REQUESTED)
 
         for row in quotation_items:
             ProjectCostingItemInfo.objects.create(

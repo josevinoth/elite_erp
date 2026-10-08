@@ -68,6 +68,13 @@ class ProjectCostingItemInfo(models.Model):
         blank=True,
         related_name="project_costing_items",
     )
+    split_from = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="split_items",
+    )
     purchase_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     requested_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     accepted_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -104,16 +111,15 @@ class ProjectCostingItemInfo(models.Model):
         ordering = ["costing_id", "id"]
         verbose_name = "Project Costing Item"
         verbose_name_plural = "Project Costing Items"
-        unique_together = (("costing_id", "item_code"),)
 
     def __str__(self):
         costing_pk = getattr(self.costing_id, "pk", None)
         return f"{costing_pk or '-'} - {self.item_name or 'Costing Item'}"
 
     def _default_retrieval_status(self):
-        status = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_NO_ACTION).first()
+        status = RetrievalStatusInfo.objects.filter(status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED).first()
         if not status:
-            status = RetrievalStatusInfo.objects.create(status_name=RetrievalStatusInfo.STATUS_NO_ACTION)
+            status = RetrievalStatusInfo.objects.create(status_name=RetrievalStatusInfo.STATUS_ITEM_REQUESTED)
         return status
 
     def clean(self):
@@ -221,6 +227,8 @@ class ProjectCostingItemAllocation(models.Model):
         related_name="costing_allocations",
     )
     allocated_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    pending_return_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    returned_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     retrieval_status = models.ForeignKey(
         RetrievalStatusInfo,
         on_delete=models.PROTECT,
@@ -237,17 +245,25 @@ class ProjectCostingItemAllocation(models.Model):
 
     def clean(self):
         self.allocated_qty = _as_decimal(self.allocated_qty)
+        self.pending_return_qty = _as_decimal(self.pending_return_qty)
+        self.returned_qty = _as_decimal(self.returned_qty)
         if self.allocated_qty < 0:
             raise ValidationError({"allocated_qty": "Allocated Qty must be 0 or greater."})
+        if self.pending_return_qty < 0:
+            raise ValidationError({"pending_return_qty": "Pending return Qty must be 0 or greater."})
+        if self.returned_qty < 0:
+            raise ValidationError({"returned_qty": "Returned Qty must be 0 or greater."})
+        if self.returned_qty > self.allocated_qty:
+            raise ValidationError({"returned_qty": "Returned Qty cannot exceed allocated Qty."})
+        remaining_consumed = self.allocated_qty - self.returned_qty
+        if self.pending_return_qty > remaining_consumed:
+            raise ValidationError({"pending_return_qty": "Pending return Qty cannot exceed the remaining consumed Qty."})
         if not self.retrieval_status_id:
             parent_status = getattr(getattr(self, "costing_item", None), "retrieval_status", None)
             self.retrieval_status = parent_status or RetrievalStatusInfo.objects.filter(
-                status_name__iexact=RetrievalStatusInfo.STATUS_NO_ACTION
+                status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED
             ).first()
 
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         self.full_clean()

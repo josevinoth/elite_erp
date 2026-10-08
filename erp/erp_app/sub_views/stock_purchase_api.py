@@ -234,32 +234,27 @@ def _purchase_items_for_item_master(item_master):
 
 
 def _allocation_totals_for_purchase_items(purchase_item_ids):
-    accepted_rows = ProjectCostingItemAllocation.objects.filter(
+    consumed_rows = ProjectCostingItemAllocation.objects.filter(
         purchase_item_id__in=purchase_item_ids,
-        retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
-        costing_item__retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+        retrieval_status__status_name__in=[
+            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        ],
+        costing_item__retrieval_status__status_name__in=[
+            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        ],
     )
-    returned_rows = ProjectCostingItemAllocation.objects.filter(
-        purchase_item_id__in=purchase_item_ids,
-        retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN,
-        costing_item__retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN,
-    )
-
-    accepted_by_id = {}
-    for row in accepted_rows.values("purchase_item_id", "allocated_qty"):
-        pid = row["purchase_item_id"]
-        accepted_by_id[pid] = accepted_by_id.get(pid, Decimal("0")) + Decimal(str(row["allocated_qty"] or 0))
-
-    returned_by_id = {}
-    for row in returned_rows.values("purchase_item_id", "allocated_qty"):
-        pid = row["purchase_item_id"]
-        returned_by_id[pid] = returned_by_id.get(pid, Decimal("0")) + Decimal(str(row["allocated_qty"] or 0))
 
     consumed_by_id = {}
+    for row in consumed_rows.values("purchase_item_id", "allocated_qty", "returned_qty"):
+        pid = row["purchase_item_id"]
+        net_qty = Decimal(str(row["allocated_qty"] or 0)) - Decimal(str(row.get("returned_qty") or 0))
+        if net_qty < 0:
+            net_qty = Decimal("0")
+        consumed_by_id[pid] = consumed_by_id.get(pid, Decimal("0")) + net_qty
     for pid in purchase_item_ids:
-        consumed_by_id[pid] = accepted_by_id.get(pid, Decimal("0")) - returned_by_id.get(pid, Decimal("0"))
-        if consumed_by_id[pid] < 0:
-            consumed_by_id[pid] = Decimal("0")
+        consumed_by_id.setdefault(pid, Decimal("0"))
     return consumed_by_id
 
 

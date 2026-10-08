@@ -480,7 +480,8 @@ Complete stock retrieval workflow with GRN references and status transitions for
 |------|------|---------|
 | Item model | `erp/erp_app/sub_models/project_costing_items_mod.py` | `ProjectCostingItemInfo` with `retrieval_status` FK and `accepted_qty` field |
 | Status model | `erp/erp_app/sub_models/retrieval_status_mod.py` | `RetrievalStatusInfo` defines 7 retrieval workflow statuses |
-| API views | `erp/erp_app/sub_views/project_costing_api.py` | List and update endpoints for retrieval, acceptance, and return |
+| Retrieval + return API views | `erp/erp_app/sub_views/project_costing_api.py` | GRN-wise retrieval updates and return approval/rejection workflow |
+| Acceptance API views | `erp/erp_app/sub_views/stock_acceptance_api.py` | Item-code level acceptance list and accept/reject transitions |
 | URL registration | `erp/erp_app/urls.py` | Registers retrieval/acceptance/return endpoints |
 
 ### Frontend file mapping
@@ -555,35 +556,43 @@ Complete stock retrieval workflow with GRN references and status transitions for
 - **Page:** `/stock-retrieval`
 - **Status:** Shows only items with `retrieval_status = "Item Requested"`
 - **Actions:**
-  - **Accept:** Set status to `"Item Supplied"` → Item moves to Stock Acceptance list
-  - **Reject:** Set status to `"No Action"` → Item removed from workflow
+  - **Accept:** Set the selected **GRN line** to `"Item Supplied"`
+  - **Reject:** Set the selected **GRN line** to `"No Action"`
+- **Behavior:** Stock team can approve or reject each GRN allocation separately for the same Item Code. The parent costing item moves to `"Item Supplied"` only after all linked GRN lines are supplied.
 - **Permissions:** Project owner, admin, or stock team
 
 #### 2. Stock Acceptance → Return (Optional)
 - **Page:** `/stock-acceptance`
 - **Status:** Shows only items with `retrieval_status = "Item Supplied"`
+- **Grouping:** Rows are grouped at **Item Code** level (not split into separate GRN rows)
 - **Actions:**
-  - **Accept:** Set status to `"Item Accepted"` → Item is consumed
-  - **Reject:** Set status to `"Item Requested"` → Item goes back to retrieval list
+  - **Accept:** Set **all GRN lines for that Item Code** to `"Item Accepted"`
+  - **Reject:** Reset **all GRN lines for that Item Code** to `"Item Requested"`
 - **Permissions:** Project owner, admin, or stock team
-- **Note:** Once accepted, item can be marked for return if needed
+- **Note:** Once accepted, the next allowed workflow step is `"Item Return"`
 
 #### 3. Return Workflow (When Item Needs Return)
 - **Page:** `/stock-return`
-- **Status:** Shows only items with `retrieval_status = "Item Return"`
+- **Status:** Shows pending items with `retrieval_status = "Item Return"` and accepted items that can create a new return request
+- **Return Request Rule:** User enters only the **return qty** at item-code level; the system assigns the GRN breakdown automatically using FIFO
+- **FIFO Allocation:**
+  - Sort accepted GRN allocations by `purchase_date` (fallback `GRN number`)
+  - Apply the return qty to the earliest consumed GRN first
+  - Continue to the next GRN only when the earlier one is fully exhausted
 - **Actions:**
-  - **Accept Return:** Set status to `"Item Return Accepted"` → Decreases consumed qty; increases balance for that GRN
-  - **Reject Return:** Set status to `"Item Accepted"` → Item remains consumed; no stock balance change
+  - **Accept Return:** Set all linked GRN lines to `"Item Return Accepted"` → Stock balance is restored for those GRNs
+  - **Reject Return:** Reset all linked GRN lines to `"Item Accepted"` → Item remains consumed; no stock balance change
 - **Permissions:** Project owner, admin, or stock team
 - **Effect on Stock:**
   - Balance Qty = Purchased Qty − Consumed Qty + Returned Qty
-  - Upon return acceptance, `accepted_qty` is decreased by returned quantity
+  - Stock is restored **only after return approval**
+  - API response includes the FIFO GRN breakdown used for the return request
 
 #### 4. Stock List Display
 - **Page:** `/stocks`
 - **Content:** For each Item Code + GRN combination:
   - **Purchased Qty:** `StockPurchaseItem.purchase_qty` (immutable)
-  - **Consumed Qty:** Sum of `ProjectCostingItem.accepted_qty` where `retrieval_status = "Item Accepted"` 
+  - **Consumed Qty:** Sum of GRN allocations currently in `Item Accepted` or pending `Item Return`
   - **Balance Qty:** Purchased − Consumed + Returned
   - **GRN Number, Vendor, Unit Price, Total Price, LCE Cost**
 - **Visibility:** All users can view (filtered by project owner if non-admin)
@@ -593,7 +602,7 @@ Complete stock retrieval workflow with GRN references and status transitions for
 #### Model Fields
 - **`ProjectCostingItemInfo.retrieval_status`** (FK → `RetrievalStatusInfo`)
   - Tracks workflow state for each costing item
-  - Initialized to `"No Action"` on creation
+  - Initialized to `"Item Requested"` for new costing workflow rows
   - Updated via retrieval/acceptance/return workflows
 
 - **`ProjectCostingItemInfo.accepted_qty`** (Decimal)
@@ -606,18 +615,27 @@ Complete stock retrieval workflow with GRN references and status transitions for
   - Enables stock balance tracking per GRN
   - Facilitates returned qty updates
 
+- **`ProjectCostingItemAllocation.pending_return_qty`** (Decimal)
+  - Stores FIFO-assigned return qty waiting for stock return approval
+  - Does **not** restore stock balance until approved
+
+- **`ProjectCostingItemAllocation.returned_qty`** (Decimal)
+  - Stores FIFO-approved returned qty per GRN allocation
+  - Used by stock summary to restore GRN balance automatically
+
 #### Service Functions (Frontend crudApi.js)
 ```javascript
 // Retrieval
 listStockRetrievalItems()
-updateStockRetrievalItem(id, {action: "accept"|"reject", rejection_comment: ""})
+updateStockRetrievalItem(id, {action: "accept"|"reject", purchase_item_id, rejection_comment: ""})
 
 // Acceptance
 listStockAcceptanceItems()
-updateStockAcceptanceItem(id, payload)
+updateStockAcceptanceItem(id, {action: "accept"|"reject"})
 
 // Return
 listStockReturnItems()
+createStockReturnRequest({ item_id, item_code, return_qty })
 updateStockReturnItem(id, {action: "accept"|"reject"})
 ```
 
@@ -632,12 +650,15 @@ updateStockReturnItem(id, {action: "accept"|"reject"})
 - Only `Item Requested` items can be acted upon in Stock Retrieval
 - Only `Item Supplied` items can be acted upon in Stock Acceptance
 - Only `Item Return` items can be acted upon in Stock Return
+- Retrieval approval/rejection is performed **per GRN allocation**
+- Acceptance approval/rejection is performed **per Item Code** and updates all linked GRN allocations together
+- Return requests are created **per Item Code** with a single `return_qty`; FIFO decides the affected GRNs automatically
 - Accept action changes status forward; Reject reverses to previous logical state
-- Stock balance calculations exclude items not in `Item Accepted` or `Item Return Accepted` states
+- Stock balance is restored only after `Item Return Accepted`
 
 ### Backward Compatibility
 
-- Existing costing items default to `retrieval_status = "No Action"` on first load
+- Existing costing items may still contain historical `No Action` rows, but new workflow rows default to `Item Requested`
 - Items without a `retrieval_status` are skipped in retrieval/acceptance/return lists
 - Stock list calculation filters by `retrieval_status` to ensure only completed items affect balance
 - No required schema changes for existing quotation/costing records

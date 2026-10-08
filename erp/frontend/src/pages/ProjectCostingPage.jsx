@@ -102,7 +102,7 @@ const buildDraftItem = (materialCostTypeId) => ({
   accepted_qty: "0",
   grn_options: [],
   grn_allocations: [],
-  retrieval_status_name: STATUS_NO_ACTION,
+  retrieval_status_name: STATUS_ITEM_REQUESTED,
   stock_status_name: "In-Stock",
   requested_qty: "0",
   purchase_qty: "0",
@@ -288,16 +288,18 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     if (!current || current === STATUS_NO_ACTION.toLowerCase()) {
       return [STATUS_NO_ACTION, STATUS_ITEM_REQUESTED];
     }
-    if (current === STATUS_ITEM_SUPPLIED.toLowerCase()) return [STATUS_ITEM_RETURN];
+    if (current === STATUS_ITEM_ACCEPTED.toLowerCase()) return [STATUS_ITEM_ACCEPTED, STATUS_ITEM_RETURN];
     if (current === STATUS_ITEM_RETURN_ACCEPTED.toLowerCase()) return [STATUS_ITEM_RETURN_ACCEPTED];
     return [String(currentStatusName || STATUS_NO_ACTION)];
   }, []);
 
   const getDraftRetrievalOptions = useCallback(() => ([STATUS_NO_ACTION, STATUS_ITEM_REQUESTED]), []);
 
-  const canEditItem = useCallback((item) => (
-    String(getRetrievalStatusName(item)).trim().toLowerCase() === STATUS_NO_ACTION.toLowerCase()
-  ), []);
+  const canEditItem = useCallback((item) => {
+    const normalizedStatus = String(getRetrievalStatusName(item)).trim().toLowerCase();
+    if (normalizedStatus === STATUS_NO_ACTION.toLowerCase()) return true;
+    return normalizedStatus === STATUS_ITEM_ACCEPTED.toLowerCase() && canEditRetrievalStatus;
+  }, [canEditRetrievalStatus]);
 
   const scopedQuotationOptions = useMemo(() => {
     if (!embedded || !projectId) return quotationOptions;
@@ -616,7 +618,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   // ── Item edit ────────────────────────────────────────────
   const startEditItem = useCallback((item) => {
     if (!canEditItem(item)) {
-      setItemAlert({ type: "warning", message: "Editing is allowed only when retrieval status is No Action." });
+      setItemAlert({ type: "warning", message: "Editing is allowed only for No Action items, or Item Accepted items when marking a return." });
       return;
     }
     const currentRetrievalStatus = getRetrievalStatusName(item);
@@ -626,6 +628,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     const normalizedAllocations = normalizeAllocationRows(item.grn_allocations || []);
     setEditingRow({
       ...item,
+      original_retrieval_status_name: currentRetrievalStatus,
       cost_type_id: String(item.cost_type_id || ""),
       item_category_id: String(item.item_category_id || ""),
       item_code_id: String(item.item_code_id || ""),
@@ -643,9 +646,8 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       min_cost: String(item.min_cost ?? "0"),
       actual_cost: String(item.actual_cost ?? "0"),
       total_cost: String(item.total_cost ?? "0"),
-      retrieval_status_name: editableStatusOptions.includes(currentRetrievalStatus)
-        ? currentRetrievalStatus
-        : (editableStatusOptions[0] || currentRetrievalStatus || STATUS_NO_ACTION),
+      retrieval_status_name: currentRetrievalStatus || editableStatusOptions[0] || STATUS_NO_ACTION,
+      return_qty: "",
       length: String(item.length ?? "0"),
       width: String(item.width ?? "0"),
       height: String(item.height ?? "0"),
@@ -670,6 +672,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     accepted_qty: row.accepted_qty || String(sumAllocatedQty(row.grn_allocations || [])),
     actual_cost: row.actual_cost || "0",
     retrieval_status_name: row.retrieval_status_name || STATUS_NO_ACTION,
+    return_qty: row.return_qty || undefined,
     grn_allocations: normalizeAllocationRows(row.grn_allocations || []).map((allocation) => ({
       purchase_item_id: allocation.purchase_item_id || null,
       allocated_qty: allocation.allocated_qty || "0",
@@ -678,6 +681,30 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   }), [isMaterialCostType]);
 
   const validateItemRow = useCallback((row) => {
+    const originalItem = editingItems.find((candidate) => String(candidate.id || "") === String(row?.id || editingItemId || ""));
+    const originalStatusName = getRetrievalStatusName(originalItem || row);
+    const isAcceptedReturnMode =
+      String(originalStatusName || "").trim().toLowerCase() === STATUS_ITEM_ACCEPTED.toLowerCase();
+    const isAcceptedReturnTransition =
+      isAcceptedReturnMode
+      && String(row?.retrieval_status_name || "").trim().toLowerCase() === STATUS_ITEM_RETURN.toLowerCase();
+
+    if (isAcceptedReturnMode && !isAcceptedReturnTransition) {
+      return { type: "error", message: "Select Item Return and enter a return quantity to continue." };
+    }
+
+    if (isAcceptedReturnTransition) {
+      const returnQty = toNumber(row?.return_qty);
+      const availableQty = Math.max(toNumber(originalItem?.accepted_qty), getAllocatedQtyValue(originalItem));
+      if (returnQty <= 0) {
+        return { type: "error", message: "Return Qty must be greater than 0 for Item Return." };
+      }
+      if (returnQty - availableQty > 0.0001) {
+        return { type: "error", message: `Return Qty cannot exceed accepted quantity ${toMoney(availableQty)}.` };
+      }
+      return { type: "success", message: "Return request is ready to save." };
+    }
+
     if (!normalizeText(row?.cost_type_id)) return { type: "error", message: "Cost type is required." };
     if (!normalizeText(row?.room_name_id)) return { type: "error", message: "Room name is required." };
     if (toNumber(row?.requested_qty) < 0) return { type: "error", message: "Requested Qty must be 0 or greater." };
@@ -713,9 +740,19 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         return { type: "error", message: "Total allocated qty across GRNs must match Requested Qty." };
       }
 
+      const isReturnLifecycle = (statusName) => (
+        statusName === STATUS_ITEM_RETURN.toLowerCase()
+        || statusName === STATUS_ITEM_RETURN_ACCEPTED.toLowerCase()
+      );
+
       const duplicate = editingItems.some(
-        (candidate) => String(candidate.item_code_id || "") === String(row.item_code_id || "")
-          && String(candidate.id || "") !== String(row.id || editingItemId || "")
+        (candidate) => {
+          if (String(candidate.item_code_id || "") !== String(row.item_code_id || "")) return false;
+          if (String(candidate.id || "") === String(row.id || editingItemId || "")) return false;
+          const candidateStatusName = String(getRetrievalStatusName(candidate)).trim().toLowerCase();
+          const currentStatusName = String(row?.retrieval_status_name || "").trim().toLowerCase();
+          return !isReturnLifecycle(candidateStatusName) && !isReturnLifecycle(currentStatusName);
+        }
       );
       if (duplicate) {
         return { type: "error", message: "Duplicate item code is not allowed for this project costing." };
@@ -1118,8 +1155,11 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   }, [buildItemPayload, draftRow, editingCosting?.id, validateItemRow]);
 
   const renderItemEditorCells = (row, patchFn, disabled) => {
-            const retrievalOptions = row?.id ? getEditableRetrievalOptions(row.retrieval_status_name) : getDraftRetrievalOptions();
+    const originalStatusName = row?.original_retrieval_status_name || row?.retrieval_status_name;
+    const retrievalOptions = row?.id ? getEditableRetrievalOptions(originalStatusName) : getDraftRetrievalOptions();
     const material = isMaterialCostType(row.cost_type_id);
+    const acceptedReturnOnly = row?.id && normalizeStatusName(originalStatusName) === STATUS_ITEM_ACCEPTED.toLowerCase();
+    const fieldDisabled = disabled || acceptedReturnOnly;
     const itemNames = material ? getNamesForCategory(row.item_category_id) : [];
     const itemCodes = material ? getCodesForSelection(row.item_category_id, row.item_name) : [];
     const grnOptions = Array.isArray(row.grn_options) ? row.grn_options : [];
@@ -1133,7 +1173,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
           <select
             className="project-costing-select"
             value={row.room_name_id || ""}
-            disabled={disabled}
+            disabled={fieldDisabled}
             onChange={(event) => patchFn({ room_name_id: event.target.value })}
           >
             <option value="">Select room</option>
@@ -1146,7 +1186,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
           <select
             className="project-costing-select"
             value={row.cost_type_id || ""}
-            disabled={disabled}
+            disabled={fieldDisabled}
             onChange={(event) => patchFn({
               cost_type_id: event.target.value,
               item_category_id: "",
@@ -1177,7 +1217,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
           <select
             className="project-costing-select"
             value={row.item_category_id || ""}
-            disabled={disabled || !material}
+            disabled={fieldDisabled || !material}
             onChange={(event) => patchFn({
               item_category_id: event.target.value,
               item_name: "",
@@ -1207,7 +1247,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
             <select
               className="project-costing-select"
               value={row.item_name || ""}
-              disabled={disabled || !row.item_category_id}
+              disabled={fieldDisabled || !row.item_category_id}
               onChange={(event) => patchFn({
                 item_name: event.target.value,
                 item_code_id: "",
@@ -1234,16 +1274,16 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
             <input
               className="project-costing-input"
               value={row.item_name || ""}
-              disabled={disabled}
+              disabled={fieldDisabled}
               onChange={(event) => patchFn({ item_name: event.target.value })}
             />
           )}
         </td>
         <td>
           {material ? (
-            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
+            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={fieldDisabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
           ) : (
-            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
+            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={fieldDisabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
           )}
         </td>
         <td>
@@ -1252,7 +1292,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               <select
                 className="project-costing-select"
                 value={row.item_code_id || ""}
-                disabled={disabled || !row.item_name}
+                disabled={fieldDisabled || !row.item_name}
                 onChange={(event) => applyMaterialSelection(event.target.value, patchFn)}
               >
                 <option value="">Select item code</option>
@@ -1271,7 +1311,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                         <select
                           className="project-costing-select"
                           value={allocation.purchase_item_id || ""}
-                          disabled={disabled}
+                          disabled={fieldDisabled}
                           onChange={(event) => {
                             const selected = rowOptions.find((opt) => String(opt.purchase_item_id || opt.id) === String(event.target.value));
                             const nextAllocations = grnAllocations.map((entry, pos) => (
@@ -1307,7 +1347,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                           min="0"
                           step="0.01"
                           value={allocation.allocated_qty || "0"}
-                          disabled={disabled}
+                          disabled={fieldDisabled}
                           onChange={(event) => {
                             const nextAllocations = grnAllocations.map((entry, pos) => (
                               pos === index ? { ...entry, allocated_qty: event.target.value } : entry
@@ -1324,7 +1364,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                         <button
                           type="button"
                           className="users-action users-action--delete"
-                          disabled={disabled || grnAllocations.length <= 1}
+                          disabled={fieldDisabled || grnAllocations.length <= 1}
                           onClick={() => {
                             const nextAllocations = grnAllocations.filter((_, pos) => pos !== index);
                             patchFn({
@@ -1342,7 +1382,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                   <button
                     type="button"
                     className="crud-add-btn"
-                    disabled={disabled || !grnOptions.length}
+                    disabled={fieldDisabled || !grnOptions.length}
                     onClick={() => {
                       const first = grnOptions[0];
                       if (!first) return;
@@ -1386,21 +1426,61 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         <td><input className="project-costing-input project-costing-input--numeric" value={row.cost_per_qty || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.max_cost || "0"} readOnly disabled /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.min_cost || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.actual_cost || "0"} disabled={disabled} onChange={(event) => patchFn({ actual_cost: event.target.value })} /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.actual_cost || "0"} disabled={fieldDisabled} onChange={(event) => patchFn({ actual_cost: event.target.value })} /></td>
         <td><input className="project-costing-input project-costing-input--numeric" value={row.total_cost || "0"} readOnly disabled /></td>
         <td>{getStockStatusName(row)}</td>
         <td>
           {canEditRetrievalStatus ? (
-            <select
-              className="project-costing-select"
-              value={row.retrieval_status_name || STATUS_NO_ACTION}
-              onChange={(event) => patchFn({ retrieval_status_name: event.target.value })}
-              disabled={disabled}
-            >
-              {retrievalOptions.map((statusName) => (
-                <option key={statusName} value={statusName}>{statusName}</option>
-              ))}
-            </select>
+            <>
+              <select
+                className="project-costing-select"
+                value={row.retrieval_status_name || STATUS_NO_ACTION}
+                onChange={(event) => {
+                  const nextStatus = event.target.value;
+                  if (acceptedReturnOnly && nextStatus === STATUS_ITEM_RETURN) {
+                    const availableQty = Math.max(toNumber(row.accepted_qty), totalAllocated, requestedQty);
+                    const promptValue = window.prompt(
+                      `Enter return quantity (max ${toMoney(availableQty)}).`,
+                      row.return_qty || String(availableQty)
+                    );
+                    if (promptValue === null) {
+                      patchFn({ retrieval_status_name: STATUS_ITEM_ACCEPTED, return_qty: "" });
+                      return;
+                    }
+
+                    const trimmedPrompt = normalizeText(promptValue);
+                    const promptedQty = toNumber(trimmedPrompt);
+                    if (!trimmedPrompt || promptedQty <= 0) {
+                      setItemAlert({ type: "warning", message: "Enter a valid return quantity greater than 0." });
+                      patchFn({ retrieval_status_name: STATUS_ITEM_ACCEPTED, return_qty: "" });
+                      return;
+                    }
+                    if (promptedQty - availableQty > 0.0001) {
+                      setItemAlert({ type: "warning", message: `Return Qty cannot exceed accepted quantity ${toMoney(availableQty)}.` });
+                      patchFn({ retrieval_status_name: STATUS_ITEM_ACCEPTED, return_qty: "" });
+                      return;
+                    }
+
+                    patchFn({ retrieval_status_name: STATUS_ITEM_RETURN, return_qty: trimmedPrompt });
+                    setItemAlert({ type: "info", message: `Return Qty set to ${trimmedPrompt}. Save to create the FIFO return request.` });
+                    return;
+                  }
+
+                  patchFn({
+                    retrieval_status_name: nextStatus,
+                    return_qty: nextStatus === STATUS_ITEM_RETURN ? row.return_qty || "" : "",
+                  });
+                }}
+                disabled={disabled}
+              >
+                {retrievalOptions.map((statusName) => (
+                  <option key={statusName} value={statusName}>{statusName}</option>
+                ))}
+              </select>
+              {acceptedReturnOnly && row.return_qty ? (
+                <div className="project-costing-muted">Return Qty: {row.return_qty}</div>
+              ) : null}
+            </>
           ) : (
             <span className={getRetrievalBadgeClass(row.retrieval_status_name || STATUS_NO_ACTION)}>{row.retrieval_status_name || STATUS_NO_ACTION}</span>
           )}
@@ -1803,7 +1883,6 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                           <button type="button" className="users-action users-action--edit" title="Edit item"
                             disabled={
                               isCostingReadOnly
-                              || frozen
                               || !canEditItem(item)
                               || itemSaving
                               || !!editingItemId

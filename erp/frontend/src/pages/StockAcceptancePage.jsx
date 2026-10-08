@@ -8,9 +8,13 @@ import { getSessionUser } from "../services/sessionUser";
 import TableSearchAndDownload from "../components/TableSearchAndDownload";
 import "../styles/ProjectCostingSummary.css";
 
+const STATUS_ITEM_SUPPLIED = "Item Supplied";
+const STATUS_ITEM_ACCEPTED = "Item Accepted";
+const STATUS_ITEM_REQUESTED = "Item Requested";
+
 const getStatusHighlightClass = (status) => {
   if (status === "Item Accepted") return "stock-acceptance-modal__highlight--success";
-  if (status === "Item Return") return "stock-acceptance-modal__highlight--danger";
+  if (status === "Item Requested") return "stock-acceptance-modal__highlight--danger";
   return "stock-acceptance-modal__highlight";
 };
 
@@ -22,11 +26,29 @@ const formatSize = (row) => {
   return `${length || "0"} x ${width || "0"} x ${height || "0"}`;
 };
 
+const formatGrnSummary = (row) => {
+  const allocations = Array.isArray(row?.grn_allocations) ? row.grn_allocations : [];
+  if (!allocations.length) {
+    return row?.purchase_item?.grn_number || "-";
+  }
+  return allocations
+    .map((allocation) => `${allocation?.grn_number || "-"} (${allocation?.allocated_qty || "0"})`)
+    .join(", ");
+};
+
+const getSuppliedQty = (row) => {
+  const allocations = Array.isArray(row?.grn_allocations) ? row.grn_allocations : [];
+  if (!allocations.length) return row?.requested_qty || "0";
+  return allocations.reduce((sum, allocation) => sum + Number(allocation?.allocated_qty || 0), 0).toFixed(2);
+};
+
 function StockAcceptancePage() {
   const navigate = useNavigate();
   const currentUser = useMemo(() => getSessionUser(), []);
   const roleName = String(currentUser?.role || "").trim().toLowerCase();
+  const teamName = String(currentUser?.team || "").trim().toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
+  const isStockRole = ["stock team", "stock", "stores team"].includes(roleName) || ["stock team", "stock", "stores team"].includes(teamName);
   const currentUserId = String(currentUser?.id || "").trim();
 
    const [loading, setLoading] = useState(true);
@@ -57,9 +79,11 @@ function StockAcceptancePage() {
    const mapRows = useCallback((rows = []) => (
      rows.map((row) => ({
        ...row,
-       can_edit: isAdmin || String(row?.project_owner_id || "") === currentUserId,
+       grn_summary: formatGrnSummary(row),
+       supplied_qty: getSuppliedQty(row),
+       can_edit: isAdmin || isStockRole || String(row?.project_owner_id || "") === currentUserId,
      }))
-   ), [currentUserId, isAdmin]);
+   ), [currentUserId, isAdmin, isStockRole]);
 
     const filteredItems = useMemo(() => {
       // Global search first
@@ -95,22 +119,23 @@ function StockAcceptancePage() {
      { key: "item_category", label: "Item Category" },
      { key: "item_name", label: "Item Name" },
      { key: "item_code", label: "Item Code" },
+     { key: "grn_summary", label: "GRN Breakdown" },
      { key: "item_type", label: "Item Type" },
      { key: "purchase_qty", label: "Purchase Qty" },
-     { key: "requested_qty", label: "Requested Qty" },
+     { key: "supplied_qty", label: "Supplied Qty" },
      { key: "size", label: "Size (L x W x H)", exportValue: formatSize },
      { key: "volume", label: "Volume" },
-     { key: "retrieval_status", label: "Stock Status", exportValue: (row) => row?.retrieval_status?.status_name || "Stock Supplied" },
+     { key: "retrieval_status", label: "Retrieval Status", exportValue: (row) => row?.retrieval_status?.status_name || STATUS_ITEM_SUPPLIED },
    ];
 
    const loadItems = useCallback(async () => {
     const data = await listStockAcceptanceItems();
     const rows = Array.isArray(data?.items) ? data.items : [];
-    const filteredRows = isAdmin
+    const filteredRows = (isAdmin || isStockRole)
       ? rows
       : rows.filter((row) => String(row?.project_owner_id || "") === currentUserId);
     setItems(mapRows(filteredRows));
-  }, [currentUserId, isAdmin, mapRows]);
+  }, [currentUserId, isAdmin, isStockRole, mapRows]);
 
   useEffect(() => {
     let alive = true;
@@ -138,13 +163,17 @@ function StockAcceptancePage() {
     if (!nextStatus) return;
     setSavingId(String(row.id));
     try {
-      await updateStockAcceptanceItem(row.id, nextStatus);
+      await updateStockAcceptanceItem(row.id, {
+        item_id: row.id,
+        retrieval_status_name: nextStatus,
+        action: nextStatus === STATUS_ITEM_ACCEPTED ? "accept" : "reject",
+      });
       await loadItems();
       setStatus({ type: "", message: "" });
       setConfirmation({
         open: true,
-        alertType: nextStatus === "Item Return" ? "warning" : "success",
-        message: nextStatus === "Item Return" ? "Stock moved to Item Return." : "Stock accepted successfully.",
+        alertType: nextStatus === STATUS_ITEM_REQUESTED ? "warning" : "success",
+        message: nextStatus === STATUS_ITEM_REQUESTED ? "Item moved back to Item Requested." : "Item accepted successfully.",
         summary: buildSummary(row),
       });
       setConfirmModal({ open: false, row: null, nextStatus: "" });
@@ -204,13 +233,14 @@ function StockAcceptancePage() {
            <div className="stock-acceptance-modal__content">
              <p><strong>Item:</strong> {confirmModal.row?.item_name || "-"}</p>
              <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
+             <p><strong>GRN Breakdown:</strong> {confirmModal.row?.grn_summary || "-"}</p>
              <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
-             <p><strong>Current Status:</strong> {confirmModal.row?.retrieval_status?.status_name || "Stock Supplied"}</p>
+             <p><strong>Current Status:</strong> {confirmModal.row?.retrieval_status?.status_name || STATUS_ITEM_SUPPLIED}</p>
               <p><strong>New Status:</strong> <span className={getStatusHighlightClass(confirmModal.nextStatus)}>{confirmModal.nextStatus}</span></p>
            </div>
          </ConfirmPopupModal>
        ) : null}
-       {!confirmation.open && !isAdmin ? <AlertMessage type="warning" message="Only your owned projects are visible here." /> : null}
+       {!confirmation.open && !(isAdmin || isStockRole) ? <AlertMessage type="warning" message="Only your owned projects are visible here." /> : null}
        {!confirmation.open && loading ? <p className="users-status">Loading stock acceptance items...</p> : null}
        {!confirmation.open && !loading ? (
          <>
@@ -231,12 +261,13 @@ function StockAcceptancePage() {
                 <th>Item Category</th>
                 <th>Item Name</th>
                 <th>Item Code</th>
+                <th>GRN Breakdown</th>
                 <th>Item Type</th>
                 <th className="project-costing-table__right">Purchase Qty</th>
-                <th className="project-costing-table__right">Requested Qty</th>
+                <th className="project-costing-table__right">Supplied Qty</th>
                 <th>Size (L x W x H)</th>
                 <th className="project-costing-table__right">Volume</th>
-                 <th>Stock Status</th>
+                 <th>Retrieval Status</th>
                  <th>Update Status</th>
                </tr>
                <tr>
@@ -246,9 +277,10 @@ function StockAcceptancePage() {
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_category ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_category: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_name: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_code ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_code: e.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.grn_summary ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, grn_summary: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_type ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_type: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.purchase_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, purchase_qty: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, requested_qty: e.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.supplied_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, supplied_qty: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.size ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, size: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.volume ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, volume: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.retrieval_status ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, retrieval_status: e.target.value }))} /></th>
@@ -258,7 +290,7 @@ function StockAcceptancePage() {
               <tbody>
                 {filteredItems.length === 0 ? (
                  <tr>
-                   <td colSpan={13} className="project-costing-empty">No stock supplied items found.</td>
+                   <td colSpan={14} className="project-costing-empty">No item supplied rows found.</td>
                  </tr>
                ) : filteredItems.map((row) => (
                 <tr key={row.id}>
@@ -268,19 +300,20 @@ function StockAcceptancePage() {
                   <td>{row.item_category || "-"}</td>
                   <td>{row.item_name || "-"}</td>
                   <td>{row.item_code || "-"}</td>
+                  <td>{row.grn_summary || "-"}</td>
                   <td>{row.item_type || "-"}</td>
                   <td className="project-costing-table__right">{row.purchase_qty}</td>
-                  <td className="project-costing-table__right">{row.requested_qty}</td>
+                  <td className="project-costing-table__right">{row.supplied_qty}</td>
                   <td>{formatSize(row)}</td>
                   <td className="project-costing-table__right">{row.volume}</td>
-                  <td>{row?.retrieval_status?.status_name || "Stock Supplied"}</td>
+                  <td>{row?.retrieval_status?.status_name || STATUS_ITEM_SUPPLIED}</td>
                   <td>
                     <div className="stock-acceptance-actions">
                       <button
                         type="button"
                         className="modal-btn modal-btn--save"
                         disabled={!row.can_edit || savingId === String(row.id)}
-                        onClick={() => onUpdateStatus(row, "Item Accepted")}
+                        onClick={() => onUpdateStatus(row, STATUS_ITEM_ACCEPTED)}
                         title="Mark as Item Accepted"
                       >
                         ✓ Accept
@@ -289,10 +322,10 @@ function StockAcceptancePage() {
                         type="button"
                         className="modal-btn modal-btn--cancel"
                         disabled={!row.can_edit || savingId === String(row.id)}
-                        onClick={() => onUpdateStatus(row, "Item Return")}
-                        title="Mark as Item Return"
+                        onClick={() => onUpdateStatus(row, STATUS_ITEM_REQUESTED)}
+                        title="Move back to Item Requested"
                       >
-                        ↩ Return
+                        ↩ Reject
                       </button>
                     </div>
                   </td>
