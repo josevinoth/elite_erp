@@ -5,6 +5,7 @@ function ConfirmPopupModal({
   type = "warning",
   message = "",
   title = "Confirmation",
+  className = "",
   confirmLabel = "OK",
   cancelLabel = "Cancel",
   confirmDisabled = false,
@@ -18,7 +19,7 @@ function ConfirmPopupModal({
   return (
     <div className="pq-confirm-modal-backdrop" role="presentation" onClick={onCancel}>
       <div
-        className="pq-confirm-modal"
+        className={`pq-confirm-modal ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -51,4 +52,3 @@ function ConfirmPopupModal({
 }
 
 export default ConfirmPopupModal;
-

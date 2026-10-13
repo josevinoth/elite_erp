@@ -194,6 +194,32 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pq-confirm-modal--return-qty {
+  width: min(360px, calc(100vw - 2rem));
+}
+
+.project-costing-modal-content {
+  display: grid;
+  gap: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .pq-confirm-modal--return-qty {
+    width: min(340px, calc(100vw - 1rem));
+  }
+
+  .pq-confirm-modal--return-qty .pq-confirm-modal__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pq-confirm-modal--return-qty .pq-confirm-modal__actions .modal-btn {
+    width: 100%;
+  }
 }
 
 .modal-overlay {
@@ -323,4 +349,3 @@
   gap: 1rem;
   justify-content: flex-end;
 }
-

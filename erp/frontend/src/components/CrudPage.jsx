@@ -147,6 +147,7 @@ function CrudPage({
   tableMaxHeight = null,
   stickyHeader = true,
   tableWrapClassName = "",
+  modalCardClassName = "",
   showAddButton = true,
   showExportButton = true,
   addButtonTo = null,
@@ -856,7 +857,7 @@ function CrudPage({
 
       {showModal ? (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className={`modal-card${modalCardClassName ? ` ${modalCardClassName}` : ""}`} onClick={(e) => e.stopPropagation()}>
             <div className="modal-card__head">
               <h2 className="modal-card__title">
                 {editRow ? `Edit ${title}` : `Add ${title}`}
@@ -997,4 +998,3 @@ function CrudPage({
 }
 
 export default CrudPage;
-

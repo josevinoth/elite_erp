@@ -209,6 +209,12 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     type: "warning",
     allowCompletedWithoutItems: false,
   });
+  const [returnQtyModal, setReturnQtyModal] = useState({
+    open: false,
+    maxQty: 0,
+    value: "",
+    error: "",
+  });
 
   // per-item edit
   const [editingItemId, setEditingItemId] = useState(null);
@@ -659,6 +665,36 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     setEditingItemId(null);
     setEditingRow(null);
   }, []);
+
+  const closeReturnQtyModal = useCallback(() => {
+    setReturnQtyModal({ open: false, maxQty: 0, value: "", error: "" });
+  }, []);
+
+  const confirmReturnQtyModal = useCallback(() => {
+    const trimmedValue = normalizeText(returnQtyModal.value);
+    const numericValue = toNumber(trimmedValue);
+    const maxQty = toNumber(returnQtyModal.maxQty);
+
+    if (!trimmedValue || numericValue <= 0) {
+      setReturnQtyModal((prev) => ({ ...prev, error: "Enter a valid return quantity greater than 0." }));
+      return;
+    }
+    if (numericValue - maxQty > 0.0001) {
+      setReturnQtyModal((prev) => ({ ...prev, error: `Return Qty cannot exceed accepted quantity ${toMoney(maxQty)}.` }));
+      return;
+    }
+
+    setEditingRow((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        retrieval_status_name: STATUS_ITEM_RETURN,
+        return_qty: trimmedValue,
+      };
+    });
+    setItemAlert({ type: "info", message: `Return Qty set to ${trimmedValue}. Save to create the FIFO return request.` });
+    closeReturnQtyModal();
+  }, [closeReturnQtyModal, returnQtyModal.maxQty, returnQtyModal.value]);
 
   const buildItemPayload = useCallback((row) => ({
     cost_type_id: row.cost_type_id,
@@ -1439,30 +1475,12 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                   const nextStatus = event.target.value;
                   if (acceptedReturnOnly && nextStatus === STATUS_ITEM_RETURN) {
                     const availableQty = Math.max(toNumber(row.accepted_qty), totalAllocated, requestedQty);
-                    const promptValue = window.prompt(
-                      `Enter return quantity (max ${toMoney(availableQty)}).`,
-                      row.return_qty || String(availableQty)
-                    );
-                    if (promptValue === null) {
-                      patchFn({ retrieval_status_name: STATUS_ITEM_ACCEPTED, return_qty: "" });
-                      return;
-                    }
-
-                    const trimmedPrompt = normalizeText(promptValue);
-                    const promptedQty = toNumber(trimmedPrompt);
-                    if (!trimmedPrompt || promptedQty <= 0) {
-                      setItemAlert({ type: "warning", message: "Enter a valid return quantity greater than 0." });
-                      patchFn({ retrieval_status_name: STATUS_ITEM_ACCEPTED, return_qty: "" });
-                      return;
-                    }
-                    if (promptedQty - availableQty > 0.0001) {
-                      setItemAlert({ type: "warning", message: `Return Qty cannot exceed accepted quantity ${toMoney(availableQty)}.` });
-                      patchFn({ retrieval_status_name: STATUS_ITEM_ACCEPTED, return_qty: "" });
-                      return;
-                    }
-
-                    patchFn({ retrieval_status_name: STATUS_ITEM_RETURN, return_qty: trimmedPrompt });
-                    setItemAlert({ type: "info", message: `Return Qty set to ${trimmedPrompt}. Save to create the FIFO return request.` });
+                    setReturnQtyModal({
+                      open: true,
+                      maxQty: availableQty,
+                      value: row.return_qty || String(availableQty),
+                      error: "",
+                    });
                     return;
                   }
 
@@ -1687,6 +1705,41 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
           confirmDisabled={summarySaving}
           cancelDisabled={summarySaving}
         />
+
+        <ConfirmPopupModal
+          open={returnQtyModal.open}
+          className="pq-confirm-modal--return-qty"
+          type={returnQtyModal.error ? "warning" : "info"}
+          title="Set Return Quantity"
+          message={`Enter return quantity (max ${toMoney(returnQtyModal.maxQty)}).`}
+          confirmLabel="Apply"
+          cancelLabel="Cancel"
+          onConfirm={confirmReturnQtyModal}
+          onCancel={closeReturnQtyModal}
+          confirmDisabled={itemSaving}
+          cancelDisabled={itemSaving}
+        >
+          <div className="project-costing-modal-content">
+            <label className="project-costing-form-label">
+              Return Qty
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className="project-costing-input project-costing-input--numeric"
+                value={returnQtyModal.value}
+                onChange={(event) => setReturnQtyModal((prev) => ({ ...prev, value: event.target.value, error: "" }))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    confirmReturnQtyModal();
+                  }
+                }}
+              />
+            </label>
+            {returnQtyModal.error ? <p className="project-costing-text--error">{returnQtyModal.error}</p> : null}
+          </div>
+        </ConfirmPopupModal>
 
         {/* ── Items Table ──────────────────────────────────────── */}
         <div className="project-costing-card">

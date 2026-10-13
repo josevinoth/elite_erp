@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ActionConfirmationPage from "../components/ActionConfirmationPage";
 import ConfirmPopupModal from "../components/ConfirmPopupModal";
-import { createStockReturnRequest, listStockReturnItems, updateStockReturnItem } from "../services/crudApi";
+import { listStockReturnItems, updateStockReturnItem } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
 import AlertMessage from "../components/AlertMessage";
 import TableSearchAndDownload from "../components/TableSearchAndDownload";
@@ -39,8 +39,6 @@ function StockReturnPage() {
   const [savingId, setSavingId] = useState("");
   const [status, setStatus] = useState({ type: "", message: "" });
   const [items, setItems] = useState([]);
-  const [eligibleItems, setEligibleItems] = useState([]);
-  const [returnDrafts, setReturnDrafts] = useState({});
   const [searchText, setSearchText] = useState("");
   const [columnFilters, setColumnFilters] = useState({});
   const [confirmModal, setConfirmModal] = useState({
@@ -48,6 +46,7 @@ function StockReturnPage() {
     row: null,
     action: "",
     comment: "",
+    validationError: "",
   });
   const [confirmation, setConfirmation] = useState({
     open: false,
@@ -88,20 +87,6 @@ function StockReturnPage() {
     );
   }, [items, searchText, columnFilters]);
 
-  const visibleEligibleItems = useMemo(() => {
-    const searchLower = searchText.trim().toLowerCase();
-    if (!searchLower) return eligibleItems;
-    return eligibleItems.filter((row) => (
-      [
-        row?.quotation_number,
-        row?.project_name,
-        row?.item_name,
-        row?.item_code,
-        formatReturnBreakdown(row, "eligible"),
-      ].some((value) => String(value || "").toLowerCase().includes(searchLower))
-    ));
-  }, [eligibleItems, searchText]);
-
   const tableColumns = [
     { key: "costing_id", label: "Costing ID" },
     { key: "item_category", label: "Item Category" },
@@ -118,7 +103,6 @@ function StockReturnPage() {
   const loadItems = useCallback(async () => {
     const data = await listStockReturnItems();
     setItems(Array.isArray(data?.items) ? data.items : []);
-    setEligibleItems(Array.isArray(data?.eligible_items) ? data.eligible_items : []);
   }, []);
 
   useEffect(() => {
@@ -136,44 +120,6 @@ function StockReturnPage() {
       alive = false;
     };
   }, [loadItems]);
-
-  const updateReturnDraft = useCallback((itemId, value) => {
-    setReturnDrafts((prev) => ({ ...prev, [itemId]: value }));
-  }, []);
-
-  const requestReturn = useCallback(async (row) => {
-    const draftValue = String(returnDrafts[row?.id] || "").trim();
-    if (!draftValue || toNumber(draftValue) <= 0) {
-      setStatus({ type: "warning", message: "Enter a valid return quantity." });
-      return;
-    }
-
-    const requestKey = `request-${row?.id}`;
-    setSavingId(requestKey);
-    try {
-      const response = await createStockReturnRequest({
-        item_id: row?.id,
-        item_code: row?.item_code,
-        return_qty: draftValue,
-      });
-      await loadItems();
-      setReturnDrafts((prev) => ({ ...prev, [row?.id]: "" }));
-      setStatus({ type: "", message: "" });
-      setConfirmation({
-        open: true,
-        alertType: "info",
-        message: response?.message || "FIFO return request created successfully.",
-        summary: {
-          ...buildSummary(row),
-          return_qty: response?.return_qty || draftValue,
-        },
-      });
-    } catch (error) {
-      setStatus({ type: "danger", message: error.message || "Failed to create stock return request." });
-    } finally {
-      setSavingId("");
-    }
-  }, [buildSummary, loadItems, returnDrafts]);
 
   const submitStatusUpdate = useCallback(async (
     row,
@@ -210,37 +156,47 @@ function StockReturnPage() {
   }, [buildSummary, loadItems]);
 
   const approveItem = useCallback((row) => {
-    setConfirmModal({ open: true, row, action: "approve", comment: "" });
+    setConfirmModal({ open: true, row, action: "approve", comment: "", validationError: "" });
   }, []);
 
   const confirmApprove = useCallback(async () => {
     const { row } = confirmModal;
-    setConfirmModal({ open: false, row: null, action: "", comment: "" });
+    setConfirmModal({ open: false, row: null, action: "", comment: "", validationError: "" });
     await submitStatusUpdate(
       row,
       "Item Return Accepted",
       "",
-      "approve",
+      "accept",
       "Item returned successfully.",
       "success"
     );
   }, [confirmModal, submitStatusUpdate]);
 
   const rejectItem = useCallback((row) => {
-    setConfirmModal({ open: true, row, action: "reject", comment: row?.rejection_comment || "" });
+    setConfirmModal({
+      open: true,
+      row,
+      action: "reject",
+      comment: row?.rejection_comment || "",
+      validationError: "",
+    });
   }, []);
 
   const confirmReject = useCallback(async () => {
     const { row, comment } = confirmModal;
-    setConfirmModal({ open: false, row: null, action: "", comment: "" });
-    if (!comment.trim()) {
-      setStatus({ type: "warning", message: "Rejection comments are required." });
+    const trimmedComment = comment.trim();
+    if (!trimmedComment) {
+      setConfirmModal((prev) => ({
+        ...prev,
+        validationError: "Rejection comments are required.",
+      }));
       return;
     }
+    setConfirmModal({ open: false, row: null, action: "", comment: "", validationError: "" });
     await submitStatusUpdate(
       row,
       "Item Accepted",
-      comment,
+      trimmedComment,
       "reject",
       "Return rejected and moved back to Item Accepted.",
       "warning"
@@ -248,7 +204,7 @@ function StockReturnPage() {
   }, [confirmModal, submitStatusUpdate]);
 
   const cancelConfirm = useCallback(() => {
-    setConfirmModal({ open: false, row: null, action: "", comment: "" });
+    setConfirmModal({ open: false, row: null, action: "", comment: "", validationError: "" });
   }, []);
 
   const returnToList = useCallback(async () => {
@@ -303,13 +259,20 @@ function StockReturnPage() {
             ) : (
               <>
                 <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--danger">Item Accepted</span></p>
+                {confirmModal.validationError ? (
+                  <AlertMessage type="warning" message={confirmModal.validationError} />
+                ) : null}
                 <label className="stock-retrieval-modal__label">
                   Rejection Comment:
                   <textarea
                     className="auth-input stock-retrieval-modal__textarea stock-retrieval-modal__textarea--spaced"
                     rows={3}
                     value={confirmModal.comment}
-                    onChange={(e) => setConfirmModal((prev) => ({ ...prev, comment: e.target.value }))}
+                    onChange={(e) => setConfirmModal((prev) => ({
+                      ...prev,
+                      comment: e.target.value,
+                      validationError: "",
+                    }))}
                     placeholder="Enter reason for rejection"
                   />
                 </label>
@@ -322,72 +285,10 @@ function StockReturnPage() {
       {!confirmation.open && loading ? <p className="users-status">Loading stock return items...</p> : null}
       {!confirmation.open && !loading ? (
         <>
-          <div className="costing-section-card costing-section-card--spaced">
-            <div className="costing-section-card__head">
-              <h3 className="costing-section-card__title">Create Return Request</h3>
-            </div>
-            <p className="costing-help-text costing-help-text--mt">
-              Enter only the return quantity. FIFO will allocate the return against the earliest consumed GRNs automatically.
-            </p>
-            <div className="users-table-wrap stock-retrieval-wrap">
-              <table className="users-table stock-retrieval-table">
-                <thead>
-                  <tr>
-                    <th>Quotation Number</th>
-                    <th>Project Name</th>
-                    <th>Item Name</th>
-                    <th>Item Code</th>
-                    <th className="stock-retrieval-table__right">Accepted Qty</th>
-                    <th>Available GRNs</th>
-                    <th>Return Qty</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleEligibleItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="stock-retrieval-empty">No accepted items available for return.</td>
-                    </tr>
-                  ) : visibleEligibleItems.map((row) => {
-                    const canEdit = isAdmin || isStockRole || String(row?.project_owner_id || "") === currentUserId;
-                    const requestKey = `request-${row?.id}`;
-                    return (
-                      <tr key={`eligible-${row.id}`}>
-                        <td>{row?.quotation_number || "-"}</td>
-                        <td>{row?.project_name || "-"}</td>
-                        <td>{row?.item_name || "-"}</td>
-                        <td>{row?.item_code || "-"}</td>
-                        <td className="stock-retrieval-table__right">{row?.accepted_qty || "0"}</td>
-                        <td>{formatReturnBreakdown(row, "eligible")}</td>
-                        <td>
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            className="auth-input"
-                            value={returnDrafts[row?.id] || ""}
-                            disabled={!canEdit || savingId === requestKey}
-                            onChange={(event) => updateReturnDraft(row?.id, event.target.value)}
-                            placeholder="Qty"
-                          />
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="modal-btn modal-btn--save stock-retrieval-action-btn"
-                            disabled={!canEdit || savingId === requestKey}
-                            onClick={() => requestReturn(row)}
-                          >
-                            {savingId === requestKey ? "Creating..." : "Create Return"}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <AlertMessage
+            type="info"
+            message="Return requests are now initiated from Project Costing. This page is used only for return approval/rejection."
+          />
 
           <TableSearchAndDownload
             rows={filteredItems}
@@ -478,5 +379,3 @@ function StockReturnPage() {
 }
 
 export default StockReturnPage;
-
-

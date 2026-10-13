@@ -1173,6 +1173,8 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
         )
 
     action = request.data.get("action", "").strip().lower()
+    if action == "approve":
+        action = "accept"
     if action not in {"accept", "reject"}:
         return Response(
             {"status": "error", "message": "Action must be 'accept' or 'reject'."},

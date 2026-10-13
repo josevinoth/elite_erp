@@ -141,10 +141,10 @@ function StockItemsPage() {
           deleteFn={deleteLabFurnitureItem}
           computeValues={computeValues}
           tableMaxHeight="58vh"
+          modalCardClassName="modal-card--item-master"
           stickyHeader
       />
   );
 }
 
 export default StockItemsPage;
-

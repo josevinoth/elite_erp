@@ -91,6 +91,16 @@ class ProjectCostingSummaryView:
             **ProjectCostingSummarySerializer(summary, context=self.get_serializer_context()).data,
         }
 
+    @staticmethod
+    def _visible_costing_items_queryset(summary):
+        return (
+            ProjectCostingItemInfo.objects.filter(costing_id=summary)
+            .exclude(
+                retrieval_status__status_name=RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+                accepted_qty__lte=0,
+            )
+        )
+
     def list_payload(self):
         summaries = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").order_by("-id")
         return {
@@ -104,7 +114,7 @@ class ProjectCostingSummaryView:
         if getattr(summary, "pk", None):
             summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=summary.pk)
         items = list(
-            ProjectCostingItemInfo.objects.filter(costing_id=summary)
+            self._visible_costing_items_queryset(summary)
             .select_related(
                 "cost_type",
                 "item_category",
@@ -204,7 +214,7 @@ class ProjectCostingItemView:
 
     def list_payload(self, summary):
         items = list(
-            ProjectCostingItemInfo.objects.filter(costing_id=summary)
+            ProjectCostingSummaryView._visible_costing_items_queryset(summary)
             .select_related("cost_type", "item_category", "item_code__item_type", "room_name", "stock_status", "retrieval_status", "requested_by")
             .order_by("id")
         )
@@ -265,4 +275,3 @@ class ProjectCostingItemView:
             "status": "success",
             "message": "Stock return items loaded successfully.",
         }
-

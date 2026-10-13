@@ -1913,6 +1913,21 @@ select.auth-input option {
   overflow-y: auto;
 }
 
+.modal-card--item-master {
+  max-width: 912px;
+  align-self: start;
+  margin-top: 5.5rem;
+  max-height: calc(100vh - 7rem);
+}
+
+@media (max-width: 900px) {
+  .modal-card--item-master {
+    max-width: min(912px, calc(100vw - 1.5rem));
+    margin-top: 4.75rem;
+    max-height: calc(100vh - 6.25rem);
+  }
+}
+
 .modal-card__head {
   display: flex;
   align-items: center;
