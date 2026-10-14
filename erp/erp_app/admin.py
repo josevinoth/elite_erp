@@ -45,32 +45,32 @@ class HistoryMixin:
 
 @admin.register(CountryCurrency)
 class CountryCurrencyAdmin(HistoryMixin, admin.ModelAdmin):
-	list_display = ("country_name", "currency_code", "currency_name", "is_active", "sort_order", "history_link")
-	search_fields = ("country_name", "currency_code", "currency_name")
-	list_filter = ("is_active",)
+    list_display = ("country_name", "currency_code", "currency_name", "is_active", "sort_order", "history_link")
+    search_fields = ("country_name", "currency_code", "currency_name")
+    list_filter = ("is_active",)
 
 
 @admin.register(ItemCategory)
 class ItemCategoryAdmin(HistoryMixin, admin.ModelAdmin):
-	list_display = ("name", "created_at", "updated_at", "history_link")
-	search_fields = ("name",)
+    list_display = ("name", "created_at", "updated_at", "history_link")
+    search_fields = ("name",)
 
 
 @admin.register(LabFurnitureItem)
 class LabFurnitureItemAdmin(HistoryMixin, admin.ModelAdmin):
-	list_display = ("item_code", "item_name", "item_category", "created_at", "updated_at", "history_link")
-	search_fields = ("item_code", "item_name", "item_category__name")
-	list_filter = ("item_category",)
+    list_display = ("item_code", "item_name", "item_category", "created_at", "updated_at", "history_link")
+    search_fields = ("item_code_ref__item_code", "item_name_ref__item_name", "item_category__name")
+    list_filter = ("item_category",)
 
 
 @admin.register(LCEEstimate)
 class LCEEstimateAdmin(HistoryMixin, admin.ModelAdmin):
-	list_display = ("total_supplier_price", "total_supplier_price_omr", "total", "updated_at", "history_link")
-	search_fields = ("created_by",)
+    list_display = ("total_supplier_price", "total_supplier_price_omr", "total", "updated_at", "history_link")
+    search_fields = ("created_by",)
 
 
 @admin.register(LCEBalanceSettlement)
 class LCEBalanceSettlementAdmin(HistoryMixin, admin.ModelAdmin):
-	list_display = ("lce_estimate", "settlement_date", "foreign_currency", "amount", "factor", "value", "history_link")
-	list_filter = ("settlement_date", "foreign_currency")
-	search_fields = ("lce_estimate__created_by",)
+    list_display = ("lce_estimate", "settlement_date", "foreign_currency", "amount", "factor", "value", "history_link")
+    list_filter = ("settlement_date", "foreign_currency")
+    search_fields = ("lce_estimate__created_by",)

@@ -826,6 +826,11 @@ export async function deleteLceEstimateById(lceId) {
 
 
 // ── Lab Furniture Items ───────────────────────────────────
+export async function listItemCodeNames() {
+  const res = await fetch("/api/item-code-names/", { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function listLabFurnitureItems() {
   const res = await fetch("/api/lab-furniture-items/", { credentials: "include" });
   return parseJson(res);

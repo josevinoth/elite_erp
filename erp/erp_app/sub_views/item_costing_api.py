@@ -79,9 +79,9 @@ def _resolve_lab_item(item_category, item_description, item_code):
     qs = LabFurnitureItem.objects.filter(item_category=item_category)
 
     if item_description:
-        qs = qs.filter(item_name__iexact=item_description)
+        qs = qs.filter(item_name_ref__item_name__iexact=item_description)
     if item_code:
-        qs = qs.filter(item_code__iexact=item_code)
+        qs = qs.filter(item_code_ref__item_code__iexact=item_code)
 
     return qs.first()
 
@@ -90,7 +90,7 @@ def _resolve_lab_item(item_category, item_description, item_code):
 def _compute_costs(item_code, qty):
     normalized_code = normalize_text(item_code).upper()
     costs = []
-    for row in StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).values_list("lce_cost", "unit_price"):
+    for row in StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code).values_list("lce_cost", "unit_price"):
         lce_cost, unit_price = row
         resolved_cost = _to_decimal(lce_cost, Decimal("0"))
         if resolved_cost <= Decimal("0"):
@@ -134,13 +134,13 @@ def _get_purchase_reference(item_code):
 
     purchase_item = (
         StockPurchaseItem.objects.select_related("uom", "item_code", "item_code__uom")
-        .filter(item_code__item_code__iexact=normalized_code)
+        .filter(item_code__item_code_ref__item_code__iexact=normalized_code)
         .order_by("-updated_at", "-id")
         .first()
     )
     item_master = (
         LabFurnitureItem.objects.select_related("uom")
-        .filter(item_code__iexact=normalized_code)
+        .filter(item_code_ref__item_code__iexact=normalized_code)
         .first()
     )
 

@@ -53,7 +53,7 @@ def _resolve_item_master(value):
     raw = normalize_text(value).upper()
     if not raw:
         return None
-    return LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(item_code__iexact=raw).first()
+    return LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(item_code_ref__item_code__iexact=raw).first()
 
 
 def _resolve_item_master_from_category_and_name(item_category, item_name):
@@ -65,7 +65,7 @@ def _resolve_item_master_from_category_and_name(item_category, item_name):
 
     qs = LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(
         item_category=item_category,
-        item_name__iexact=normalized_name,
+        item_name_ref__item_name__iexact=normalized_name,
     ).order_by("id")
 
     # Keep backward compatibility by auto-resolving only deterministic mappings.
@@ -216,7 +216,7 @@ def _resolve_item_master_by_code_or_id(item_code):
         return None
     if normalized.isdigit():
         return LabFurnitureItem.objects.filter(pk=int(normalized)).first()
-    return LabFurnitureItem.objects.filter(item_code__iexact=normalized).first()
+    return LabFurnitureItem.objects.filter(item_code_ref__item_code__iexact=normalized).first()
 
 
 def _purchase_items_for_item_master(item_master):
@@ -225,7 +225,7 @@ def _purchase_items_for_item_master(item_master):
     if code_value:
         return list(
             qs.filter(
-                Q(item_code=item_master) | Q(item_code__item_code__iexact=code_value)
+                Q(item_code=item_master) | Q(item_code__item_code_ref__item_code__iexact=code_value)
             )
             .order_by("vendor_detail__invoice_date", "id")
             .distinct()

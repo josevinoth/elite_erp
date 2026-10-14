@@ -8,6 +8,7 @@ from .expense_session import ExpenseSession
 from .expense_status_option import ExpenseStatusOption
 from .item_category import ItemCategory
 from .item_costing_mod import ItemCostingInfo
+from .item_code_name import ItemCodeName
 from .lab_furniture_item import LabFurnitureItem
 from .lce_cost_detail import LCECostDetail
 from .lce_estimate import LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate
@@ -53,6 +54,7 @@ __all__ = [
     "ExpenseStatusOption",
     "ItemCategory",
     "ItemCostingInfo",
+    "ItemCodeName",
     "LabFurnitureItem",
     "LCECostDetail",
     "LCEEstimate",

@@ -273,7 +273,11 @@ textarea:focus {
 }
 
 .auth-card h1 {
-  margin: 0 0 1rem;
+  margin: -1.5rem -1.5rem 1rem;
+  padding: 0.9rem 1.2rem;
+  background: var(--list-header-bg);
+  color: #f7f9ff;
+  border-radius: 12px 12px 0 0;
   font-size: 1.4rem;
 }
 
@@ -1068,6 +1072,45 @@ select.auth-input option {
 
 .crud-page .users-table__sort-icon {
   flex: 0 0 auto;
+}
+
+.crud-page .users-table-wrap--item-master {
+  overflow-x: auto;
+}
+
+.crud-page .users-table-wrap--item-master .users-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.crud-page .users-table-wrap--item-master .users-table th,
+.crud-page .users-table-wrap--item-master .users-table td {
+  min-width: 120px;
+  max-width: none;
+  width: 120px;
+}
+
+.crud-page .users-table-wrap--item-master .users-table th {
+  white-space: normal;
+}
+
+.crud-page .users-table-wrap--item-master .users-table__sort-btn {
+  white-space: normal;
+  align-items: flex-start;
+}
+
+.crud-page .users-table-wrap--item-master .users-table__sort-btn span:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.crud-page .users-table-wrap--item-master .users-table .users-table__actions-col {
+  width: 74px;
+  min-width: 74px;
 }
 
 .crud-page .users-table__filter-input {
@@ -1914,15 +1957,19 @@ select.auth-input option {
 }
 
 .modal-card--item-master {
-  max-width: 912px;
+  width: min(640px, calc(100vw - 1.5rem));
+  max-width: 640px;
   align-self: start;
   margin-top: 5.5rem;
   max-height: calc(100vh - 7rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 @media (max-width: 900px) {
   .modal-card--item-master {
-    max-width: min(912px, calc(100vw - 1.5rem));
+    max-width: min(640px, calc(100vw - 1.5rem));
     margin-top: 4.75rem;
     max-height: calc(100vh - 6.25rem);
   }
@@ -1934,6 +1981,23 @@ select.auth-input option {
   justify-content: space-between;
   padding: 1rem 1.1rem 0.7rem;
   border-bottom: 1px solid var(--border);
+}
+
+.modal-card--item-master .modal-card__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--list-header-bg);
+  color: #f7f9ff;
+}
+
+.modal-card--item-master .modal-card__title,
+.modal-card--item-master .modal-card__close {
+  color: #f7f9ff;
+}
+
+.modal-card--item-master .modal-card__close:hover {
+  color: #ffffff;
 }
 
 .modal-card__title {
@@ -1964,9 +2028,16 @@ select.auth-input option {
   gap: 0.75rem;
 }
 
+.modal-card--item-master .modal-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .modal-form__row {
   display: grid;
   gap: 0.3rem;
+  min-width: 0;
 }
 
 .modal-form__label {
@@ -1979,6 +2050,35 @@ select.auth-input option {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.45rem;
+  min-width: 0;
+}
+
+.modal-card--item-master .crud-select,
+.modal-card--item-master .crud-select__control,
+.modal-card--item-master .crud-select__value-container,
+.modal-card--item-master .crud-select__single-value,
+.modal-card--item-master .auth-input {
+  min-width: 0;
+}
+
+.modal-card--item-master .crud-select__value-container {
+  white-space: normal;
+}
+
+.modal-card--item-master .crud-select__control {
+  height: auto;
+}
+
+.modal-card--item-master .crud-select__single-value {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.25;
 }
 
 .modal-select-group {

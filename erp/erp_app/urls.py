@@ -88,6 +88,7 @@ from .views import (
     lce_estimate_meta_api_view,
     lce_estimate_record_api_view,
     lce_purchase_items_api_view,
+    list_item_code_names_api_view,
     list_cdc_team_expense_meta_api_view,
     list_cdc_team_expenses_api_view,
     list_comments_api_view,
@@ -430,6 +431,7 @@ urlpatterns = [
         list_lab_furniture_item_categories_api_view,
         name="api-lab-furniture-item-categories-list",
     ),
+    path("api/item-code-names/", list_item_code_names_api_view, name="api-item-code-names-list"),
     path(
         "api/lab-furniture-item-categories/create/",
         create_lab_furniture_item_category_api_view,

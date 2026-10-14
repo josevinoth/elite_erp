@@ -20,7 +20,7 @@ def calculate_costs(item_code, requested_qty, actual_cost=None):
 
     costs = []
     if normalized_code:
-        purchase_rows = StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).only(
+        purchase_rows = StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code).only(
             "lce_cost",
             "unit_price",
         )

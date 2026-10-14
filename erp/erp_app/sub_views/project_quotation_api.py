@@ -879,7 +879,7 @@ def import_quotation_items_excel_api_view(request, pk):
 
         item_master = (
             LabFurnitureItem.objects.select_related("item_category")
-            .filter(item_code__iexact=item_code_input)
+            .filter(item_code_ref__item_code__iexact=item_code_input)
             .order_by("id")
             .first()
         )

@@ -88,6 +88,7 @@ from .sub_views import (
     lce_estimate_record_api_view,
     lce_purchase_items_api_view,
     list_lce_estimates_api_view,
+    list_item_code_names_api_view,
     list_lab_furniture_items_api_view,
     list_lab_furniture_item_categories_api_view,
     create_lab_furniture_item_category_api_view,

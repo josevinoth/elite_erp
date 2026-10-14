@@ -133,7 +133,7 @@ def _resolve_stock_manufacture_master(item_category, item_name):
 
     qs = LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(
         item_category=item_category,
-        item_name__iexact=normalized_name,
+        item_name_ref__item_name__iexact=normalized_name,
     ).order_by("id")
 
     # Deterministic only: avoid guessing when multiple item masters share the same name.

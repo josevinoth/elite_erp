@@ -47,7 +47,7 @@ def _resolve_material_item(item_category, item_name, item_code):
 
     matches = LabFurnitureItem.objects.select_related("item_category").filter(
         item_category=item_category,
-        item_name__iexact=normalized_name,
+        item_name_ref__item_name__iexact=normalized_name,
     ).order_by("id")
     if matches.count() == 1:
         return matches.first()
@@ -68,7 +68,7 @@ def _resolve_cost_per_qty(item_code):
         return _as_decimal(latest_item_cost.ic_cost)
 
     latest_purchase = (
-        StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code)
+        StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code)
         .order_by("-updated_at", "-id")
         .first()
     )
@@ -85,7 +85,7 @@ def _resolve_purchase_qty(item_code, fallback=0):
     if not normalized_code:
         return _as_decimal(fallback)
 
-    aggregate = StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).aggregate(
+    aggregate = StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code).aggregate(
         total_qty=Coalesce(
             Sum("quantity"),
             Value(Decimal("0"), output_field=DecimalField(max_digits=14, decimal_places=2)),
@@ -101,7 +101,7 @@ def _has_purchase_history(item_code):
     normalized_code = normalize_text(getattr(item_code, "item_code", item_code)).upper()
     if not normalized_code:
         return False
-    return StockPurchaseItem.objects.filter(item_code__item_code__iexact=normalized_code).exists()
+    return StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code).exists()
 
 
 def _resolve_stock_status_name(item_code, requested_qty, purchase_qty):

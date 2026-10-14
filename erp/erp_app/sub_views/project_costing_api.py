@@ -1232,7 +1232,7 @@ def stock_return_api_view(request):
         if item_id:
             queryset = queryset.filter(pk=item_id)
         elif item_code:
-            queryset = queryset.filter(item_code__item_code__iexact=item_code)
+            queryset = queryset.filter(item_code__item_code_ref__item_code__iexact=item_code)
         else:
             return Response({"status": "error", "message": "item_id or item_code is required."}, status=400)
 
@@ -1605,7 +1605,7 @@ def import_costing_items_excel_api_view(request, pk):
             continue
 
         item_master = LabFurnitureItem.objects.select_related("item_category").filter(
-            item_code__iexact=item_code_input
+            item_code_ref__item_code__iexact=item_code_input
         ).order_by("id").first()
         if not item_master:
             failed_count += 1

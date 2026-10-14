@@ -89,7 +89,7 @@ class StockPurchaseItem(models.Model):
 
         matches = LabFurnitureItem.objects.filter(
             item_category_id=item_category_id,
-            item_name__iexact=normalized_name,
+            item_name_ref__item_name__iexact=normalized_name,
         ).order_by("id")
 
         # Backward compatible: only auto-assign when mapping is deterministic.
