@@ -144,13 +144,10 @@ function StockManufacturePage() {
       .filter((m) => !categoryId || String(m.item_category_id || "") === String(categoryId || ""))
       .sort((a, b) => (a.item_name || "").localeCompare(b.item_name || ""));
 
-  const getMasterByCategoryAndName = (categoryId, itemName) => {
-    const normalizedName = String(itemName || "").trim().toLowerCase();
-    if (!categoryId || !normalizedName) return null;
-    return itemMasterRef.current.find(
-      (m) => String(m.item_category_id || "") === String(categoryId)
-        && String(m.item_name || "").trim().toLowerCase() === normalizedName
-    ) || null;
+  const getMasterById = (itemId) => {
+    const normalizedId = String(itemId || "").trim();
+    if (!normalizedId) return null;
+    return itemMasterRef.current.find((m) => String(m.id || "") === normalizedId) || null;
   };
 
   const masterPatch = (master) => master ? {
@@ -206,8 +203,8 @@ function StockManufacturePage() {
   const handleAddCategory = (rowKey, val) =>
     patchAddRow(rowKey, { item_category_id: val, item_code_id: "", item_code: "", item_name: "", item_type: "", item_type_id: "", uom_id: "", length: "0", width: "0", height: "0" });
 
-  const handleAddItemName = (rowKey, categoryId, val) =>
-    patchAddRow(rowKey, masterPatch(getMasterByCategoryAndName(categoryId, val)));
+  const handleAddItemName = (rowKey, _categoryId, val) =>
+    patchAddRow(rowKey, masterPatch(getMasterById(val)));
 
   const handleAddField = (rowKey, key, val) => patchAddRow(rowKey, { [key]: val });
 
@@ -289,7 +286,7 @@ function StockManufacturePage() {
   const handleEditCategory = (val) =>
     patchEdit({ item_category_id: val, item_code_id: "", item_code: "", item_name: "", item_type: "", item_type_id: "", uom_id: "", length: "0", width: "0", height: "0" });
 
-  const handleEditItemName = (categoryId, val) => patchEdit(masterPatch(getMasterByCategoryAndName(categoryId, val)));
+  const handleEditItemName = (_categoryId, val) => patchEdit(masterPatch(getMasterById(val)));
 
   const saveEdit = async () => {
     if (!editForm) return;
@@ -344,12 +341,12 @@ function StockManufacturePage() {
         </select>
       </td>
       <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
-        <select className="auth-input" value={row.item_name}
+        <select className="auth-input" value={row.item_code_id || ""}
           onChange={(e) => onItemNameChange(row.item_category_id, e.target.value)}
           disabled={!row.item_category_id}>
           <option value="">Select item name</option>
           {getNamesForCategory(row.item_category_id).map((m) =>
-            <option key={m.id} value={m.item_name}>{m.item_name}</option>)}
+            <option key={m.id} value={String(m.id)}>{m.item_name}</option>)}
         </select>
       </td>
       <td style={{ width: "130px" }}>

@@ -137,13 +137,14 @@ def _serialize_item(item, item_master_by_code=None):
             item.item_name,
         )
     item_category = getattr(item, "item_category", None) or getattr(item_master, "item_category", None)
+    resolved_item_master_id = getattr(item, "item_code_id", None) or getattr(item_master, "id", None)
 
     # Pull item_name from Item Master if available, otherwise use item's item_name
     resolved_item_name = item_master.item_name if item_master else item.item_name
 
     # Pull uom and item_type from Item Master
-    resolved_uom = getattr(item_master, "uom", None)
-    resolved_item_type = getattr(item_master, "item_type", None)
+    resolved_uom = getattr(item_master, "uom", None) or getattr(item, "uom", None)
+    resolved_item_type = getattr(item_master, "item_type", None) or getattr(item, "item_type", None)
     item_type_name = getattr(resolved_item_type, "it_name", None) or "BUY"
     item_type_id = getattr(resolved_item_type, "pk", None)
     purchase_qty = getattr(item, "purchase_qty", None) or item.quantity
@@ -155,8 +156,8 @@ def _serialize_item(item, item_master_by_code=None):
         "item_category_id": getattr(item, "item_category_id", None) or getattr(item_master, "item_category_id", None),
         "item_name": resolved_item_name,
         "item_code": item_master.item_code if item_master else "",
-        "item_code_id": getattr(item, "item_code_id", None),
-        "item_master_id": getattr(item, "item_code_id", None),
+        "item_code_id": resolved_item_master_id,
+        "item_master_id": resolved_item_master_id,
         "item_type": item_type_name,
         "item_type_id": item_type_id,
         "quantity": str(item.quantity),

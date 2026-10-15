@@ -156,8 +156,8 @@ class ProjectCostingItemInfo(models.Model):
             item_code_id = getattr(self, "item_code_id", None)
             if item_category_id is None:
                 raise ValidationError({"item_category": "Item category is required when cost type is MATERIAL."})
-            if not self.item_name and item_code_id is None:
-                raise ValidationError({"item_name": "Item name is required when cost type is MATERIAL."})
+            if item_code_id is None:
+                raise ValidationError({"item_code_id": "Select a valid item from Item Master."})
 
             resolved_master = _resolve_material_item(self.item_category, self.item_name, self.item_code)
             if resolved_master is None:

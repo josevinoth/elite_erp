@@ -273,6 +273,12 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             value = attrs[field_name] if field_name in attrs else getattr(source, field_name, None)
             setattr(candidate, field_name, value)
 
+        if candidate.cost_type and str(getattr(candidate.cost_type, "name", "") or "").strip().upper() == "MATERIAL":
+            if getattr(candidate, "item_code_id", None) is None:
+                raise serializers.ValidationError(
+                    {"item_code_id": ["Select a valid item from Item Master."]}
+                )
+
         if getattr(candidate, "item_code", None) is not None and getattr(candidate, "costing_id", None) is not None:
             duplicate_queryset = ProjectCostingItemInfo.objects.filter(
                 costing_id=candidate.costing_id,

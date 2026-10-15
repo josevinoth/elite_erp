@@ -242,7 +242,9 @@ class StockManufactureItemSerializer(serializers.ModelSerializer):
             item_name = self.instance.item_name
 
         if not item_code:
-            item_code = _resolve_stock_manufacture_master(item_category, item_name)
+            raise serializers.ValidationError(
+                {"item_code_id": "Select a valid item from Item Master."}
+            )
 
         if item_code is not None:
             should_check_duplicate = True
@@ -273,11 +275,6 @@ class StockManufactureItemSerializer(serializers.ModelSerializer):
             attrs["length"] = item_code.length
             attrs["width"] = item_code.width
             attrs["height"] = item_code.height
-        else:
-            if not normalize_text(item_name):
-                raise serializers.ValidationError({"item_name": "Item name is required."})
-            if item_category is None:
-                raise serializers.ValidationError({"item_category_id": "Item category is required."})
 
         quantity = attrs.get("quantity", getattr(self.instance, "quantity", 0))
         unit_price = attrs.get("unit_price", getattr(self.instance, "unit_price", 0))

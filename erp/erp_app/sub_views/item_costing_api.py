@@ -290,7 +290,11 @@ def item_costing_meta_api_view(request):
         return na
 
     item_categories = ItemCategory.objects.order_by("name")
-    lab_items = LabFurnitureItem.objects.select_related("item_category").order_by("item_category__name", "item_name", "item_code")
+    lab_items = LabFurnitureItem.objects.select_related("item_category", "item_name_ref", "item_code_ref").order_by(
+        "item_category__name",
+        "item_name_ref__item_name",
+        "item_code_ref__item_code",
+    )
     projects = Project.objects.order_by("project_id", "project_name")
 
     return JsonResponse(

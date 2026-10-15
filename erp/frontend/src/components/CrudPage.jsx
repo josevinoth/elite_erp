@@ -183,6 +183,7 @@ function CrudPage({
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [modalError, setModalError] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [formValues, setFormValues] = useState({});
@@ -249,6 +250,7 @@ function CrudPage({
   const openAdd = () => {
     setEditRow(null);
     setFormValues(emptyForm());
+    setModalError("");
     setShowModal(true);
   };
 
@@ -303,6 +305,7 @@ function CrudPage({
         ])
       )
     );
+    setModalError("");
     setShowModal(true);
     if (typeof onEditOpen === "function") {
       Promise.resolve(onEditOpen(row)).catch(() => {
@@ -314,6 +317,7 @@ function CrudPage({
   const closeModal = () => {
     setShowModal(false);
     setEditRow(null);
+    setModalError("");
   };
 
   const handleFieldChange = (name, rawValue) => {
@@ -380,7 +384,7 @@ function CrudPage({
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
-    setError("");
+    setModalError("");
 
     const buildPayload = (fv) =>
       fields.reduce((acc, field) => {
@@ -448,7 +452,7 @@ function CrudPage({
       }
       closeModal();
     } catch (err) {
-      setError(err.message || "Save failed.");
+      setModalError(err.message || "Save failed.");
     } finally {
       setSaving(false);
     }
@@ -684,7 +688,7 @@ function CrudPage({
         </div>
       </div>
 
-      {error ? <p className="users-status users-status--error">{error}</p> : null}
+      {!showModal && error ? <p className="users-status users-status--error">{error}</p> : null}
       {loading ? <p className="users-status">Loading...</p> : null}
 
       <div
@@ -873,6 +877,7 @@ function CrudPage({
             </div>
 
             <form className="modal-form" onSubmit={handleSave}>
+              {modalError ? <p className="users-status users-status--error">{modalError}</p> : null}
               {fields.map((field) => (
                 <div className="modal-form__row" key={field.key}>
                   <label className="modal-form__label" htmlFor={`mf-${field.key}`}>
@@ -880,7 +885,15 @@ function CrudPage({
                     {isFieldRequired(field) ? " *" : ""}
                   </label>
 
-                  {field.options ? (
+                  {(() => {
+                    const resolvedOptions = typeof field.options === "function"
+                      ? field.options(formValues)
+                      : field.options;
+                    const resolvedPlaceholder = typeof field.placeholder === "function"
+                      ? field.placeholder(formValues)
+                      : field.placeholder;
+
+                  return resolvedOptions ? (
                     <div className="modal-select-row">
                       <Select
                         inputId={`mf-${field.key}`}
@@ -889,16 +902,16 @@ function CrudPage({
                         isSearchable
                         isClearable={field.isClearable !== false}
                         isDisabled={field.disabled}
-                        options={field.options}
-                        placeholder={`Select ${field.label}`}
+                        options={resolvedOptions}
+                        placeholder={resolvedPlaceholder || `Select ${field.label}`}
                         value={(() => {
                           const current = String(formValues[field.key] ?? "").trim();
                           if (!current) return null;
 
                           // Support edit values coming as labels while options use IDs.
                           return (
-                            field.options.find((opt) => String(opt.value) === current) ||
-                            field.options.find(
+                            resolvedOptions.find((opt) => String(opt.value) === current) ||
+                            resolvedOptions.find(
                               (opt) => String(opt.label || "").trim().toLowerCase() === current.toLowerCase()
                             ) ||
                             null
@@ -958,7 +971,8 @@ function CrudPage({
                       {...(field.max !== undefined ? { max: field.max } : {})}
                       {...(field.step !== undefined ? { step: field.step } : {})}
                     />
-                  )}
+                  );
+                  })()}
                 </div>
               ))}
 

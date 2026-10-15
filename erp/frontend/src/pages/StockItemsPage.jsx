@@ -32,11 +32,11 @@ const COLUMNS = [
 
 const FIELDS = [
   { key: "item_category_id", label: "Item Category", required: true },
-  { key: "item_code_ref_id", label: "Item Code", required: true },
+  { key: "item_code_ref_id", label: "Item Code & Name", required: true },
   { key: "item_code", label: "Item Code", readOnly: true },
   { key: "item_name", label: "Item Name", readOnly: true },
-  { key: "item_type_id", label: "Item Type", required: false },
-  { key: "uom_id", label: "UOM", required: false },
+  { key: "item_type_id", label: "Item Type", required: true },
+  { key: "uom_id", label: "UOM", required: true },
   { key: "length", label: "Length/Size", type: "number", min: 0, step: "any", default: "0" },
   { key: "width", label: "Width", type: "number", min: 0, step: "any", default: "0" },
   { key: "height", label: "Height/Thk", type: "number", min: 0, step: "any", default: "0" },
@@ -94,6 +94,7 @@ function StockItemsPage() {
       label: itemCodeName.label,
       itemCode: itemCodeName.item_code,
       itemName: itemCodeName.item_name,
+      itemCategoryId: itemCodeName.item_category_id == null ? "" : String(itemCodeName.item_category_id),
     }));
     setItemCodeOptions(options);
     return options;
@@ -150,11 +151,22 @@ function StockItemsPage() {
     {
       ...FIELDS[0],
       options: categoryOptions,
+      placeholder: "Select Item Category",
       isClearable: false,
     },
     {
       ...FIELDS[1],
-      options: itemCodeOptions,
+      options: (formValues) => {
+        const selectedCategoryId = String(formValues?.item_category_id ?? "").trim();
+        if (!selectedCategoryId) {
+          return itemCodeOptions;
+        }
+        return itemCodeOptions.filter((option) => String(option.itemCategoryId || "") === selectedCategoryId);
+      },
+      placeholder: (formValues) => {
+        const selectedCategoryId = String(formValues?.item_category_id ?? "").trim();
+        return selectedCategoryId ? "Select Item Code & Name" : "Select Item Category first";
+      },
       isClearable: false,
     },
     FIELDS[2],
@@ -162,10 +174,12 @@ function StockItemsPage() {
     {
       ...FIELDS[4],
       options: itemTypeOptions,
+      isClearable: false,
     },
     {
       ...FIELDS[5],
       options: uomOptions,
+      isClearable: false,
     },
     FIELDS[6],
     FIELDS[7],
@@ -181,6 +195,25 @@ function StockItemsPage() {
   ];
 
   const computeValues = useCallback((changedKey, _changedValue, allValues) => {
+    if (changedKey === "item_category_id") {
+      const selectedCategoryId = String(allValues.item_category_id || "").trim();
+      const selectedCodeId = String(allValues.item_code_ref_id || "").trim();
+      if (!selectedCategoryId || !selectedCodeId) {
+        return {};
+      }
+
+      const selected = itemCodeOptions.find((option) => String(option.value) === selectedCodeId);
+      if (selected && String(selected.itemCategoryId || "") !== selectedCategoryId) {
+        return {
+          item_code_ref_id: "",
+          item_name_ref_id: "",
+          item_code: "",
+          item_name: "",
+        };
+      }
+      return {};
+    }
+
     if (changedKey === "item_code_ref_id") {
       const selected = itemCodeOptions.find(
         (option) => String(option.value) === String(allValues.item_code_ref_id || "")

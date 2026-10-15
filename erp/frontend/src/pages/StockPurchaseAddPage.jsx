@@ -299,17 +299,17 @@ function StockPurchaseAddPage() {
         );
     };
 
-    const handleItemNameSelect = (rowId, itemName) => {
+    const handleItemNameSelect = (rowId, itemMasterId) => {
         setItems((prev) =>
             prev.map((row) => {
                 if (row.rowId !== rowId) return row;
-                const selected = getItemMasterByCategoryAndName(row.item_category_id, itemName);
+                const selected = getItemMasterById(itemMasterId);
                 return {
                     ...row,
                     item_master_id: selected ? String(selected.id) : "",
                     item_category_id: selected ? String(selected.item_category_id || "") : row.item_category_id,
                     item_category: selected ? String(selected.item_category || "") : row.item_category,
-                    item_name: selected ? String(selected.item_name || "") : String(itemName || ""),
+                    item_name: selected ? String(selected.item_name || "") : "",
                     item_code: selected ? String(selected.item_code || "") : "",
                     item_code_id: selected ? String(selected.id || "") : "",
                     item_type: selected ? String(selected.item_type || "BUY") : row.item_type,
@@ -405,7 +405,7 @@ function StockPurchaseAddPage() {
         setStatus("");
 
         const cleanedItems = items
-            .filter((row) => String(row.item_name || "").trim())
+            .filter((row) => String(row.item_master_id || row.item_code_id || "").trim())
             .map((row) => ({
                 id: row.rowId,
                 grn_number: row.grn_number || "",
@@ -501,6 +501,23 @@ function StockPurchaseAddPage() {
         return "error";
     };
 
+    const renderSectionAlert = (message) => {
+        if (!message) return null;
+        const type = getStatusType(message);
+        return (
+            <p
+                className={`users-status users-status--${type}`}
+                style={
+                    type === "success"
+                        ? { background: "#22bb33", color: "#fff", padding: "0.5rem 1rem", borderRadius: 6, margin: "0 0 0.8rem" }
+                        : { background: "orange", color: "#fff", padding: "0.5rem 1rem", borderRadius: 6, margin: "0 0 0.8rem" }
+                }
+            >
+                {message}
+            </p>
+        );
+    };
+
     return (
         <section className="module-page">
             <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
@@ -518,23 +535,15 @@ function StockPurchaseAddPage() {
                 </button>
             </div>
 
-            {status ? (
-                <p
-                    className={`users-status users-status--${getStatusType(status)}`}
-                    style={
-                        getStatusType(status) === "success"
-                            ? { background: "#22bb33", color: "#fff", padding: "0.5rem 1rem", borderRadius: 6, margin: 0 }
-                            : { background: "orange", color: "#fff", padding: "0.5rem 1rem", borderRadius: 6, margin: 0 }
-                    }
-                >
-                    {status}
-                </p>
-            ) : null}
             {loadingRecord ? <p className="users-status">Loading record...</p> : null}
 
             {!loadingRecord ? <form className="modal-form stock-purchase-add-form" onSubmit={handleSubmit}>
                 <div className="stock-purchase-add-form__row--full">
                     <h3 style={{ margin: "0.2rem 0 0.6rem" }}>Purchase Details</h3>
+                </div>
+
+                <div className="stock-purchase-add-form__row--full">
+                    {renderSectionAlert(purchaseStatus)}
                 </div>
 
                 <div className="modal-form__row stock-purchase-add-form__row--full stock-purchase-add-form__purchase-details-row">
@@ -642,7 +651,6 @@ function StockPurchaseAddPage() {
                     >
                         {savingPurchaseDetails ? "Saving Purchase Details..." : "Save Purchase Details"}
                     </button>
-                    {purchaseStatus ? <span className="users-status" style={{ margin: 0 }}>{purchaseStatus}</span> : null}
                 </div>
 
                 <div className="modal-form__row stock-purchase-add-form__row--full">
@@ -657,6 +665,7 @@ function StockPurchaseAddPage() {
                 </div>
 
                 <div className="stock-purchase-add-form__row--full">
+                    {renderSectionAlert(status)}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
                         <h3 style={{ margin: 0 }}>Purchase Items</h3>
                         <button
@@ -712,13 +721,13 @@ function StockPurchaseAddPage() {
                                         <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
                                             <select
                                                 className="auth-input"
-                                                value={row.item_name}
+                                                value={row.item_master_id || row.item_code_id || ""}
                                                 onChange={(e) => handleItemNameSelect(row.rowId, e.target.value)}
                                                 disabled={!savedPurchaseDetailId || !row.item_category_id}
                                             >
                                                 <option value="">Select item name</option>
                                                 {getItemNamesForSelection(row.item_category_id).map((item) => (
-                                                    <option key={`${row.rowId}-name-${item.id}`} value={item.name}>{item.name}</option>
+                                                    <option key={`${row.rowId}-name-${item.id}`} value={item.id}>{item.name}</option>
                                                 ))}
                                             </select>
                                         </td>

@@ -139,8 +139,11 @@ class Command(BaseCommand):
             if not dry_run:
                 lookup, _ = ItemCodeName.objects.get_or_create(
                     item_code=code,
-                    defaults={"item_name": item_text},
+                    defaults={"item_name": item_text, "item_category": current_category},
                 )
+                if lookup.item_category_id != getattr(current_category, "id", None):
+                    lookup.item_category = current_category
+                    lookup.save(update_fields=["item_category"])
                 LabFurnitureItem.objects.create(
                     item_code_ref=lookup,
                     item_name_ref=lookup,

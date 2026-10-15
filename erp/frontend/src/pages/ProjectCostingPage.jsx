@@ -343,13 +343,12 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     ));
   }, [listColumnFilters, scopedCostings]);
 
-  const getNamesForCategory = useCallback((categoryId) => {
-    const names = itemMasterRef.current
+  const getNamesForCategory = useCallback((categoryId) => (
+    itemMasterRef.current
       .filter((item) => String(item.item_category_id || "") === String(categoryId || ""))
-      .map((item) => item.item_name)
-      .filter(Boolean);
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
-  }, []);
+      .filter((item) => String(item.item_name || "").trim())
+      .sort((a, b) => String(a.item_name || "").localeCompare(String(b.item_name || "")))
+  ), []);
 
   const getCodesForSelection = useCallback((categoryId, itemName) => (
     itemMasterRef.current
@@ -1282,28 +1281,13 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
           {material ? (
             <select
               className="project-costing-select"
-              value={row.item_name || ""}
+              value={row.item_code_id || ""}
               disabled={fieldDisabled || !row.item_category_id}
-              onChange={(event) => patchFn({
-                item_name: event.target.value,
-                item_code_id: "",
-                purchase_item_id: "",
-                accepted_qty: "0",
-                grn_options: [],
-                grn_allocations: [],
-                item_type: "",
-                purchase_qty: "0",
-                cost_per_qty: "0",
-                max_cost: "0",
-                min_cost: "0",
-                actual_cost: "0",
-                stock_status_name: "In-Stock",
-                ...emptyDimensions,
-              })}
+              onChange={(event) => applyMaterialSelection(event.target.value, patchFn)}
             >
               <option value="">Select item name</option>
-              {itemNames.map((name) => (
-                <option key={`${row.item_category_id}-${name}`} value={name}>{name}</option>
+              {itemNames.map((item) => (
+                <option key={`${row.item_category_id}-${item.id}`} value={String(item.id)}>{item.item_name}</option>
               ))}
             </select>
           ) : (
@@ -1426,7 +1410,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                         ...grnAllocations,
                         {
                           purchase_item_id: first.id,
-                          allocated_qty: "0",
+                          allocated_qty: String(requestedQty || 0),
                           retrieval_status_name: STATUS_ITEM_ACCEPTED,
                           grn_number: first.grn_number,
                           vendor: first.vendor,

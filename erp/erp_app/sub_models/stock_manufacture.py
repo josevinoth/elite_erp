@@ -100,7 +100,15 @@ class StockManufactureItem(models.Model):
         self.height = master.height
         self.volume = master.volume
 
+    def clean(self):
+        if not getattr(self, "item_code_id", None):
+            raise ValidationError({"item_code_id": "Select a valid item from Item Master."})
+
+        if self.item_code and getattr(self, "item_category_id", None) and self.item_code.item_category_id != self.item_category_id:
+            raise ValidationError({"item_category_id": "Selected item does not belong to the chosen item category."})
+
     def save(self, *args, **kwargs):
+        self.full_clean()
         # Manufacturing records must be unique per item code.
         if getattr(self, "item_code_id", None):
             enforce_duplicate_check = True

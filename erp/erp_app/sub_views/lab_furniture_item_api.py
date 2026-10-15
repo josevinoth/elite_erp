@@ -40,6 +40,8 @@ def _serialize_item_code_name(obj):
         "id": obj.pk,
         "item_code": obj.item_code,
         "item_name": obj.item_name,
+        "item_category_id": getattr(obj, "item_category_id", None),
+        "item_category": obj.item_category.name if getattr(obj, "item_category_id", None) else "",
         "label": f"{obj.item_code} - {obj.item_name}",
     }
 
@@ -239,6 +241,8 @@ def create_lab_furniture_item_api_view(request):
         return not_allowed
 
     payload = _read_json(request)
+    raw_uom_value = payload.get("uom_id", payload.get("uom"))
+    raw_item_type_value = payload.get("item_type_id", payload.get("item_type"))
     item_category = _resolve_category(payload.get("item_category_id", payload.get("item_category", "")))
     item_code_name = _resolve_item_code_name(
         lookup_id=payload.get("item_code_ref_id", payload.get("item_name_ref_id")),
@@ -262,13 +266,19 @@ def create_lab_furniture_item_api_view(request):
         return JsonResponse({"message": "Valid item code reference is required."}, status=400)
     if not item_category:
         return JsonResponse({"message": "Item category is required."}, status=400)
+    if item_code_name.item_category_id and item_code_name.item_category_id != item_category.id:
+        return JsonResponse({"message": "Selected item code belongs to a different category."}, status=400)
     if _duplicate_exists(item_code_name, item_category):
         return JsonResponse({"message": "Item already exists in this category."}, status=400)
     if LabFurnitureItem.objects.filter(item_code_ref=item_code_name).exists():
         return JsonResponse({"message": "Item code already exists."}, status=400)
-    if payload.get("uom_id") not in (None, "") and not uom:
+    if raw_uom_value in (None, ""):
+        return JsonResponse({"message": "UOM is required."}, status=400)
+    if not uom:
         return JsonResponse({"message": "Selected UOM was not found."}, status=400)
-    if payload.get("item_type_id") not in (None, "") and not item_type:
+    if raw_item_type_value in (None, ""):
+        return JsonResponse({"message": "Item Type is required."}, status=400)
+    if not item_type:
         return JsonResponse({"message": "Selected Item Type was not found."}, status=400)
 
     obj = LabFurnitureItem.objects.create(
@@ -289,6 +299,9 @@ def create_lab_furniture_item_api_view(request):
         total_reqd=total_reqd,
         updated_by=request.user,
     )
+    if item_code_name.item_category_id != item_category.id:
+        item_code_name.item_category = item_category
+        item_code_name.save(update_fields=["item_category"])
     return JsonResponse({"success": True, "lab_furniture_item": _serialize(obj)}, status=201)
 
 
@@ -309,6 +322,8 @@ def lab_furniture_item_detail_api_view(request, pk):
         return JsonResponse({"success": True, "message": "Deleted."})
 
     payload = _read_json(request)
+    raw_uom_value = payload.get("uom_id", payload.get("uom", getattr(obj, "uom_id", None)))
+    raw_item_type_value = payload.get("item_type_id", payload.get("item_type", getattr(obj, "item_type_id", None)))
     item_category = _resolve_category(
         payload.get("item_category_id", payload.get("item_category", obj.item_category))
     )
@@ -336,13 +351,19 @@ def lab_furniture_item_detail_api_view(request, pk):
         return JsonResponse({"message": "Valid item code reference is required."}, status=400)
     if not item_category:
         return JsonResponse({"message": "Item category is required."}, status=400)
+    if item_code_name.item_category_id and item_code_name.item_category_id != item_category.id:
+        return JsonResponse({"message": "Selected item code belongs to a different category."}, status=400)
     if _duplicate_exists(item_code_name, item_category, exclude_id=obj.pk):
         return JsonResponse({"message": "Item already exists in this category."}, status=400)
     if LabFurnitureItem.objects.filter(item_code_ref=item_code_name).exclude(pk=obj.pk).exists():
         return JsonResponse({"message": "Item code already exists."}, status=400)
-    if payload.get("uom_id") not in (None, "") and not uom:
+    if raw_uom_value in (None, ""):
+        return JsonResponse({"message": "UOM is required."}, status=400)
+    if not uom:
         return JsonResponse({"message": "Selected UOM was not found."}, status=400)
-    if payload.get("item_type_id") not in (None, "") and not item_type:
+    if raw_item_type_value in (None, ""):
+        return JsonResponse({"message": "Item Type is required."}, status=400)
+    if not item_type:
         return JsonResponse({"message": "Selected Item Type was not found."}, status=400)
 
     obj.item_code_ref = item_code_name
@@ -362,5 +383,8 @@ def lab_furniture_item_detail_api_view(request, pk):
     obj.total_reqd = total_reqd
     obj.updated_by = request.user
     obj.save()
+    if item_code_name.item_category_id != item_category.id:
+        item_code_name.item_category = item_category
+        item_code_name.save(update_fields=["item_category"])
     return JsonResponse({"success": True, "lab_furniture_item": _serialize(obj)})
 

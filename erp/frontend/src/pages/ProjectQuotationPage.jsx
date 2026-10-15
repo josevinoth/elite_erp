@@ -299,13 +299,12 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     itemMasterRef.current.find((item) => String(item.id) === String(itemId || "")) || null
   ), []);
 
-  const getNamesForCategory = useCallback((categoryId) => {
-    const names = itemMasterRef.current
+  const getNamesForCategory = useCallback((categoryId) => (
+    itemMasterRef.current
       .filter((item) => String(item.item_category_id || "") === String(categoryId || ""))
-      .map((item) => item.item_name)
-      .filter(Boolean);
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
-  }, []);
+      .filter((item) => String(item.item_name || "").trim())
+      .sort((a, b) => String(a.item_name || "").localeCompare(String(b.item_name || "")))
+  ), []);
 
   const getCodesForSelection = useCallback((categoryId, itemName) => (
     itemMasterRef.current
@@ -1361,13 +1360,13 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         <td>
           <select
             className="auth-input"
-            value={row.item_name}
+            value={row.item_code_id || ""}
             disabled={disabled || !material || !row.item_category_id}
-            onChange={(event) => patchFn({ item_name: event.target.value, item_code_id: "", item_type: "", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions })}
+            onChange={(event) => applyMaterialSelection(event.target.value, patchFn)}
           >
             <option value="">Select item name</option>
-            {itemNames.map((name) => (
-              <option key={`${row.item_category_id}-${name}`} value={name}>{name}</option>
+            {itemNames.map((item) => (
+              <option key={`${row.item_category_id}-${item.id}`} value={String(item.id)}>{item.item_name}</option>
             ))}
           </select>
         </td>
