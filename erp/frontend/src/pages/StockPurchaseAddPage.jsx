@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BsBoxArrowUpRight, BsPlusCircleFill, BsTrashFill } from "react-icons/bs";
+import { BsBoxArrowUpRight, BsExclamationTriangleFill, BsPlusCircleFill, BsTrashFill } from "react-icons/bs";
 import {
+    checkStockPurchaseItemDelete,
     createStockPurchase,
     createStockPurchaseVendorDetail,
     getStockPurchaseById,
@@ -90,6 +91,14 @@ function StockPurchaseAddPage() {
     const [purchaseStatus, setPurchaseStatus] = useState("");
     const [loadingRecord, setLoadingRecord] = useState(isEditMode);
     const [spNumber, setSpNumber] = useState("");
+    const [checkingDeleteRowId, setCheckingDeleteRowId] = useState(null);
+    const [deleteDialog, setDeleteDialog] = useState({
+        open: false,
+        rowId: null,
+        mode: "confirm",
+        title: "",
+        message: "",
+    });
 
     useEffect(() => {
         let alive = true;
@@ -340,13 +349,78 @@ function StockPurchaseAddPage() {
         setNextItemId((prev) => prev + 1);
     };
 
-    const deleteItemRow = (rowId) => {
+    const closeDeleteDialog = () => {
+        setDeleteDialog({
+            open: false,
+            rowId: null,
+            mode: "confirm",
+            title: "",
+            message: "",
+        });
+    };
+
+    const confirmDeleteItemRow = () => {
+        const rowId = deleteDialog.rowId;
+        if (!rowId) {
+            closeDeleteDialog();
+            return;
+        }
+        setItems((prev) => (prev.length > 1 ? prev.filter((r) => r.rowId !== rowId) : prev));
+        closeDeleteDialog();
+    };
+
+    const deleteItemRow = async (rowId) => {
         if (!savedPurchaseDetailId) return;
         const row = items.find((r) => r.rowId === rowId);
-        if (row?.lce_estimate_id) return; // blocked — button should also be disabled
-        const confirmed = window.confirm("Delete this purchase item row?");
-        if (!confirmed) return;
-        setItems((prev) => (prev.length > 1 ? prev.filter((r) => r.rowId !== rowId) : prev));
+        if (!row) return;
+
+        if (row?.lce_estimate_id) {
+            setDeleteDialog({
+                open: true,
+                rowId,
+                mode: "warning",
+                title: "Cannot Delete GRN Row",
+                message: "This GRN row is linked to an LCE estimate. Delink it first, then try again.",
+            });
+            return;
+        }
+
+        const isPersistedRow = String(row.rowId || "").trim().length > 0 && String(row.rowId).match(/^\d+$/);
+        if (isPersistedRow) {
+            setCheckingDeleteRowId(rowId);
+            try {
+                const check = await checkStockPurchaseItemDelete(rowId);
+                if (!check?.can_delete) {
+                    setDeleteDialog({
+                        open: true,
+                        rowId,
+                        mode: "warning",
+                        title: "Deletion Restricted",
+                        message: check?.message || "This GRN row is linked downstream and cannot be deleted.",
+                    });
+                    return;
+                }
+            } catch (error) {
+                setDeleteDialog({
+                    open: true,
+                    rowId,
+                    mode: "warning",
+                    title: "Delete Check Failed",
+                    message: error?.message || "Unable to validate downstream links for this GRN row right now.",
+                });
+                return;
+            } finally {
+                setCheckingDeleteRowId(null);
+            }
+        }
+
+        setDeleteDialog({
+            open: true,
+            rowId,
+            mode: "confirm",
+            title: "Delete Purchase Item Row",
+            message: `Are you sure you want to delete GRN row ${row.grn_number || `#${rowId}`}?`,
+        });
     };
 
     const getDeleteItemTitle = (row) => {
@@ -861,8 +935,8 @@ function StockPurchaseAddPage() {
                                                 type="button"
                                                 className="users-action users-action--delete"
                                                 onClick={() => deleteItemRow(row.rowId)}
-                                                disabled={!savedPurchaseDetailId || items.length <= 1 || saving || !!row.lce_estimate_id}
-                                                title={getDeleteItemTitle(row)}
+                                                disabled={!savedPurchaseDetailId || items.length <= 1 || saving || checkingDeleteRowId === row.rowId || !!row.lce_estimate_id}
+                                                title={checkingDeleteRowId === row.rowId ? "Checking linked usage..." : getDeleteItemTitle(row)}
                                                 aria-label="Delete"
                                                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                                             >
@@ -886,6 +960,34 @@ function StockPurchaseAddPage() {
                     </button>
                 </div>
             </form> : null}
+
+            {deleteDialog.open ? (
+                <div className="modal-overlay" onClick={closeDeleteDialog}>
+                    <div className="modal-card" style={{ maxWidth: 560 }} onClick={(event) => event.stopPropagation()}>
+                        <div className="modal-card__head">
+                            <h2 className="modal-card__title" style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem" }}>
+                                <BsExclamationTriangleFill aria-hidden="true" style={{ color: "#f59e0b" }} />
+                                {deleteDialog.title}
+                            </h2>
+                        </div>
+                        <div className="modal-form" style={{ gap: "0.9rem" }}>
+                            <p className={deleteDialog.mode === "warning" ? "users-status users-status--warning" : "users-status"} style={{ margin: 0 }}>
+                                {deleteDialog.message}
+                            </p>
+                            <div className="modal-form__actions">
+                                <button type="button" className="modal-btn modal-btn--cancel" onClick={closeDeleteDialog}>
+                                    {deleteDialog.mode === "warning" ? "OK" : "Cancel"}
+                                </button>
+                                {deleteDialog.mode === "confirm" ? (
+                                    <button type="button" className="modal-btn modal-btn--save" onClick={confirmDeleteItemRow}>
+                                        Delete Row
+                                    </button>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </section>
     );
 }

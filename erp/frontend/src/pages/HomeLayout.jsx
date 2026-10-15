@@ -2,16 +2,18 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BsBarChartFill,
+  BsBell,
   BsBoxSeam,
+  BsBoxArrowUpRight,
   BsBuildingFill,
-  BsCashCoin,
-  BsFileEarmarkTextFill,
+  BsClipboardData,
   BsFolder2Open,
   BsHourglassSplit,
   BsKanbanFill,
-  BsListTask,
   BsPeopleFill,
   BsPersonPlusFill,
+  BsPerson,
+  BsScissors,
 } from "react-icons/bs";
 import HomeSideNav from "../components/HomeSideNav";
 import { listPendingRegistrations } from "../services/authApi";
@@ -80,24 +82,24 @@ function HomeLayout({ currentUser }) {
       title: "Layout Drawing Approval",
       stat: layoutApprovalCount > 0 ? `${layoutApprovalCount} awaiting your action` : "No pending approvals",
       to: "/projects/layout-drawing-approval",
-      icon: BsFileEarmarkTextFill,
+      icon: BsClipboardData,
       badge: layoutApprovalCount,
     },
     {
       title: "Item Costing",
       stat: "Costing records and totals",
       to: "/item-costing",
-      icon: BsBoxSeam,
+      icon: BsBarChartFill,
     },
     {
       title: "Stock Planning",
       stat: stockPlanningCount > 0 ? `${stockPlanningCount} items to plan` : "No pending planning items",
       to: "/stock-planning",
-      icon: BsBoxSeam,
+      icon: BsKanbanFill,
       badge: stockPlanningCount,
     },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
-    { title: "Orders", stat: "Project Orders", to: "/stocks", icon: BsBarChartFill },
+    { title: "Orders", stat: "Project Orders", to: "/stocks", icon: BsBoxArrowUpRight },
     { title: "Stocks", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },
     { title: "Stock Manufacture", stat: "In-house manufactured items", to: "/stock-manufacture", icon: BsBoxSeam },
     ...(isAdmin || isCdcTeam
@@ -106,16 +108,16 @@ function HomeLayout({ currentUser }) {
             title: "CDC Team Expence",
             stat: "Track CDC team expenses",
             to: "/cdc-team-expence",
-            icon: BsCashCoin,
+            icon: BsBell,
           },
         ]
       : []),
-    { title: "Tasks", stat: "Execution board", to: "/task", icon: BsListTask },
+    { title: "Tasks", stat: "Execution board", to: "/task", icon: BsPerson },
     {
       title: "Cut Optimiser",
       stat: "Estimate required panel sheets",
       to: "/projects/cut-optimiser",
-      icon: BsKanbanFill,
+      icon: BsScissors,
     },
     {
       title: "Timesheet",

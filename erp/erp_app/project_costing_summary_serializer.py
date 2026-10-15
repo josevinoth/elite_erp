@@ -120,8 +120,11 @@ class ProjectCostingSummarySerializer(serializers.ModelSerializer):
         )
 
     def validate(self, attrs):
-        if self.instance is None and "quotation_number" not in attrs:
-            raise serializers.ValidationError({"quotation_number_id": ["Quotation number is required."]})
+        if self.instance is None:
+            incoming_quotation = attrs.get("quotation_number") if "quotation_number" in attrs else None
+            incoming_project = attrs.get("project") if "project" in attrs else None
+            if incoming_quotation is None and incoming_project is None:
+                raise serializers.ValidationError({"project_id": ["Project is required when quotation number is not selected."]})
 
         source = self.instance or ProjectCostingSummaryInfo()
         candidate = ProjectCostingSummaryInfo()

@@ -23,6 +23,8 @@ class ProjectCostingSummaryInfo(models.Model):
         on_delete=models.PROTECT,
         related_name="project_costing_summaries",
         unique=True,
+        null=True,
+        blank=True,
     )
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="project_costing_summaries")
     project_name = models.CharField(max_length=200, blank=True)
@@ -112,9 +114,9 @@ class ProjectCostingSummaryInfo(models.Model):
         self.factor = totals["factor"]
 
     def clean(self):
-        if getattr(self, "quotation_number", None) is None:
-            raise ValidationError({"quotation_number": "Quotation number is required."})
-        if getattr(self, "project", None) is None:
+        if getattr(self, "quotation_number", None) is None and getattr(self, "project", None) is None:
+            raise ValidationError({"project": "Project is required when quotation number is not selected."})
+        if getattr(self, "project", None) is None and getattr(self, "quotation_number", None) is not None:
             self.project = self.quotation_number.project
         self.project_name = normalize_text(getattr(self.project, "project_name", ""))
         if not getattr(self, "status_id", None):

@@ -831,6 +831,39 @@ export async function listItemCodeNames() {
   return parseJson(res);
 }
 
+export async function createItemCodeName(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/item-code-names/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateItemCodeName(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/item-code-names/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteItemCodeName(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/item-code-names/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
 export async function listLabFurnitureItems() {
   const res = await fetch("/api/lab-furniture-items/", { credentials: "include" });
   return parseJson(res);
@@ -941,6 +974,11 @@ export async function getStockItemSummary(itemCode) {
 
 export async function getStockPurchaseItemTrace(itemId) {
   const res = await fetch(`/api/stock-purchase-items/${itemId}/trace/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function checkStockPurchaseItemDelete(itemId) {
+  const res = await fetch(`/api/stock-purchase-items/${itemId}/delete-check/`, { credentials: "include" });
   return parseJson(res);
 }
 

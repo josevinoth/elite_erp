@@ -10,6 +10,7 @@ import LceListPage from "./pages/LceListPage";
 import LayoutDrawingApprovalPage from "./pages/LayoutDrawingApprovalPage";
 import ItemCostingFormPage from "./pages/ItemCostingFormPage";
 import ItemCostingListPage from "./pages/ItemCostingListPage";
+import ItemCodeNamesPage from "./pages/ItemCodeNamesPage";
 import LoginPage from "./pages/LoginPage";
 import ModulePage from "./pages/ModulePage";
 import PendingApprovalsPage from "./pages/PendingApprovalsPage";
@@ -163,6 +164,7 @@ function App() {
                         <Route path="/stocks" element={secureRoute(<StocksListPage/>)}/>
                         <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage/>)}/>
                         <Route path="/stock-items" element={secureRoute(<StockItemsPage/>)}/>
+                        <Route path="/stock-item-code-names" element={secureRoute(<ItemCodeNamesPage/>)}/>
                         <Route path="/stock-manufacture" element={secureRoute(<StockManufacturePage/>)}/>
                         <Route path="/cdc-team-expence" element={cdcTeamRoute(<CdcTeamExpencePage/>)}/>
                         <Route path="/task"

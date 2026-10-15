@@ -1,6 +1,7 @@
 import json
 from decimal import Decimal, InvalidOperation
 
+from django.db import IntegrityError
 from django.db.models import DecimalField, Sum, Value
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
@@ -44,6 +45,23 @@ def _serialize_item_code_name(obj):
         "item_category": obj.item_category.name if getattr(obj, "item_category_id", None) else "",
         "label": f"{obj.item_code} - {obj.item_name}",
     }
+
+
+def _resolve_existing_category(value):
+    if value in (None, ""):
+        return None
+
+    if isinstance(value, ItemCategory):
+        return value
+
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return ItemCategory.objects.filter(pk=int(value)).first()
+
+    raw = normalize_text(value)
+    if not raw:
+        return None
+
+    return ItemCategory.objects.filter(name__iexact=raw).first()
 
 
 def _resolve_category(value):
@@ -192,8 +210,87 @@ def list_item_code_names_api_view(request):
     if not_allowed:
         return not_allowed
 
-    rows = ItemCodeName.objects.order_by("item_code")
+    rows = ItemCodeName.objects.select_related("item_category").order_by("item_code")
     return JsonResponse({"item_code_names": [_serialize_item_code_name(row) for row in rows]})
+
+
+@require_POST
+@csrf_protect
+def create_item_code_name_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    payload = _read_json(request)
+    item_code = _normalize_code(payload.get("item_code"))
+    item_name = normalize_text(payload.get("item_name"))
+    item_category = _resolve_existing_category(payload.get("item_category_id", payload.get("item_category")))
+
+    if not item_code:
+        return JsonResponse({"message": "Item code is required."}, status=400)
+    if not item_name:
+        return JsonResponse({"message": "Item name is required."}, status=400)
+    if not item_category:
+        return JsonResponse({"message": "Item category is required."}, status=400)
+
+    if ItemCodeName.objects.filter(item_code__iexact=item_code).exists():
+        return JsonResponse({"message": "Item code already exists."}, status=400)
+    if ItemCodeName.objects.filter(item_name__iexact=item_name).exists():
+        return JsonResponse({"message": "Item name already exists."}, status=400)
+
+    obj = ItemCodeName(item_code=item_code, item_name=item_name, item_category=item_category)
+    try:
+        obj.save()
+    except IntegrityError:
+        return JsonResponse({"message": "Unable to save item code name."}, status=400)
+
+    return JsonResponse({"success": True, "item_code_name": _serialize_item_code_name(obj)}, status=201)
+
+
+@require_http_methods(["PATCH", "DELETE"])
+@csrf_protect
+def item_code_name_detail_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    obj = ItemCodeName.objects.select_related("item_category").filter(pk=pk).first()
+    if not obj:
+        return JsonResponse({"message": "Item code name not found."}, status=404)
+
+    if request.method == "DELETE":
+        if LabFurnitureItem.objects.filter(item_code_ref=obj).exists() or LabFurnitureItem.objects.filter(item_name_ref=obj).exists():
+            return JsonResponse({"message": "Item code name is in use and cannot be deleted."}, status=400)
+
+        obj.delete()
+        return JsonResponse({"success": True, "message": "Item code name deleted."})
+
+    payload = _read_json(request)
+    item_code = _normalize_code(payload.get("item_code", obj.item_code))
+    item_name = normalize_text(payload.get("item_name", obj.item_name))
+    item_category = _resolve_existing_category(payload.get("item_category_id", payload.get("item_category", obj.item_category_id)))
+
+    if not item_code:
+        return JsonResponse({"message": "Item code is required."}, status=400)
+    if not item_name:
+        return JsonResponse({"message": "Item name is required."}, status=400)
+    if not item_category:
+        return JsonResponse({"message": "Item category is required."}, status=400)
+
+    if ItemCodeName.objects.filter(item_code__iexact=item_code).exclude(pk=obj.pk).exists():
+        return JsonResponse({"message": "Item code already exists."}, status=400)
+    if ItemCodeName.objects.filter(item_name__iexact=item_name).exclude(pk=obj.pk).exists():
+        return JsonResponse({"message": "Item name already exists."}, status=400)
+
+    obj.item_code = item_code
+    obj.item_name = item_name
+    obj.item_category = item_category
+    try:
+        obj.save()
+    except IntegrityError:
+        return JsonResponse({"message": "Unable to save item code name."}, status=400)
+
+    return JsonResponse({"success": True, "item_code_name": _serialize_item_code_name(obj)})
 
 
 @require_POST

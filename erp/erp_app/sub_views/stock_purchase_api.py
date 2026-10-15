@@ -1,7 +1,7 @@
 import json
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -259,6 +259,49 @@ def _allocation_totals_for_purchase_items(purchase_item_ids):
     return consumed_by_id
 
 
+def _downstream_reasons_for_purchase_items(purchase_item_ids):
+    ids = [int(v) for v in (purchase_item_ids or []) if str(v).isdigit()]
+    reasons_by_id = {pid: [] for pid in ids}
+    if not ids:
+        return reasons_by_id
+
+    for row in StockPurchaseItem.objects.filter(id__in=ids).values("id", "lce_estimate_id"):
+        if row.get("lce_estimate_id"):
+            reasons_by_id[row["id"]].append("linked to an LCE estimate")
+
+    allocation_counts = (
+        ProjectCostingItemAllocation.objects.filter(purchase_item_id__in=ids)
+        .values("purchase_item_id")
+        .annotate(total=Count("id"))
+    )
+    for row in allocation_counts:
+        total = int(row.get("total") or 0)
+        if total > 0:
+            label = "allocation" if total == 1 else "allocations"
+            reasons_by_id[row["purchase_item_id"]].append(f"used in {total} project costing {label}")
+
+    return reasons_by_id
+
+
+def _blocked_delete_message(items):
+    if not items:
+        return ""
+
+    reasons_by_id = _downstream_reasons_for_purchase_items([item.id for item in items])
+    blocked_lines = []
+    for item in items:
+        reasons = reasons_by_id.get(item.id) or []
+        if not reasons:
+            continue
+        grn = normalize_text(getattr(item, "grn_number", "")) or f"Item #{item.id}"
+        blocked_lines.append(f"{grn} ({'; '.join(reasons)})")
+
+    if not blocked_lines:
+        return ""
+
+    return "Cannot delete downstream-linked GRN row(s): " + ", ".join(blocked_lines) + "."
+
+
 @require_GET
 def purchase_item_grns_api_view(request, item_code):
     na = _ensure_authenticated(request)
@@ -339,6 +382,28 @@ def stock_item_summary_api_view(request, item_code):
             "item_code": item_master.item_code,
             "item_code_id": item_master.pk,
             "summary": summary_rows,
+        }
+    )
+
+
+@require_GET
+def stock_purchase_item_delete_check_api_view(request, item_id):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    item = StockPurchaseItem.objects.filter(pk=item_id).first()
+    if not item:
+        return JsonResponse({"message": "Purchase item not found."}, status=404)
+
+    message = _blocked_delete_message([item])
+    can_delete = not bool(message)
+    return JsonResponse(
+        {
+            "can_delete": can_delete,
+            "message": message or "This purchase item row can be deleted.",
+            "grn_number": item.grn_number,
+            "item_id": item.id,
         }
     )
 
@@ -638,6 +703,10 @@ def stock_purchase_detail_api_view(request, pk):
             payload_ids = {row.get("id") for row in items_payload if row.get("id")}
             to_delete = existing_ids - payload_ids
             if to_delete:
+                delete_rows = list(StockPurchaseItem.objects.filter(pk__in=list(to_delete)).only("id", "grn_number", "lce_estimate_id"))
+                blocked_message = _blocked_delete_message(delete_rows)
+                if blocked_message:
+                    return JsonResponse({"status": "warning", "message": blocked_message}, status=400)
                 StockPurchaseItem.objects.filter(pk__in=list(to_delete)).delete()
             # Update or create items
             for row in items_payload:

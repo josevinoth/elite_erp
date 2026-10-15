@@ -139,8 +139,8 @@ class ProjectCostingItemInfo(models.Model):
         self.height = _as_decimal(self.height)
         self.volume = _as_decimal(self.volume)
 
-        if self.requested_qty < 0:
-            raise ValidationError({"requested_qty": "Requested Qty must be 0 or greater."})
+        if self.requested_qty <= 0:
+            raise ValidationError({"requested_qty": "Requested Qty must be greater than 0."})
         if self.accepted_qty < 0:
             raise ValidationError({"accepted_qty": "Accepted Qty must be 0 or greater."})
         if self.cost_per_qty < 0:

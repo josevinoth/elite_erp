@@ -19,7 +19,12 @@ from .sub_views.project_quotation_api import (
     stock_planning_api_view,
 )
 from .sub_views.project_costing_api import project_costing_quotations_api_view, project_costing_status_api_view
-from .sub_views.stock_purchase_api import purchase_item_grns_api_view, stock_item_summary_api_view
+from .sub_views.lab_furniture_item_api import create_item_code_name_api_view, item_code_name_detail_api_view
+from .sub_views.stock_purchase_api import (
+    purchase_item_grns_api_view,
+    stock_item_summary_api_view,
+    stock_purchase_item_delete_check_api_view,
+)
 from .sub_views.stock_manufacture_api import (
     list_stock_manufacture_items_api_view,
     create_stock_manufacture_item_api_view,
@@ -264,6 +269,11 @@ urlpatterns = [
         name="api-stock-purchase-item-trace",
     ),
     path(
+        "api/stock-purchase-items/<int:item_id>/delete-check/",
+        stock_purchase_item_delete_check_api_view,
+        name="api-stock-purchase-item-delete-check",
+    ),
+    path(
         "api/stock-purchase-vendors/create/",
         create_stock_purchase_vendor_detail_api_view,
         name="api-stock-purchase-vendors-create",
@@ -432,6 +442,8 @@ urlpatterns = [
         name="api-lab-furniture-item-categories-list",
     ),
     path("api/item-code-names/", list_item_code_names_api_view, name="api-item-code-names-list"),
+    path("api/item-code-names/create/", create_item_code_name_api_view, name="api-item-code-names-create"),
+    path("api/item-code-names/<int:pk>/", item_code_name_detail_api_view, name="api-item-code-names-detail"),
     path(
         "api/lab-furniture-item-categories/create/",
         create_lab_furniture_item_category_api_view,

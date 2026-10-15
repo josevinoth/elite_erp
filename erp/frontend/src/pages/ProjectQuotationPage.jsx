@@ -145,6 +145,27 @@ const QUOTATION_STATUS_OPTIONS = [
   "Cancelled",
 ];
 
+const EMPTY_ITEM_FILTERS = {
+  room_name: "",
+  cost_type: "",
+  item_category: "",
+  item_name: "",
+  item_code: "",
+  item_type: "",
+  length: "",
+  width: "",
+  height: "",
+  volume: "",
+  purchase_qty: "",
+  requested_qty: "",
+  cost_per_qty: "",
+  max_cost: "",
+  min_cost: "",
+  actual_cost: "",
+  total_cost: "",
+  stock_status: "",
+};
+
 const getStatusClassName = (type) => {
   if (type === "error") return "users-status users-status--error";
   if (type === "warning") return "users-status users-status--warning";
@@ -164,15 +185,15 @@ const getStockStatusName = (row) => (
 const getStockStatusBadgeClassName = (statusName) => {
   const normalized = String(statusName || "").trim().toLowerCase();
   if (normalized === "in-stock") {
-    return "pq-stock-badge--in-stock";
+    return "project-costing-stock-badge--in-stock";
   }
   if (normalized === "partial stock") {
-    return "pq-stock-badge--partial";
+    return "project-costing-stock-badge--partial";
   }
   if (normalized === "no stock" || normalized === "not purchased") {
-    return "pq-stock-badge--no-stock";
+    return "project-costing-stock-badge--no-stock";
   }
-  return "pq-stock-badge--no-stock";
+  return "project-costing-stock-badge--no-stock";
 };
 
 const normalizeValidationMessages = (messages) => {
@@ -230,6 +251,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const [summary, setSummary] = useState(null);
   const [savedSummaryStatus, setSavedSummaryStatus] = useState("");
   const [items, setItems] = useState([]);
+  const [itemColumnFilters, setItemColumnFilters] = useState(EMPTY_ITEM_FILTERS);
   const [costTypes, setCostTypes] = useState([]);
   const [materialCostTypeId, setMaterialCostTypeId] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState([]);
@@ -376,7 +398,48 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     [isAdminReadonlyWarning, validationMessages]
   );
 
+  const itemStatus = useMemo(() => {
+    if (!status.message) return null;
+    if (isAdminReadonlyWarning(status.message)) return null;
+    return isSummaryRelatedMessage(status.message) ? null : status;
+  }, [isAdminReadonlyWarning, status]);
+
   const summaryPreviewValues = useMemo(() => recalculateSummary(summary), [summary]);
+
+  const filteredItems = useMemo(() => {
+    const normalizedFilters = Object.entries(itemColumnFilters).reduce((accumulator, [key, value]) => ({
+      ...accumulator,
+      [key]: String(value || "").trim().toLowerCase(),
+    }), {});
+
+    return items.filter((row) => {
+      const rowValues = {
+        room_name: row.room_name?.room_name || "",
+        cost_type: row.cost_type?.name || row.cost_type_name || row.cost_type || "",
+        item_category: row.item_category || "",
+        item_name: row.item_name || "",
+        item_code: row.item_code || "",
+        item_type: row.item_type || "",
+        length: row.length,
+        width: row.width,
+        height: row.height,
+        volume: row.volume,
+        purchase_qty: row.purchase_qty,
+        requested_qty: row.requested_qty,
+        cost_per_qty: row.cost_per_qty ?? row.actual_cost ?? "0",
+        max_cost: row.max_cost ?? "0",
+        min_cost: row.min_cost ?? "0",
+        actual_cost: row.actual_cost ?? "0",
+        total_cost: row.total_cost ?? "0",
+        stock_status: getStockStatusName(row),
+      };
+
+      return Object.entries(normalizedFilters).every(([key, filterValue]) => {
+        if (!filterValue) return true;
+        return String(rowValues[key] ?? "").toLowerCase().includes(filterValue);
+      });
+    });
+  }, [itemColumnFilters, items]);
 
   const ensureEmbeddedSummary = useCallback(async (summaryRows) => {
     if (!embedded || !projectId) return "";
@@ -982,7 +1045,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
   const validateItemRow = useCallback((row) => {
     if (!normalizeText(row.cost_type_id)) return { type: "error", message: "Cost type is required." };
-    if (toNumber(row.requested_qty) < 0) return { type: "error", message: "Requested Qty must be 0 or greater." };
+    if (toNumber(row.requested_qty) <= 0) return { type: "error", message: "Requested Qty must be greater than 0." };
     if (toNumber(row.purchase_qty) < 0) return { type: "error", message: "Purchase Qty must be 0 or greater." };
     if (toNumber(row.actual_cost) < 0) return { type: "error", message: "Actual cost must be 0 or greater." };
 
@@ -1160,13 +1223,25 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
         <div className="project-costing-summary-grid">
           <div className="project-costing-field">
-            <span className="project-costing-field__label">Quotation Number</span>
-            <span className="project-costing-field__value">{summary.quotation_number || "-"}</span>
+            <span className="project-costing-field__label">Quotation ID</span>
+            <span className="project-costing-field__value">{summary.id || "—"}</span>
           </div>
           <div className="project-costing-field">
+            <span className="project-costing-field__label">Quotation Number</span>
+            <span className="project-costing-field__value">{summary.quotation_number || "—"}</span>
+          </div>
+          <div className="project-costing-field">
+            <span className="project-costing-field__label">Project ID</span>
+            <span className="project-costing-field__value">{summary.project_code || summary.project_id || "—"}</span>
+          </div>
+          <div className="project-costing-field">
+            <span className="project-costing-field__label">Project Name</span>
+            <span className="project-costing-field__value">{summary.project_name || "—"}</span>
+          </div>
+          <label className="project-costing-form-label project-costing-field">
             <span className="project-costing-field__label">Status</span>
             <select
-              className="project-costing-input"
+              className="project-costing-select"
               value={getQuotationStatus(summary)}
               onChange={(event) => handleSummaryStatusChange(event.target.value)}
               disabled={isSummaryBusy || isQuotationReadOnly}
@@ -1175,19 +1250,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
-          </div>
-          <div className="project-costing-field">
-            <span className="project-costing-field__label">Project ID</span>
-            <span className="project-costing-field__value">{summary.project_code || summary.project_id || "-"}</span>
-          </div>
-          <div className="project-costing-field">
-            <span className="project-costing-field__label">Project Name</span>
-            <span className="project-costing-field__value">{summary.project_name || "-"}</span>
-          </div>
-          <div className="project-costing-field">
-            <span className="project-costing-field__label">Planned Order Value</span>
-            <span className="project-costing-field__value">{summaryPreviewValues.planned_order_value || summary.planned_order_value || "-"}</span>
-          </div>
+          </label>
         </div>
 
         <div className="project-costing-form-section">
@@ -1216,6 +1279,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                 readOnly
                 disabled
               />
+              <small className="project-costing-form-help">Auto-calculated from quotation items.</small>
             </label>
             <label className="project-costing-form-label">
               Markup %
@@ -1320,20 +1384,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       <>
         <td>
           <select
-            className="auth-input"
-            value={row.cost_type_id}
-            disabled={disabled}
-            onChange={(event) => patchFn({ item_category_id: "", item_name: "", item_code_id: "", item_type: "", room_name_id: "", stock_status_name: "In-Stock", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions, cost_type_id: event.target.value })}
-          >
-            <option value="">Select cost type</option>
-            {costTypes.map((option) => (
-              <option key={option.id} value={String(option.id)}>{option.name}</option>
-            ))}
-          </select>
-        </td>
-        <td>
-          <select
-            className="auth-input"
+            className="project-costing-select"
             value={row.room_name_id || ""}
             disabled={disabled}
             onChange={(event) => patchFn({ room_name_id: event.target.value })}
@@ -1346,7 +1397,20 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         </td>
         <td>
           <select
-            className="auth-input"
+            className="project-costing-select"
+            value={row.cost_type_id}
+            disabled={disabled}
+            onChange={(event) => patchFn({ item_category_id: "", item_name: "", item_code_id: "", item_type: "", room_name_id: "", stock_status_name: "In-Stock", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions, cost_type_id: event.target.value })}
+          >
+            <option value="">Select cost type</option>
+            {costTypes.map((option) => (
+              <option key={option.id} value={String(option.id)}>{option.name}</option>
+            ))}
+          </select>
+        </td>
+        <td>
+          <select
+            className="project-costing-select"
             value={row.item_category_id}
             disabled={disabled || !material}
             onChange={(event) => patchFn({ item_category_id: event.target.value, item_name: "", item_code_id: "", item_type: "", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions })}
@@ -1359,7 +1423,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         </td>
         <td>
           <select
-            className="auth-input"
+            className="project-costing-select"
             value={row.item_code_id || ""}
             disabled={disabled || !material || !row.item_category_id}
             onChange={(event) => applyMaterialSelection(event.target.value, patchFn)}
@@ -1372,7 +1436,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         </td>
         <td>
           <select
-            className="auth-input"
+            className="project-costing-select"
             value={row.item_code_id}
             disabled={disabled || !material || !row.item_name}
             onChange={async (event) => applyMaterialSelection(event.target.value, patchFn)}
@@ -1383,20 +1447,20 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             ))}
           </select>
         </td>
-        <td><input className="auth-input auth-input--readonly" value={row.item_type || ""} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.length} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.width} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.height} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.volume} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.purchase_qty} readOnly disabled /></td>
-        <td><input className="auth-input" type="number" min="0" step="any" value={row.requested_qty} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value })} /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.cost_per_qty || "0"} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.max_cost || "0"} readOnly disabled /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.min_cost || "0"} readOnly disabled /></td>
-        <td><input className="auth-input" type="number" min="0" step="any" value={row.actual_cost} disabled={disabled} onChange={(event) => patchFn({ actual_cost: event.target.value })} /></td>
-        <td><input className="auth-input auth-input--readonly" value={row.total_cost || "0"} readOnly disabled /></td>
+        <td><input className="project-costing-input" value={row.item_type || ""} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.length} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.width} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.height} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.volume} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.purchase_qty} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0.01" step="any" value={row.requested_qty} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value })} /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.cost_per_qty || "0"} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.max_cost || "0"} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.min_cost || "0"} readOnly disabled /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="any" value={row.actual_cost} disabled={disabled} onChange={(event) => patchFn({ actual_cost: event.target.value })} /></td>
+        <td><input className="project-costing-input project-costing-input--numeric" value={row.total_cost || "0"} readOnly disabled /></td>
         <td>
-          <span className={`pq-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
+          <span className={`project-costing-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
             {getStockStatusName(row)}
           </span>
         </td>
@@ -1491,7 +1555,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       ) : null}
 
       {!loading && (embedded || selectedQuotationId) && summary ? (
-        <div className="pq-details-content project-costing-card">
+        <>
+          <div className="project-costing-card">
             {isQuotationReadOnly ? (
               <AlertMessage
                 type="warning"
@@ -1526,7 +1591,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             ) : null}
 
             {renderSummaryGrid()}
-            <div className="project-costing-form-actions pq-summary-actions">
+            <div className="project-costing-form-actions">
               <button
                 type="button"
                 className="crud-add-btn"
@@ -1536,17 +1601,24 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                 {savingSummary ? "Saving..." : "Save Summary"}
               </button>
             </div>
+          </div>
 
-            <div aria-hidden="true" className="pq-divider" />
+          <div className="project-costing-card">
+            {itemStatus ? (
+              <AlertMessage
+                type={itemStatus.type === "error" ? "danger" : (itemStatus.type === "warning" ? "warning" : "info")}
+                message={itemStatus.message}
+              />
+            ) : null}
 
-            <div className="pq-items-header">
-              <strong>Quotation Items</strong>
-              <div className="pq-items-header-actions">
-                <input ref={importFileInputRef} className="pq-hidden-file-input" type="file" accept=".xlsx,.xls" onChange={handleImportItemsFile} />
-                <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || savingRow || isQuotationReadOnly}>
+            <div className="project-costing-items-header">
+              <strong className="project-costing-items-header__title">Quotation Items</strong>
+              <div className="project-costing-items-header-actions">
+                <input ref={importFileInputRef} className="project-costing-hidden-file-input" type="file" accept=".xlsx,.xls" onChange={handleImportItemsFile} />
+                <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || savingRow || isQuotationReadOnly || isSummaryBusy}>
                   {downloadingTemplate ? "Downloading..." : "Download Template"}
                 </button>
-                <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || savingRow || isQuotationReadOnly}>
+                <button type="button" className="crud-add-btn" onClick={openImportFilePicker} disabled={importingItems || savingRow || isQuotationReadOnly || isSummaryBusy}>
                   {importingItems ? "Importing..." : "Import Excel"}
                 </button>
                 <button type="button" className="crud-add-btn" onClick={openRoomModal} disabled={isQuotationReadOnly}>
@@ -1573,14 +1645,14 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             ) : null}
 
             {importSummary ? (
-              <div className="pq-import-summary">
-                <p className="pq-import-summary__title">Import Summary</p>
-                <p className="pq-import-summary__line">
+              <div className="project-costing-import-summary">
+                <p className="project-costing-import-summary__title">Import Summary</p>
+                <p className="project-costing-import-summary__line">
                   Created: {importSummary.created || 0} | Updated: {importSummary.updated || 0} | Failed: {importSummary.failed || 0} | Blank Rows: {importSummary.blank_rows || 0}
                 </p>
                 {importReports.length ? (
-                  <div className="pq-import-report-wrap">
-                    <table className="users-table pq-import-report-table">
+                  <div className="project-costing-import-report-wrap">
+                    <table className="users-table project-costing-import-report-table">
                       <thead>
                         <tr>
                           <th>Row</th>
@@ -1606,36 +1678,57 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             ) : null}
 
             <div className="users-table-wrap users-table-wrap--fit pq-table-wrap-items project-costing-table-wrap project-costing-table-wrap--items">
-              <table className="users-table users-table--quotation pq-table-quotation project-costing-table project-costing-table--quotation">
+              <table className="users-table users-table--quotation project-costing-table project-costing-table--quotation project-costing-items-table">
                 <thead>
                   <tr>
+                    <th>Room</th>
                     <th>Cost Type</th>
-                    <th>Room Name</th>
                     <th>Item Category</th>
                     <th>Item Name</th>
                     <th>Item Code</th>
                     <th>Item Type</th>
-                    <th>L</th>
-                    <th>W</th>
-                    <th>H</th>
-                    <th>Vol</th>
-                    <th>Purchase Qty</th>
-                    <th>Requested Qty</th>
-                    <th>Cost/Qty</th>
-                    <th>Max Cost</th>
-                    <th>Min Cost</th>
-                    <th>Actual Cost</th>
-                    <th>Total Cost</th>
+                    <th className="project-costing-table__right">L</th>
+                    <th className="project-costing-table__right">W</th>
+                    <th className="project-costing-table__right">H</th>
+                    <th className="project-costing-table__right">Vol</th>
+                    <th className="project-costing-table__right">Purchase Qty</th>
+                    <th className="project-costing-table__right">Requested Qty</th>
+                    <th className="project-costing-table__right">Cost/Qty</th>
+                    <th className="project-costing-table__right">Max Cost</th>
+                    <th className="project-costing-table__right">Min Cost</th>
+                    <th className="project-costing-table__right">Actual Cost</th>
+                    <th className="project-costing-table__right">Total Cost</th>
                     <th>Stock Status</th>
-                    <th className="pq-text-center">Action</th>
+                    <th className="project-costing-table__center">Actions</th>
+                  </tr>
+                  <tr>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.room_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, room_name: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_type: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_category} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_category: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_name: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.length} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, length: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.width} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, width: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.height} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, height: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.volume} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, volume: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_per_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_per_qty: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.max_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, max_cost: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.min_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, min_cost: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.actual_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, actual_cost: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.total_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, total_cost: event.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.stock_status} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, stock_status: event.target.value }))} /></th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {draftRow ? (
-                    <tr>
+                    <tr className="project-costing-row--editing">
                       {renderItemEditorCells(draftRow, patchDraftRow, savingRow || isQuotationReadOnly)}
-                      <td className="pq-text-center">
-                        <div className="pq-inline-actions">
+                      <td className="project-costing-table__center">
+                        <div className="project-costing-inline-actions">
                           <button type="button" className="modal-btn modal-btn--save" onClick={saveDraftItem} disabled={savingRow || isQuotationReadOnly}>
                             <BsCheckCircleFill aria-hidden="true" />
                           </button>
@@ -1647,11 +1740,11 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                     </tr>
                   ) : null}
 
-                  {items.length === 0 ? (
+                  {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={19} className="pq-empty-cell">No quotation items yet.</td>
+                      <td colSpan={19} className="project-costing-empty">No quotation items found.</td>
                     </tr>
-                  ) : items.map((row) => {
+                  ) : filteredItems.map((row) => {
                     const rowCostType = row.cost_type?.name || row.cost_type_name || row.cost_type || "-";
                     const inEditMode = editingItemId === row.id && editingRow;
                     return (
@@ -1659,8 +1752,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                         {inEditMode ? (
                           <>
                             {renderItemEditorCells(editingRow, patchEditingRow, savingRow || isQuotationReadOnly)}
-                            <td className="pq-text-center">
-                              <div className="pq-inline-actions">
+                            <td className="project-costing-table__center">
+                              <div className="project-costing-inline-actions">
                                 <button type="button" className="modal-btn modal-btn--save" onClick={saveEditedItem} disabled={savingRow || isQuotationReadOnly}>
                                   <BsCheckCircleFill aria-hidden="true" />
                                 </button>
@@ -1672,30 +1765,30 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                           </>
                         ) : (
                           <>
-                            <td>{rowCostType}</td>
                             <td>{row.room_name?.room_name || "-"}</td>
+                            <td>{rowCostType}</td>
                             <td>{row.item_category || "-"}</td>
                             <td>{row.item_name || "-"}</td>
                             <td>{row.item_code || "-"}</td>
                             <td>{row.item_type || "-"}</td>
-                            <td className="pq-text-right">{row.length}</td>
-                            <td className="pq-text-right">{row.width}</td>
-                            <td className="pq-text-right">{row.height}</td>
-                            <td className="pq-text-right">{row.volume}</td>
-                            <td className="pq-text-right">{row.purchase_qty}</td>
-                            <td className="pq-text-right">{row.requested_qty}</td>
-                            <td className="pq-text-right">{row.cost_per_qty ?? row.actual_cost ?? "0"}</td>
-                            <td className="pq-text-right">{row.max_cost ?? "0"}</td>
-                            <td className="pq-text-right">{row.min_cost ?? "0"}</td>
-                            <td className="pq-text-right">{row.actual_cost ?? "0"}</td>
-                            <td className="pq-text-right">{row.total_cost ?? "0"}</td>
+                            <td className="project-costing-table__right">{row.length}</td>
+                            <td className="project-costing-table__right">{row.width}</td>
+                            <td className="project-costing-table__right">{row.height}</td>
+                            <td className="project-costing-table__right">{row.volume}</td>
+                            <td className="project-costing-table__right">{row.purchase_qty}</td>
+                            <td className="project-costing-table__right">{row.requested_qty}</td>
+                            <td className="project-costing-table__right">{row.cost_per_qty ?? row.actual_cost ?? "0"}</td>
+                            <td className="project-costing-table__right">{row.max_cost ?? "0"}</td>
+                            <td className="project-costing-table__right">{row.min_cost ?? "0"}</td>
+                            <td className="project-costing-table__right">{row.actual_cost ?? "0"}</td>
+                            <td className="project-costing-table__right">{row.total_cost ?? "0"}</td>
                             <td>
-                              <span className={`pq-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
+                              <span className={`project-costing-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
                                 {getStockStatusName(row)}
                               </span>
                             </td>
-                            <td className="pq-text-center">
-                              <div className="pq-inline-actions">
+                            <td className="project-costing-table__center">
+                              <div className="project-costing-inline-actions">
                                 <button type="button" className="users-action users-action--edit" onClick={() => startEdit(row)} disabled={isQuotationReadOnly} title={isQuotationReadOnly ? "Completed quotation is read-only for non-admin users" : "Edit"}>
                                   <BsPencilSquare aria-hidden="true" />
                                 </button>
@@ -1714,7 +1807,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             </div>
 
 
-        </div>
+          </div>
+        </>
       ) : null}
 
       <ConfirmPopupModal

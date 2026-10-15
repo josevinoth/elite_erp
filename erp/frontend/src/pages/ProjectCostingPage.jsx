@@ -742,7 +742,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
 
     if (!normalizeText(row?.cost_type_id)) return { type: "error", message: "Cost type is required." };
     if (!normalizeText(row?.room_name_id)) return { type: "error", message: "Room name is required." };
-    if (toNumber(row?.requested_qty) < 0) return { type: "error", message: "Requested Qty must be 0 or greater." };
+    if (toNumber(row?.requested_qty) <= 0) return { type: "error", message: "Requested Qty must be greater than 0." };
     if (toNumber(row?.actual_cost) < 0) return { type: "error", message: "Actual Cost must be 0 or greater." };
 
     if (isMaterialCostType(row.cost_type_id)) {
@@ -1301,9 +1301,9 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         </td>
         <td>
           {material ? (
-            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={fieldDisabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
+            <input className="project-costing-input project-costing-input--numeric" type="number" min="0.01" step="0.01" value={row.requested_qty || "0"} disabled={fieldDisabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
           ) : (
-            <input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="0.01" value={row.requested_qty || "0"} disabled={fieldDisabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
+            <input className="project-costing-input project-costing-input--numeric" type="number" min="0.01" step="0.01" value={row.requested_qty || "0"} disabled={fieldDisabled} onChange={(event) => patchFn({ requested_qty: event.target.value, accepted_qty: String(sumAllocatedQty(row.grn_allocations || [])) })} />
           )}
         </td>
         <td>
