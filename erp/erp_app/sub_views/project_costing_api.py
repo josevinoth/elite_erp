@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal
 from io import BytesIO
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
@@ -936,7 +937,28 @@ def generate_project_costing_api_view(request):
             status=status.HTTP_200_OK,
         )
 
-    costing = ProjectCostingSummaryView(request).clone_from_quotation(quotation)
+    duplicate_project_costing = ProjectCostingSummaryInfo.objects.filter(project=quotation.project).first()
+    if duplicate_project_costing:
+        payload = ProjectCostingSummaryView(request).detail_payload(duplicate_project_costing)
+        return Response(
+            {
+                "success": False,
+                "status": "error",
+                "message": "A project costing already exists for this project.",
+                **payload,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        costing = ProjectCostingSummaryView(request).clone_from_quotation(quotation)
+    except DjangoValidationError as exc:
+        error_message = exc.message_dict if hasattr(exc, "message_dict") else exc.messages
+        return Response(
+            {"success": False, "status": "error", "message": "Validation failed.", "errors": error_message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     payload = ProjectCostingSummaryView(request).detail_payload(costing)
     return Response({"success": True, "message": "Project costing generated successfully.", **payload}, status=status.HTTP_201_CREATED)
 

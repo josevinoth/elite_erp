@@ -118,6 +118,19 @@ class ProjectCostingSummaryInfo(models.Model):
             raise ValidationError({"project": "Project is required when quotation number is not selected."})
         if getattr(self, "project", None) is None and getattr(self, "quotation_number", None) is not None:
             self.project = self.quotation_number.project
+
+        # Prevent creating a second costing for the same project.
+        # Existing rows are allowed to save when their project remains unchanged.
+        if getattr(self, "project", None) is not None:
+            existing_project_id = None
+            if self.pk:
+                existing_project_id = type(self).objects.filter(pk=self.pk).values_list("project_id", flat=True).first()
+            duplicate_exists = type(self).objects.filter(project=self.project)
+            if self.pk:
+                duplicate_exists = duplicate_exists.exclude(pk=self.pk)
+            if duplicate_exists.exists() and (not self.pk or existing_project_id != getattr(self.project, "pk", None)):
+                raise ValidationError({"project": "A project costing already exists for this project."})
+
         self.project_name = normalize_text(getattr(self.project, "project_name", ""))
         if not getattr(self, "status_id", None):
             self.status_id = get_default_quotation_status_name()

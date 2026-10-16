@@ -12,6 +12,7 @@ import {
 } from "react-icons/bs";
 import {
   addRoom,
+  createProjectCosting,
   createProjectCostingItem,
   deleteProjectCosting,
   deleteProjectCostingItem,
@@ -23,6 +24,7 @@ import {
   listCompletedQuotationSummaries,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
+  listProjects,
   listPurchaseItemGRNs,
   listProjectCostings,
   listRooms,
@@ -186,7 +188,9 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   const [costings, setCostings] = useState([]);
   const [listColumnFilters, setListColumnFilters] = useState({});
   const [quotationOptions, setQuotationOptions] = useState([]);
+  const [projectOptions, setProjectOptions] = useState([]);
   const [selectedQuotationId, setSelectedQuotationId] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [roomOptions, setRoomOptions] = useState([]);
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [costTypes, setCostTypes] = useState([]);
@@ -313,6 +317,12 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     return quotationOptions.filter((row) => String(row?.project_id ?? row?.project?.id ?? "") === pid);
   }, [embedded, projectId, quotationOptions]);
 
+  const scopedProjectOptions = useMemo(() => {
+    if (!embedded || !projectId) return projectOptions;
+    const pid = String(projectId);
+    return projectOptions.filter((row) => String(row?.id ?? "") === pid);
+  }, [embedded, projectId, projectOptions]);
+
   const scopedCostings = useMemo(() => {
     if (!embedded || !projectId) return costings;
     const pid = String(projectId);
@@ -332,6 +342,13 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       return Boolean(quotationNumber) && allowedQuotationNumbers.has(quotationNumber);
     });
   }, [costings, embedded, projectCode, projectId, scopedQuotationOptions]);
+
+  const selectedProjectSelectionId = embedded && projectId ? String(projectId) : String(selectedProjectId || "").trim();
+
+  const selectedProjectHasCosting = useMemo(() => {
+    if (!selectedProjectSelectionId) return false;
+    return costings.some((row) => String(row?.project_id ?? row?.project?.id ?? row?.project_ref_id ?? "") === selectedProjectSelectionId);
+  }, [costings, selectedProjectSelectionId]);
 
   const filteredCostings = useMemo(() => {
     const activeFilters = Object.entries(listColumnFilters).filter(([, value]) => String(value || "").trim());
@@ -379,11 +396,46 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       listProjectCostings(),
       listCompletedQuotationSummaries(activeProjectId),
     ]);
+
+    // Keep page usable even if projects lookup fails for a user/session.
+    let projectData = { projects: [] };
+    try {
+      projectData = await listProjects();
+    } catch (_error) {
+      projectData = { projects: [] };
+    }
+
     setCostings(Array.isArray(costingData?.costings) ? costingData.costings : []);
     // quotationData is returned directly as an array from the API
     const quotations = Array.isArray(quotationData) ? quotationData : [];
     setQuotationOptions(quotations);
+    setProjectOptions(Array.isArray(projectData?.projects) ? projectData.projects : []);
   }, [embedded, projectId]);
+
+  useEffect(() => {
+    if (embedded && projectId) {
+      setSelectedProjectId(String(projectId));
+    }
+  }, [embedded, projectId]);
+
+  useEffect(() => {
+    if (!selectedProjectId || embedded) return;
+    const exists = scopedProjectOptions.some((row) => String(row?.id) === String(selectedProjectId));
+    if (!exists) setSelectedProjectId("");
+  }, [embedded, scopedProjectOptions, selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedQuotationId) return;
+    const selectedQuotation = scopedQuotationOptions.find((row) => String(row?.id) === String(selectedQuotationId));
+    if (!selectedQuotation) {
+      setSelectedQuotationId("");
+      return;
+    }
+    if (!embedded) {
+      const quotationProjectId = selectedQuotation?.project_id ?? selectedQuotation?.project?.id;
+      if (quotationProjectId) setSelectedProjectId(String(quotationProjectId));
+    }
+  }, [embedded, scopedQuotationOptions, selectedQuotationId]);
 
   useEffect(() => {
     let alive = true;
@@ -477,6 +529,35 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       setSaving(false);
     }
   }, [loadList, openCosting, selectedQuotationId]);
+
+  const handleCreateCosting = useCallback(async () => {
+    const resolvedProjectId = selectedProjectSelectionId;
+
+    if (!resolvedProjectId) {
+      setStatus({ type: "warning", message: "Please select a project before adding project costing." });
+      return;
+    }
+
+    if (selectedProjectHasCosting) {
+      setStatus({ type: "warning", message: "A project costing already exists for the selected project." });
+      return;
+    }
+
+    setSaving(true);
+    setStatus({ type: "", message: "" });
+    try {
+      const response = await createProjectCosting({ project_id: resolvedProjectId });
+      setStatus({ type: "success", message: response.message || "Project costing added." });
+      await loadList();
+      if (response?.costing?.id) {
+        await openCosting(response.costing.id);
+      }
+    } catch (err) {
+      setStatus({ type: "error", message: err.message || "Failed to add project costing." });
+    } finally {
+      setSaving(false);
+    }
+  }, [loadList, openCosting, selectedProjectHasCosting, selectedProjectSelectionId]);
 
   const handleDeleteCosting = useCallback(async (costingId) => {
     if (!window.confirm("Delete this project costing and all linked items?")) return;
@@ -2004,19 +2085,33 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       ) : null}
 
       <div className="project-costing-card project-costing-actions">
-        <select className="auth-input" value={selectedQuotationId}
-          onChange={(e) => setSelectedQuotationId(e.target.value)} disabled={saving || loading}>
-          <option value="">Select quotation for generation</option>
-          {scopedQuotationOptions.map((row) => (
+        <select
+          className="auth-input"
+          value={selectedProjectSelectionId}
+          onChange={(e) => setSelectedProjectId(e.target.value)}
+          disabled={saving || loading || (embedded && !!projectId)}
+        >
+          <option value="">Select project</option>
+          {scopedProjectOptions.map((row) => (
             <option key={row.id} value={String(row.id)}>
-              {row.quotation_number || "Auto"} — {row.project_name || "Project"}
+              {row.project_id || "Project"} — {row.project_name || "Unnamed"}
             </option>
           ))}
         </select>
-        <button type="button" className="crud-add-btn" onClick={handleGenerate}
-          disabled={saving || loading || !selectedQuotationId}>
-          {saving ? "Processing…" : "Generate Project Costing"}
+
+        <button
+          type="button"
+          className="crud-add-btn"
+          onClick={handleCreateCosting}
+          disabled={saving || loading || !selectedProjectSelectionId || selectedProjectHasCosting}
+        >
+          {saving ? "Processing…" : "Add Project Costing"}
         </button>
+        {selectedProjectSelectionId && selectedProjectHasCosting ? (
+          <p className="project-costing-popup project-costing-popup--warning" style={{ margin: "0.5rem 0 0" }}>
+            A project costing already exists for the selected project.
+          </p>
+        ) : null}
       </div>
 
       {loading ? (
