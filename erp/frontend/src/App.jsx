@@ -47,6 +47,7 @@ function App() {
     const roleName = String(currentUser?.role || "").toLowerCase();
     const teamName = String(currentUser?.team || "").toLowerCase();
     const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
+    const isSuperAdmin = Boolean(currentUser?.is_superuser) || roleName === "super admin";
     const isCdcTeam = teamName === "cdc team";
 
     const displayUsername = currentUser?.username || "Guest";
@@ -113,6 +114,10 @@ function App() {
         currentUser
             ? (isAdmin || isCdcTeam ? element : <Navigate to="/home" replace/>)
             : <Navigate to="/login" replace/>;
+    const superAdminRoute = (element) =>
+        currentUser
+            ? (isSuperAdmin ? element : <Navigate to="/home" replace/>)
+            : <Navigate to="/login" replace/>;
 
     return (
         <div className="app-shell">
@@ -154,13 +159,13 @@ function App() {
                         <Route path="/projects/cut-optimiser/record/:recordId"
                                element={secureRoute(<CutSheetOptimiser/>)}/>
                         <Route path="/vendors" element={secureRoute(<VendorsPage/>)}/>
-                        <Route path="/stock-purchase" element={secureRoute(<StockPurchasePage/>)}/>
-                        <Route path="/stock-purchase/add" element={secureRoute(<StockPurchaseAddPage/>)}/>
+                        <Route path="/stock-purchase" element={superAdminRoute(<StockPurchasePage/>)}/>
+                        <Route path="/stock-purchase/add" element={superAdminRoute(<StockPurchaseAddPage/>)}/>
                         <Route path="/stock-purchase/record/:purchaseId"
-                               element={secureRoute(<StockPurchaseAddPage/>)}/>
+                               element={superAdminRoute(<StockPurchaseAddPage/>)}/>
                         <Route path="/stock-purchase/item-trace/:itemId"
-                               element={secureRoute(<StockPurchaseItemTracePage/>)}/>
-                        <Route path="/stock-purchase/place-order" element={secureRoute(<PlaceStockOrderPage/>)} />
+                               element={superAdminRoute(<StockPurchaseItemTracePage/>)}/>
+                        <Route path="/stock-purchase/place-order" element={superAdminRoute(<PlaceStockOrderPage/>)} />
                         <Route path="/stocks" element={secureRoute(<StocksListPage/>)}/>
                         <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage/>)}/>
                         <Route path="/stock-items" element={secureRoute(<StockItemsPage/>)}/>
@@ -209,19 +214,19 @@ function App() {
                         <Route
                             path="/projects/costing"
                             element={
-                                secureRoute(<LceListPage/>)
+                                superAdminRoute(<LceListPage/>)
                             }
                         />
                         <Route
                             path="/projects/costing/add"
                             element={
-                                secureRoute(<CostingPage/>)
+                                superAdminRoute(<CostingPage/>)
                             }
                         />
                         <Route
                             path="/projects/costing/record/:lceId"
                             element={
-                                secureRoute(<CostingPage/>)
+                                superAdminRoute(<CostingPage/>)
                             }
                         />
                         <Route path="/projects/cutsheet-optimiser" element={secureRoute(<CutSheetOptimiser/>)}/>

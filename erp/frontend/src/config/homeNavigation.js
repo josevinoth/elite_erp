@@ -58,7 +58,7 @@ export const homeNavItems = [
       },
     ],
   },
-  { label: "LCE", to: "/projects/costing", icon: "lce" },
+  { label: "LCE", to: "/projects/costing", icon: "lce", superAdminOnly: true },
   { label: "Vendors", to: "/vendors", icon: "vendors" },
   { label: "Orders", to: "/orders", icon: "orders" },
   {
@@ -76,6 +76,7 @@ export const homeNavItems = [
         label: "Stock Purchase",
         to: "/stock-purchase",
         icon: "stockPurchase",
+        superAdminOnly: true,
       },
       {
         label: "Place Stock Order",

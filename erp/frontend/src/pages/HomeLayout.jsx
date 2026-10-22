@@ -26,6 +26,7 @@ function HomeLayout({ currentUser }) {
   const roleName = String(currentUser?.role || "").toLowerCase();
   const teamName = String(currentUser?.team || "").toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
+  const isSuperAdmin = Boolean(currentUser?.is_superuser) || roleName === "super admin";
   const isCdcTeam = teamName === "cdc team";
 
   useEffect(() => {
@@ -130,7 +131,7 @@ function HomeLayout({ currentUser }) {
 
   return (
     <section className="home-layout">
-      <HomeSideNav badges={{ pendingCount }} isAdmin={isAdmin} isCdcTeam={isCdcTeam} />
+      <HomeSideNav badges={{ pendingCount }} isAdmin={isAdmin} isCdcTeam={isCdcTeam} isSuperAdmin={isSuperAdmin} />
       <main className="home-main">
         <section className="dashboard-panel">
           <h1 className="module-page__title module-page__title--dashboard">Dashboard</h1>

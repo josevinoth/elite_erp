@@ -77,22 +77,30 @@ function pathMatches(targetPath, currentPathname) {
   return currentPathname.startsWith(`${targetPath}/`);
 }
 
-function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
+function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false, isSuperAdmin = false }) {
   const location = useLocation();
   const [expandedGroups, setExpandedGroups] = useState({});
 
   const visibleItems = useMemo(
     () =>
       homeNavItems
-        .filter((item) => (!item.adminOnly || isAdmin) && (!item.cdcOnly || isAdmin || isCdcTeam))
+        .filter(
+          (item) =>
+            (!item.adminOnly || isAdmin)
+            && (!item.cdcOnly || isAdmin || isCdcTeam)
+            && (!item.superAdminOnly || isSuperAdmin)
+        )
         .map((item) => ({
           ...item,
           disabled: !isAdmin && item.to === "/timesheet",
           children: item.children?.filter(
-            (child) => (!child.adminOnly || isAdmin) && (!child.cdcOnly || isAdmin || isCdcTeam)
+            (child) =>
+              (!child.adminOnly || isAdmin)
+              && (!child.cdcOnly || isAdmin || isCdcTeam)
+              && (!child.superAdminOnly || isSuperAdmin)
           ),
         })),
-    [isAdmin, isCdcTeam]
+    [isAdmin, isCdcTeam, isSuperAdmin]
   );
 
   useEffect(() => {
