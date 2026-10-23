@@ -5,7 +5,6 @@ import ErrorBoundary from "../components/ErrorBoundary";
 import ExpenseBarChart from "../components/ExpenseBarChart";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import {
-  addExpenseItemOption,
   addExpenseSessionOption,
   addExpenseStatusOption,
   bulkUpdateCdcTeamExpences,
@@ -58,6 +57,7 @@ const IMPORT_REPORT_COLUMNS = [
 
 function CdcTeamExpencePage() {
   const currentUser = useMemo(() => getSessionUser(), []);
+  const loggedInUsername = useMemo(() => currentUser?.username || "", [currentUser]);
   const isAdmin = useMemo(() => {
     const role = (currentUser?.role || "").trim().toLowerCase();
     return ["admin", "super admin", "staff"].includes(role);
@@ -95,6 +95,15 @@ function CdcTeamExpencePage() {
     [statusOptions]
   );
 
+  const defaultPaidBy = useMemo(() => {
+    const current = loggedInUsername.trim().toLowerCase();
+    if (!current) return "";
+
+    return paidByOptions.some((option) => String(option.label || "").trim().toLowerCase() === current)
+      ? loggedInUsername
+      : "";
+  }, [loggedInUsername, paidByOptions]);
+
   const loadMeta = useCallback(async () => {
     try {
       const data = await listCdcTeamExpenceMeta();
@@ -123,12 +132,6 @@ function CdcTeamExpencePage() {
       setPaidByOptions([]);
     });
   }, [loadMeta]);
-
-  const appendItem = async (name) => {
-    const data = await addExpenseItemOption(name);
-    await loadMeta();
-    return data.id;
-  };
 
   const appendStatus = async (name) => {
     const data = await addExpenseStatusOption(name);
@@ -170,7 +173,6 @@ function CdcTeamExpencePage() {
         key: "item",
         label: "Item",
         options: itemOptions,
-        onAppend: appendItem,
         required: true,
       },
       {
@@ -191,7 +193,7 @@ function CdcTeamExpencePage() {
         required: true,
         default: unpaidStatusId,
       },
-      { key: "paid_by", label: "Paid By", options: paidByOptions, required: true },
+      { key: "paid_by", label: "Paid By", options: paidByOptions, default: defaultPaidBy, required: true },
       { key: "settled_on", label: "Settled On", type: "date" },
       {
         key: "settled_by",
@@ -199,7 +201,16 @@ function CdcTeamExpencePage() {
         options: cdcUsers,
       },
     ],
-    [itemOptions, sessionOptions, statusOptions, cdcUsers, paidByOptions, currentDateDefault, unpaidStatusId]
+    [
+      itemOptions,
+      sessionOptions,
+      statusOptions,
+      cdcUsers,
+      paidByOptions,
+      currentDateDefault,
+      unpaidStatusId,
+      defaultPaidBy,
+    ]
   );
 
   const fetchFn = useCallback(async () => {

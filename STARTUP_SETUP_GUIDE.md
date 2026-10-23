@@ -19,14 +19,14 @@ WHAT WAS FIXED:
    - Uses dynamic paths so it works for different Windows usernames
    - Supports optional port argument (default 8010)
 
-3. register_startup_task.ps1
-   - Increased delay from 20s to 30s (allows network to be ready)
-   - Set correct working directory to project root
-   - Added helpful output messages
-   - Better documentation of what was registered
+3. register_startup_task.cmd
+   - Uses schtasks instead of PowerShell to avoid endpoint protection flags
+   - Sets a 30s logon delay so networking is ready
+   - Removes legacy tasks and registers the production task in one step
 
 4. Startup flow simplification
-   - Scheduled task now calls erp_control.bat start 8010
+   - Scheduled task now calls startup_prod.bat directly
+   - startup_prod.bat launches erp_control.bat start 8010 and cloudflare_tunnel.bat in detached mode
 
 
 HOW TO SETUP:
@@ -38,21 +38,20 @@ Step 1: Test the startup process
    - Run: erp_control.bat start 8010
    - The server should start and listen on port 8010
    - Use a new terminal and run: erp_control.bat stop 8010
-   - Check the logs/server.log file
+   - Check the logs/startup_8010.log and logs/server_8010.log files
 
 Step 2: Register the startup task
-   - Open PowerShell as Administrator
-   - Run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   - Open Command Prompt
    - Navigate to: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp
-   - Run: .\register_startup_task.ps1
-   - You should see: "[OK] Scheduled task 'EliteERP-Prod' registered successfully."
+   - Run: .\register_startup_task.cmd
+   - You should see: "[OK] Scheduled task registered successfully."
 
 Step 3: Verify the task was created
    - Open Task Scheduler (search for "Task Scheduler" in Windows)
    - Look for "EliteERP-Prod" in the task list
    - Double-click it to verify:
-     * Trigger: "At log on"
-     * Action: "cmd.exe /c "...\erp_control.bat" start 8010"
+     * Trigger: "At log on" (30s delay)
+     * Action: "...\startup_prod.bat"
      * Working directory: C:\Users\Admin\PycharmProjects\elite_erp_v1.0
 
 Step 4: Test by logging off and back on
@@ -60,8 +59,9 @@ Step 4: Test by logging off and back on
    - Log back in
    - The server should automatically start
    - Check the logs:
-     * logs/startup.log - startup information
-     * logs/server.log - server output
+     * logs/task_scheduler.log - scheduler trigger output
+     * logs/startup_8010.log - startup/build/migrate output
+     * logs/server_8010.log - server runtime output
 
 
 ACCESSING YOUR APPLICATION:
@@ -113,7 +113,7 @@ TROUBLESHOOTING:
 
 1. Task won't run:
    - Check if you ran it as Administrator
-   - Check logs at: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\startup.log
+   - Check logs at: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\task_scheduler.log
    - Verify Python path exists: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\.venv\Scripts\python.exe
 
 2. Server starts but connection refused from other machines:
@@ -127,7 +127,7 @@ TROUBLESHOOTING:
    - Restart server
 
 4. Server crashes after starting:
-   - Check logs/server.log for error messages
+   - Check logs/server_8010.log for error messages
    - Run test_startup.bat to see full error output
 
 5. Port 8010 already in use:
@@ -143,10 +143,10 @@ USEFUL COMMANDS:
 netstat -aon | findstr :8010
 
 # View startup logs
-type C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\startup.log
+type C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\task_scheduler.log
 
 # View server logs
-type C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\server.log
+type C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\logs\server_8010.log
 
 # Manually start server
 cd C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp
@@ -163,7 +163,8 @@ FILES CHANGED:
 ==============
 
 1. erp_control.bat - Unified start/stop/status/restart controller
-2. register_startup_task.ps1 - Updated to call erp_control.bat on logon
+2. register_startup_task.cmd - Registers the startup task without PowerShell
+3. startup_prod.bat - Scheduler-safe detached launcher for production start
 
 All files are in: C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp\
 
@@ -175,5 +176,6 @@ NEXT STEPS:
 2. When ready, run register_startup_task.ps1 as Administrator
 3. Log off and back on to test
 4. Check logs if there are any issues
+
 
 
