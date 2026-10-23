@@ -196,7 +196,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'erp_002'),
+        'NAME': os.getenv('DB_NAME', 'erp_006'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', '244613'),
         'HOST': os.getenv('DB_HOST', 'localhost'),

@@ -1,11 +1,12 @@
 from rest_framework import serializers
 
+from ..safe_fields import SafeSourceCharField
 from ..sub_models.item_costing_mod import ItemCostingInfo
 from ..sub_models.stock_purchase import StockPurchaseItem
 
 class ItemCostingSerializer(serializers.ModelSerializer):
     project_ref = serializers.SerializerMethodField()
-    item_category = serializers.CharField(source="ic_item_category.name", read_only=True)
+    item_category = SafeSourceCharField(source="ic_item_category.name", read_only=True)
     item_code = serializers.CharField(source="ic_item_code", read_only=True)
     item_description = serializers.CharField(source="ic_item_description", read_only=True)
     uom = serializers.SerializerMethodField()

@@ -5,11 +5,12 @@ from .sub_models import ItemCategory, LabFurnitureItem, StockManufactureItem
 from .sub_models.cut_optimiser import CutOptimiserRecord, CutSize, UOM
 from .sub_models.item_type_mod import ItemType_info
 from .sub_models.project_layout_drawing import ProjectLayoutDrawing
+from .safe_fields import SafeSourceCharField
 from .utils import normalize_text
 
 class ProjectSerializer(serializers.ModelSerializer):
-    updated_by = serializers.CharField(source="updated_by.username", read_only=True)
-    status = serializers.CharField(source="status.name", read_only=True)
+    updated_by = SafeSourceCharField(source="updated_by.username", read_only=True)
+    status = SafeSourceCharField(source="status.name", read_only=True)
 
     class Meta:
         model = Project
@@ -23,7 +24,7 @@ class CutSizeSerializer(serializers.ModelSerializer):
 
 class CutOptimiserRecordSerializer(serializers.ModelSerializer):
     cut_sizes = CutSizeSerializer(many=True, required=False, default=list)
-    project_name = serializers.CharField(source='project.project_name', read_only=True)
+    project_name = SafeSourceCharField(source='project.project_name', read_only=True)
     raw_sheet_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     raw_sheet_length = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
     raw_sheet_width = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)

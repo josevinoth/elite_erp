@@ -67,7 +67,7 @@ Register automatic startup on Windows logon:
 
 ```powershell
 Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
-powershell -ExecutionPolicy Bypass -File .\register_startup_task.ps1
+.\register_startup_task.cmd
 ```
 
 Check status anytime:
