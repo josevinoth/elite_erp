@@ -3,6 +3,124 @@ import { useNavigate } from "react-router-dom";
 import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
+import PaginationControls from "./PaginationControls";
+
+const AUDIT_COLUMN_KEYS = ["updated_by", "updated_on"];
+
+function getTitleVariant(title) {
+  const normalized = String(title || "").toLowerCase();
+  if (normalized.includes("user")) return "users";
+  if (normalized.includes("vendor")) return "vendors";
+  if (normalized.includes("project")) return "projects";
+  if (normalized.includes("quotation")) return "quotation";
+  if (normalized.includes("stock")) return "stock";
+  if (normalized.includes("task")) return "tasks";
+  if (normalized.includes("timesheet")) return "timesheet";
+  if (normalized.includes("expense") || normalized.includes("cdc")) return "expenses";
+  if (normalized.includes("approval")) return "approvals";
+  return "default";
+}
+
+function normalizeUpdatedBy(row) {
+  const labelValue =
+    row?.updated_by_label ??
+    row?.updatedByLabel ??
+    row?.updated_by_username ??
+    row?.updatedByUsername ??
+    row?.modified_by_label ??
+    row?.modifiedByLabel ??
+    row?.created_by_label ??
+    row?.createdByLabel ??
+    "";
+
+  if (labelValue != null && String(labelValue).trim()) {
+    return String(labelValue).trim();
+  }
+
+  const value =
+    row?.updated_by ??
+    row?.updatedBy ??
+    row?.modified_by ??
+    row?.modifiedBy ??
+    row?.created_by ??
+    row?.createdBy ??
+    "";
+
+  if (value && typeof value === "object") {
+    return String(value.username || value.name || value.label || value.email || value.id || "");
+  }
+  return value == null ? "" : String(value);
+}
+
+function normalizeUpdatedOn(row) {
+  const raw =
+    row?.updated_on ??
+    row?.updatedOn ??
+    row?.updated_at ??
+    row?.updatedAt ??
+    row?.modified_at ??
+    row?.modifiedAt ??
+    row?.last_updated ??
+    row?.lastUpdated ??
+    "";
+
+  return raw == null ? "" : String(raw).trim();
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function toLocalDateTimeText(dateObj) {
+  return `${dateObj.getFullYear()}-${pad2(dateObj.getMonth() + 1)}-${pad2(dateObj.getDate())} ${pad2(dateObj.getHours())}:${pad2(dateObj.getMinutes())}:${pad2(dateObj.getSeconds())}`;
+}
+
+function formatDateTimeForTable(value) {
+  if (value == null) {
+    return "";
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return "";
+  }
+
+  const isoLikePattern = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/;
+  const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+  const hasTimezonePattern = /(Z|[+-]\d{2}:?\d{2})$/;
+
+  if (isoLikePattern.test(text)) {
+    const normalizedIso = text.includes("T") ? text : text.replace(" ", "T");
+
+    if (hasTimezonePattern.test(normalizedIso)) {
+      const parsed = new Date(normalizedIso);
+      if (!Number.isNaN(parsed.getTime())) {
+        return toLocalDateTimeText(parsed);
+      }
+    }
+
+    const cleaned = normalizedIso
+      .replace("T", " ")
+      .replace(/([+-]\d{2}:?\d{2}|Z)$/i, "")
+      .split(".")[0]
+      .trim();
+    return cleaned.slice(0, 19);
+  }
+
+  if (dateOnlyPattern.test(text)) {
+    return text;
+  }
+
+  return text;
+}
+
+function withAuditFields(row) {
+  return {
+    ...row,
+    updated_by: normalizeUpdatedBy(row),
+    updated_on: normalizeUpdatedOn(row),
+  };
+}
 
 /**
  * Reusable CRUD page with list table + add/edit modal.
@@ -27,8 +145,9 @@ function CrudPage({
   deleteFn,
   rowKey = "id",
   tableMaxHeight = null,
-  stickyHeader = false,
+  stickyHeader = true,
   tableWrapClassName = "",
+  modalCardClassName = "",
   showAddButton = true,
   showExportButton = true,
   addButtonTo = null,
@@ -53,11 +172,18 @@ function CrudPage({
   renderFormExtension = null, // ({ editRow, formValues, setFormValues }) => ReactNode
   onEditOpen = null, // (row) => void | Promise<void>
   editButtonTo = null, // string | (row) => string
+  includeAuditColumns = true,
+  defaultPageSize = 20,
+  pageSizeOptions = [10, 20, 50, 100],
+  enablePagination = true,
+  showEditButton = true,
+  showDeleteButton = true,
 }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [modalError, setModalError] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [formValues, setFormValues] = useState({});
@@ -67,10 +193,29 @@ function CrudPage({
   const [filters, setFilters] = useState({});
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [globalSearch, setGlobalSearch] = useState("");
   const autoOpenedRef = useRef(false);
   const autoEditOpenedRef = useRef(false);
 
   const reloadRows = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const tableColumns = useMemo(() => {
+    if (!includeAuditColumns) {
+      return columns;
+    }
+    const updatedByLabel = columns.find((c) => c.key === "updated_by")?.label || "Updated By";
+    const updatedOnLabel = columns.find((c) => c.key === "updated_on")?.label || "Updated On";
+    const baseColumns = columns.filter((c) => !AUDIT_COLUMN_KEYS.includes(c.key));
+    return [
+      ...baseColumns,
+      { key: "updated_by", label: updatedByLabel },
+      { key: "updated_on", label: updatedOnLabel },
+    ];
+  }, [columns, includeAuditColumns]);
+
+  const normalizedRows = useMemo(() => rows.map((row) => withAuditFields(row)), [rows]);
 
   const emptyForm = () =>
     Object.fromEntries(fields.map((f) => [f.key, f.default ?? ""]));
@@ -105,6 +250,7 @@ function CrudPage({
   const openAdd = () => {
     setEditRow(null);
     setFormValues(emptyForm());
+    setModalError("");
     setShowModal(true);
   };
 
@@ -159,6 +305,7 @@ function CrudPage({
         ])
       )
     );
+    setModalError("");
     setShowModal(true);
     if (typeof onEditOpen === "function") {
       Promise.resolve(onEditOpen(row)).catch(() => {
@@ -170,6 +317,7 @@ function CrudPage({
   const closeModal = () => {
     setShowModal(false);
     setEditRow(null);
+    setModalError("");
   };
 
   const handleFieldChange = (name, rawValue) => {
@@ -206,24 +354,29 @@ function CrudPage({
 
   const selectStyles = useMemo(
     () => ({
-      control: (base, state) => ({
+      control: (base, state) => {
+        return {
         ...base,
         minHeight: 40,
-        backgroundColor: "#0a3338",
-        borderColor: state.isFocused ? "#16b2a5" : "#1e666d",
-        boxShadow: state.isFocused ? "0 0 0 3px rgba(22,178,165,0.2)" : "none",
-        ":hover": { borderColor: "#25d2c3" },
-      }),
-      singleValue: (base) => ({ ...base, color: "#f0fffe" }),
-      input: (base) => ({ ...base, color: "#f0fffe" }),
-      placeholder: (base) => ({ ...base, color: "#cce8e5" }),
-      menu: (base) => ({ ...base, backgroundColor: "#0b3a40", zIndex: 2000 }),
+        backgroundColor: "#ffffff",
+        borderColor: state.isFocused ? "#556ee6" : "#d9dce8",
+        boxShadow: state.isFocused ? "0 0 0 2px rgba(85,110,230,0.2)" : "none",
+        ":hover": { borderColor: "#556ee6" },
+        };
+      },
+      singleValue: (base) => ({ ...base, color: "#495057", fontWeight: 400 }),
+      input: (base) => ({ ...base, color: "#495057" }),
+      placeholder: (base) => ({ ...base, color: "#74788d" }),
+      menu: (base) => ({ ...base, backgroundColor: "#ffffff", zIndex: 2000, border: "1px solid #d9dce8" }),
       menuPortal: (base) => ({ ...base, zIndex: 3000 }),
-      option: (base, state) => ({
+      option: (base, state) => {
+        return {
         ...base,
-        backgroundColor: state.isFocused ? "#11474f" : "#0b3a40",
-        color: "#f0fffe",
-      }),
+        backgroundColor: state.isSelected ? "#556ee6" : state.isFocused ? "#f1f3ff" : "#ffffff",
+        color: state.isSelected ? "#ffffff" : "#495057",
+        fontWeight: state.isSelected ? 500 : 400,
+        };
+      },
     }),
     []
   );
@@ -231,7 +384,7 @@ function CrudPage({
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
-    setError("");
+    setModalError("");
 
     const buildPayload = (fv) =>
       fields.reduce((acc, field) => {
@@ -299,7 +452,7 @@ function CrudPage({
       }
       closeModal();
     } catch (err) {
-      setError(err.message || "Save failed.");
+      setModalError(err.message || "Save failed.");
     } finally {
       setSaving(false);
     }
@@ -357,19 +510,28 @@ function CrudPage({
   };
 
   const displayedRows = useMemo(() => {
+    const searchText = String(globalSearch || "").trim().toLowerCase();
+    const searchedRows = searchText
+      ? normalizedRows.filter((row) =>
+          tableColumns.some((col) =>
+            String(row[col.key] ?? "").toLowerCase().includes(searchText)
+          )
+        )
+      : normalizedRows;
+
     const normalizedFilters = Object.entries(filters).filter(([, value]) =>
       String(value || "").trim()
     );
 
     const filtered = normalizedFilters.length
-      ? rows.filter((row) =>
+      ? searchedRows.filter((row) =>
           normalizedFilters.every(([key, value]) =>
             String(row[key] ?? "")
               .toLowerCase()
               .includes(String(value).trim().toLowerCase())
           )
         )
-      : rows;
+      : searchedRows;
 
     if (!sortConfig.key) {
       return filtered;
@@ -397,7 +559,30 @@ function CrudPage({
       }
       return sortConfig.direction === "asc" ? cmp : -cmp;
     });
-  }, [rows, filters, sortConfig]);
+  }, [normalizedRows, filters, globalSearch, sortConfig, tableColumns]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters, sortConfig]);
+
+  const totalCount = displayedRows.length;
+  useEffect(() => {
+    if (!enablePagination) return;
+    const safePageSize = Math.max(Number(pageSize || 1), 1);
+    const totalPages = Math.max(1, Math.ceil(totalCount / safePageSize));
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [enablePagination, page, pageSize, totalCount]);
+
+  const pagedRows = useMemo(() => {
+    if (!enablePagination) {
+      return displayedRows;
+    }
+    const safePageSize = Math.max(Number(pageSize || 1), 1);
+    const start = (page - 1) * safePageSize;
+    return displayedRows.slice(start, start + safePageSize);
+  }, [displayedRows, enablePagination, page, pageSize]);
 
   const handleRowSelection = (id) => {
     setSelectedRowIds((prev) => {
@@ -413,18 +598,18 @@ function CrudPage({
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
-      setSelectedRowIds(new Set(displayedRows.map((row) => row[rowKey])));
+      setSelectedRowIds(new Set(pagedRows.map((row) => row[rowKey])));
     } else {
       setSelectedRowIds(new Set());
     }
   };
 
   const allDisplayedSelected =
-    displayedRows.length > 0 &&
-    displayedRows.every((row) => selectedRowIds.has(row[rowKey]));
+    pagedRows.length > 0 &&
+    pagedRows.every((row) => selectedRowIds.has(row[rowKey]));
   const someDisplayedSelected =
-    displayedRows.length > 0 &&
-    displayedRows.some((row) => selectedRowIds.has(row[rowKey]));
+    pagedRows.length > 0 &&
+    pagedRows.some((row) => selectedRowIds.has(row[rowKey]));
 
   const handleExport = async () => {
     setError("");
@@ -433,8 +618,8 @@ function CrudPage({
       await exportRowsToExcel({
         fileName: exportFileName || title,
         sheetName: title,
-        columns,
-        rows: displayedRows,
+        columns: tableColumns,
+        rows: pagedRows,
       });
     } catch (err) {
       setError(err.message || "Export failed.");
@@ -449,11 +634,25 @@ function CrudPage({
       ? saveDisabledPredicate(editRow, formValues)
       : false;
 
+  const effectiveTableMaxHeight = tableMaxHeight || (stickyHeader ? "60vh" : null);
+  const titleVariant = getTitleVariant(title);
+
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
-        <h1 className="module-page__title">{title}</h1>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <h1 className={`module-page__title module-page__title--${titleVariant}`}>{title}</h1>
+        <div className="crud-page__header-tools">
+          <input
+            type="search"
+            className="crud-page__search-input"
+            placeholder="Search all columns"
+            value={globalSearch}
+            onChange={(e) => {
+              setGlobalSearch(e.target.value);
+              setPage(1);
+            }}
+            aria-label="Search all columns"
+          />
           {renderHeaderActions
             ? renderHeaderActions({ rows, loading, reloadRows })
             : null}
@@ -489,12 +688,12 @@ function CrudPage({
         </div>
       </div>
 
-      {error ? <p className="users-status users-status--error">{error}</p> : null}
+      {!showModal && error ? <p className="users-status users-status--error">{error}</p> : null}
       {loading ? <p className="users-status">Loading...</p> : null}
 
       <div
         className={`users-table-wrap${stickyHeader ? " users-table-wrap--sticky" : ""}${tableWrapClassName ? ` ${tableWrapClassName}` : ""}`}
-        style={tableMaxHeight ? { maxHeight: tableMaxHeight, overflowY: "auto" } : undefined}
+        style={effectiveTableMaxHeight ? { maxHeight: effectiveTableMaxHeight, overflow: "auto" } : { overflow: "auto" }}
       >
         <table className="users-table">
           <thead>
@@ -512,7 +711,7 @@ function CrudPage({
                   />
                 </th>
               ) : null}
-              {columns.map((col) => (
+                {tableColumns.map((col) => (
                 <th
                   key={col.key}
                   className={stickyHeader ? "users-table__sticky-head" : undefined}
@@ -533,12 +732,16 @@ function CrudPage({
                   </button>
                 </th>
               ))}
-              <th className={stickyHeader ? "users-table__sticky-head" : undefined}>Actions</th>
+              <th
+                className={`${stickyHeader ? "users-table__sticky-head " : ""}users-table__actions-col`}
+              >
+                Actions
+              </th>
             </tr>
             <tr>
-              {enableBulkSelect ? <th /> : null}
-              {columns.map((col) => (
-                <th key={`filter-${col.key}`}>
+              {enableBulkSelect ? <th className={stickyHeader ? "users-table__sticky-filter" : undefined} /> : null}
+              {tableColumns.map((col) => (
+                <th key={`filter-${col.key}`} className={stickyHeader ? "users-table__sticky-filter" : undefined}>
                   <input
                     className="users-table__filter-input"
                     type="text"
@@ -548,16 +751,16 @@ function CrudPage({
                   />
                 </th>
               ))}
-              <th />
+              <th className={stickyHeader ? "users-table__sticky-filter" : undefined} />
             </tr>
           </thead>
           <tbody>
-            {!loading && displayedRows.length === 0 ? (
+            {!loading && pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (enableBulkSelect ? 2 : 1)}>No records found.</td>
+                <td colSpan={tableColumns.length + (enableBulkSelect ? 2 : 1)}>No records found.</td>
               </tr>
             ) : null}
-            {displayedRows.map((row) => (
+            {pagedRows.map((row) => (
               <tr key={row[rowKey]}>
                 {enableBulkSelect ? (
                   <td>
@@ -569,10 +772,10 @@ function CrudPage({
                     />
                   </td>
                 ) : null}
-                {columns.map((col) => (
-                  <td key={col.key}>{row[col.key]}</td>
+                {tableColumns.map((col) => (
+                  <td key={col.key}>{formatDateTimeForTable(row[col.key])}</td>
                 ))}
-                <td>
+                <td className="users-table__actions-col">
                   <div className="users-actions">
                     {rowActions.map((action) => {
                       const Icon = action.icon;
@@ -598,7 +801,7 @@ function CrudPage({
                         </button>
                       );
                     })}
-                    {(() => {
+                    {showEditButton ? (() => {
                       const editDisabled =
                         typeof editDisabledPredicate === "function"
                           ? editDisabledPredicate(row)
@@ -615,8 +818,8 @@ function CrudPage({
                           <BsPencilSquare aria-hidden="true" />
                         </button>
                       );
-                    })()}
-                    {(() => {
+                    })() : null}
+                    {showDeleteButton ? (() => {
                       const deleteDisabled =
                         typeof deleteDisabledPredicate === "function"
                           ? deleteDisabledPredicate(row)
@@ -633,7 +836,7 @@ function CrudPage({
                           <BsTrashFill aria-hidden="true" />
                         </button>
                       );
-                    })()}
+                    })() : null}
                   </div>
                 </td>
               </tr>
@@ -642,9 +845,23 @@ function CrudPage({
         </table>
       </div>
 
+      {enablePagination ? (
+        <PaginationControls
+          page={page}
+          setPage={setPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          pageSizeOptions={pageSizeOptions}
+        />
+      ) : null}
+
       {showModal ? (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className={`modal-card${modalCardClassName ? ` ${modalCardClassName}` : ""}`} onClick={(e) => e.stopPropagation()}>
             <div className="modal-card__head">
               <h2 className="modal-card__title">
                 {editRow ? `Edit ${title}` : `Add ${title}`}
@@ -660,6 +877,7 @@ function CrudPage({
             </div>
 
             <form className="modal-form" onSubmit={handleSave}>
+              {modalError ? <p className="users-status users-status--error">{modalError}</p> : null}
               {fields.map((field) => (
                 <div className="modal-form__row" key={field.key}>
                   <label className="modal-form__label" htmlFor={`mf-${field.key}`}>
@@ -667,7 +885,15 @@ function CrudPage({
                     {isFieldRequired(field) ? " *" : ""}
                   </label>
 
-                  {field.options ? (
+                  {(() => {
+                    const resolvedOptions = typeof field.options === "function"
+                      ? field.options(formValues)
+                      : field.options;
+                    const resolvedPlaceholder = typeof field.placeholder === "function"
+                      ? field.placeholder(formValues)
+                      : field.placeholder;
+
+                  return resolvedOptions ? (
                     <div className="modal-select-row">
                       <Select
                         inputId={`mf-${field.key}`}
@@ -676,16 +902,16 @@ function CrudPage({
                         isSearchable
                         isClearable={field.isClearable !== false}
                         isDisabled={field.disabled}
-                        options={field.options}
-                        placeholder={`Select ${field.label}`}
+                        options={resolvedOptions}
+                        placeholder={resolvedPlaceholder || `Select ${field.label}`}
                         value={(() => {
                           const current = String(formValues[field.key] ?? "").trim();
                           if (!current) return null;
 
                           // Support edit values coming as labels while options use IDs.
                           return (
-                            field.options.find((opt) => String(opt.value) === current) ||
-                            field.options.find(
+                            resolvedOptions.find((opt) => String(opt.value) === current) ||
+                            resolvedOptions.find(
                               (opt) => String(opt.label || "").trim().toLowerCase() === current.toLowerCase()
                             ) ||
                             null
@@ -745,7 +971,8 @@ function CrudPage({
                       {...(field.max !== undefined ? { max: field.max } : {})}
                       {...(field.step !== undefined ? { step: field.step } : {})}
                     />
-                  )}
+                  );
+                  })()}
                 </div>
               ))}
 
@@ -785,4 +1012,3 @@ function CrudPage({
 }
 
 export default CrudPage;
-

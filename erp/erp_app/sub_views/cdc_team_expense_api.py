@@ -319,6 +319,8 @@ def _serialize(obj):
         "settled_by": str(obj.settled_by_id) if obj.settled_by_id else "",
         "settled_by_label": obj.settled_by.username if obj.settled_by_id else "",
         "updated_by": obj.updated_by,
+        "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
+        "updated_on": obj.updated_at.isoformat() if obj.updated_at else "",
     }
 
 

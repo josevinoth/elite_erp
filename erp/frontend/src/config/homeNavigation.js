@@ -24,9 +24,43 @@ export const homeNavItems = [
     label: "Projects",
     to: "/projects",
     icon: "projects",
+    disableParentNavigation: true,
+    children: [
+      {
+        label: "Projects List",
+        to: "/projects",
+        icon: "projectsList",
+      },
+      {
+        label: "Layout Drawing Approval",
+        to: "/projects/layout-drawing-approval",
+        icon: "layoutDrawingApproval",
+      },
+      {
+        label: "Quotation",
+        to: "/projects/quotation",
+        icon: "quotation",
+      },
+      {
+        label: "Stock Planning",
+        to: "/stock-planning",
+        icon: "stockPlanning",
+      },
+      {
+        label: "Item Costing",
+        to: "/item-costing",
+        icon: "itemCosting",
+      },
+      {
+        label: "Project Costing",
+        to: "/projects/project-costing",
+        icon: "projectCosting",
+      },
+    ],
   },
-  { label: "LCE", to: "/projects/costing", icon: "costing" },
+  { label: "LCE", to: "/projects/costing", icon: "lce", superAdminOnly: true },
   { label: "Vendors", to: "/vendors", icon: "vendors" },
+  { label: "Orders", to: "/orders", icon: "orders" },
   {
     label: "Stocks:",
     to: "/stocks",
@@ -36,12 +70,18 @@ export const homeNavItems = [
       {
         label: "Stocks List",
         to: "/stocks",
-        icon: "stocks",
+        icon: "stocksList",
       },
       {
         label: "Stock Purchase",
         to: "/stock-purchase",
         icon: "stockPurchase",
+        superAdminOnly: true,
+      },
+      {
+        label: "Place Stock Order",
+        to: "/stock-purchase/place-order",
+        icon: "placeStockOrder",
       },
       {
         label: "Stock Maintenance",
@@ -49,9 +89,34 @@ export const homeNavItems = [
         icon: "stockMaintenance",
       },
       {
+        label: "Stock Manufacture",
+        to: "/stock-manufacture",
+        icon: "stockManufacture",
+      },
+      {
+        label: "Stock Retrieval",
+        to: "/stock-retrieval",
+        icon: "stockRetrieval",
+      },
+      {
+        label: "Stock Acceptance",
+        to: "/stock-acceptance",
+        icon: "stockAcceptance",
+      },
+      {
+        label: "Stock Return",
+        to: "/stock-return",
+        icon: "stockReturn",
+      },
+      {
         label: "Item Master",
         to: "/stock-items",
         icon: "itemMaster",
+      },
+      {
+        label: "Item Code",
+        to: "/stock-item-code-names",
+        icon: "itemCodeNames",
       },
     ],
   },

@@ -59,17 +59,60 @@ from .lce_estimate_api import (
 from .lab_furniture_item_api import (
     create_lab_furniture_item_category_api_view,
     create_lab_furniture_item_api_view,
+    list_item_code_names_api_view,
     list_lab_furniture_item_categories_api_view,
     lab_furniture_item_detail_api_view,
     list_lab_furniture_items_api_view,
 )
+from .item_costing_api import (
+    list_item_costing_api_view,
+    item_costing_meta_api_view,
+    item_costing_cost_preview_api_view,
+    create_item_costing_api_view,
+    item_costing_detail_api_view,
+)
 from .projects_api import (
     create_project_api_view,
     create_project_lifecycle_status_option_api_view,
+    list_layout_drawing_approvals_api_view,
     list_projects_api_view,
+    list_project_layout_drawings_api_view,
     list_project_lifecycle_meta_api_view,
+    project_edit_api_view,
     project_detail_api_view,
+    save_project_layout_drawings_api_view,
 )
+from .project_quotation_api import (
+    create_project_quotation_item_api_view,
+    list_project_quotations_api_view,
+    quotation_detail_api_view,
+    quotation_item_detail_api_view,
+    quotation_items_api_view,
+    quotations_api_view,
+    project_quotation_item_detail_api_view,
+)
+from .project_quotation_view import (
+    ProjectQuotationItemView,
+    ProjectQuotationSummaryView,
+    ProjectQuotationView,
+    ProjectQuotationListView,
+)
+from .project_costing_view import ProjectCostingItemView, ProjectCostingSummaryView
+from .project_costing_api import (
+    project_costing_api_view,
+    project_costing_detail_api_view,
+    project_costing_edit_api_view,
+    generate_project_costing_api_view,
+    download_costing_items_import_template_api_view,
+    import_costing_items_excel_api_view,
+    project_costing_items_api_view,
+    project_costing_item_detail_api_view,
+    stock_retrieval_api_view,
+    stock_retrieval_item_detail_api_view,
+    stock_return_api_view,
+    stock_return_item_detail_api_view,
+)
+from .place_stock_order_api import place_stock_order_api_view, place_stock_order_meta_api_view
 from .register_view import RegisterView
 from .stock_maintenance_api import (
     create_stock_maintenance_type_option_api_view,
@@ -115,11 +158,18 @@ from .user_management_api import (
     list_users_api_view,
     user_detail_api_view,
 )
-from .vendors_api import create_vendor_api_view, list_vendors_api_view, vendor_detail_api_view
+from .vendor_api import vendor_api_view, vendor_detail_api_view
 
+from .stock_manufacture_api import (
+    list_stock_manufacture_items_api_view,
+    create_stock_manufacture_item_api_view,
+    stock_manufacture_item_detail_api_view,
+)
 from .stock_purchase_status_option_api import list_stock_purchase_status_options_api_view
+from .stock_acceptance_api import stock_acceptance_api_view, stock_acceptance_edit_api_view
 from .views_cut_optimiser import list_cut_optimiser, create_cut_optimiser, cut_optimiser_detail
 from .views_cut_optimiser import list_cut_sizes, cut_size_detail
+
 __all__ = [
     "BaseAuthFormView", "RegisterView", "LoginPageView",
     "csrf_token_view", "register_meta_api_view", "register_api_view", "login_api_view", "logout_api_view",
@@ -129,7 +179,32 @@ __all__ = [
     "list_vendors_api_view", "create_vendor_api_view", "vendor_detail_api_view",
     "list_projects_api_view", "list_project_lifecycle_meta_api_view",
     "create_project_api_view", "project_detail_api_view",
+    "project_edit_api_view",
     "create_project_lifecycle_status_option_api_view",
+    "list_project_quotations_api_view", "create_project_quotation_item_api_view", "project_quotation_item_detail_api_view",
+    "quotations_api_view", "quotation_detail_api_view", "quotation_items_api_view", "quotation_item_detail_api_view",
+    "ProjectQuotationSummaryView",
+    "ProjectQuotationItemView",
+    "ProjectQuotationView",
+    "ProjectQuotationListView",
+    "ProjectCostingSummaryView",
+    "ProjectCostingItemView",
+    "project_costing_api_view",
+    "project_costing_detail_api_view",
+    "project_costing_edit_api_view",
+    "generate_project_costing_api_view",
+    "download_costing_items_import_template_api_view",
+    "import_costing_items_excel_api_view",
+    "project_costing_items_api_view",
+    "project_costing_item_detail_api_view",
+    "stock_retrieval_api_view",
+    "stock_retrieval_item_detail_api_view",
+    "stock_return_api_view",
+    "stock_return_item_detail_api_view",
+    "place_stock_order_api_view",
+    "place_stock_order_meta_api_view",
+    "list_project_layout_drawings_api_view", "save_project_layout_drawings_api_view",
+    "list_layout_drawing_approvals_api_view",
     "list_stock_purchases_api_view", "create_stock_purchase_api_view", "stock_purchase_detail_api_view",
     "stock_purchase_item_trace_api_view",
     "create_stock_purchase_vendor_detail_api_view", "stock_purchase_vendor_detail_api_view",
@@ -180,13 +255,33 @@ __all__ = [
     "lce_estimate_record_api_view",
     "lce_purchase_items_api_view",
     "list_lab_furniture_item_categories_api_view",
+    "list_item_code_names_api_view",
     "create_lab_furniture_item_category_api_view",
     "list_lab_furniture_items_api_view",
     "create_lab_furniture_item_api_view",
     "lab_furniture_item_detail_api_view",
+    "list_item_costing_api_view",
+    "item_costing_meta_api_view",
+    "item_costing_cost_preview_api_view",
+    "create_item_costing_api_view",
+    "item_costing_detail_api_view",
     "list_cut_optimiser", "create_cut_optimiser", "cut_optimiser_detail",
     "list_stock_purchase_status_options_api_view",
     "list_cut_optimiser", "create_cut_optimiser", "cut_optimiser_detail",
     "list_cut_sizes", "cut_size_detail",
+    "list_stock_manufacture_items_api_view",
+    "create_stock_manufacture_item_api_view",
+    "stock_manufacture_item_detail_api_view",
+    "stock_acceptance_api_view",
+    "stock_acceptance_edit_api_view",
 ]
+
+
+def list_vendors_api_view(request):
+    return vendor_api_view(request)
+
+
+def create_vendor_api_view(request):
+    return vendor_api_view(request)
+
 

@@ -336,6 +336,8 @@ def _serialize(obj, comment_count=0):
         "approved_by_month": obj.approved_by_month,
         "updated_by": obj.updated_by.username if obj.updated_by_id else "",
         "updated_by_id": updated_by_id,
+        "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
+        "updated_on": obj.updated_at.isoformat() if obj.updated_at else "",
         "comment_count": int(comment_count or 0),
     }
 

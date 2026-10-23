@@ -8,6 +8,7 @@ from django.views.decorators.http import require_GET, require_POST
 from ..sub_models import (
     Comment,
     CommentNotificationRead,
+    ProjectLayoutDrawing,
     Task,
     TaskNotificationRead,
 )
@@ -129,6 +130,29 @@ def _serialize_comment_item(comment, task_obj):
     }
 
 
+def _layout_drawing_alerts_qs(user):
+    queryset = ProjectLayoutDrawing.objects.select_related(
+        "project",
+        "level_one_status",
+        "level_one_approver",
+    )
+    if not _is_admin_user(user):
+        queryset = queryset.filter(level_one_approver_id=user.id)
+
+    return queryset.filter(level_one_status_id=3, level_one_approver_id__isnull=False)
+
+
+def _serialize_layout_drawing_item(row):
+    return {
+        "drawing_id": row.id,
+        "project_id": row.project_id,
+        "project_code": row.project.project_id if row.project else "",
+        "project_name": row.project.project_name if row.project else "",
+        "drawing_name": row.drawing_name,
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+    }
+
+
 @require_GET
 def list_header_notifications_api_view(request):
     not_allowed = _ensure_authenticated(request)
@@ -155,6 +179,12 @@ def list_header_notifications_api_view(request):
             continue
         comment_items.append(_serialize_comment_item(comment, task_obj))
 
+    layout_qs = _layout_drawing_alerts_qs(request.user)
+    layout_items = [
+        _serialize_layout_drawing_item(row)
+        for row in layout_qs.order_by("-updated_at", "-id")[:MAX_ALERT_ITEMS]
+    ]
+
     return JsonResponse(
         {
             "task_alerts": {
@@ -164,6 +194,10 @@ def list_header_notifications_api_view(request):
             "message_alerts": {
                 "count": int(unread_comments_qs.count()),
                 "items": comment_items,
+            },
+            "layout_drawing_alerts": {
+                "count": int(layout_qs.count()),
+                "items": layout_items,
             },
         }
     )

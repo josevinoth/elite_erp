@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import CrudPage from "../components/CrudPage";
 import {
   addProjectLifecycleStatusOption,
@@ -9,6 +10,7 @@ import {
   updateProject,
 } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
+import "../styles/project_quotation.css";
 
 const COLUMNS = [
   { key: "project_id", label: "Project ID" },
@@ -21,6 +23,7 @@ const COLUMNS = [
 ];
 
 function ProjectsPage() {
+  const navigate = useNavigate();
   const [statusOptions, setStatusOptions] = useState([]);
   const currentUser = useMemo(() => getSessionUser(), []);
   const loggedInUsername = currentUser?.username || "";
@@ -96,9 +99,19 @@ function ProjectsPage() {
       createFn={createFn}
       updateFn={updateFn}
       deleteFn={deleteProject}
+      addButtonTo="/projects/add"
+      editButtonTo={(row) => `/projects/record/${row.id}`}
       tableMaxHeight="55vh"
       stickyHeader
-      tableWrapClassName="projects-table--no-header-bg"
+      renderHeaderActions={() => (
+        <button
+          type="button"
+          className="crud-add-btn"
+          onClick={() => navigate("/projects/quotation")}
+        >
+          Quotation List
+        </button>
+      )}
     />
   );
 }

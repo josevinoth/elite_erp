@@ -76,3 +76,589 @@ Check status anytime:
 Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
 cmd /c erp_control.bat status 8010
 ```
+
+---
+
+## Stock Manufacture Module
+
+Track in-house manufactured stock items linked to the Item Master (LabFurnitureItem).
+
+### Model
+
+**`StockManufactureItem`** — `erp_app/sub_models/stock_manufacture.py`  
+(created by migration `0048_stock_manufacture_item`)
+
+| Field          | Type              | Notes                                     |
+|----------------|-------------------|-------------------------------------------|
+| `item_name`    | CharField(200)    | Auto-filled from Item Master              |
+| `item_category`| FK → ItemCategory | Synced from Item Master on save           |
+| `item_code`    | FK → LabFurnitureItem | Optional; drives auto-fill in form   |
+| `item_type`    | FK → ItemType_info | Synced from Item Master                  |
+| `uom`          | FK → UOM          | Synced from Item Master                   |
+| `quantity`     | Decimal(12,4)     | User input                                |
+| `unit_price`   | Decimal(14,2)     | User input                                |
+| `total_price`  | Decimal(14,2)     | Auto-calculated: quantity × unit_price    |
+| `length`       | Decimal(12,4)     | Synced from Item Master                   |
+| `width`        | Decimal(12,4)     | Synced from Item Master                   |
+| `height`       | Decimal(12,4)     | Synced from Item Master                   |
+| `volume`       | Decimal(16,4)     | Auto-calculated: length × width × height  |
+| `created_at`   | DateTimeField     | Auto                                      |
+| `updated_at`   | DateTimeField     | Auto                                      |
+
+### Django API Routes
+
+Registered in `erp_app/urls.py` — view file: `erp_app/sub_views/stock_manufacture_api.py`
+
+| Method   | URL                               | View function                                  | Description                  |
+|----------|-----------------------------------|------------------------------------------------|------------------------------|
+| `GET`    | `/api/stock-manufacture/`         | `list_stock_manufacture_items_api_view`        | List all manufacture items   |
+| `POST`   | `/api/stock-manufacture/create/`  | `create_stock_manufacture_item_api_view`       | Create a new item            |
+| `PATCH`  | `/api/stock-manufacture/<pk>/`    | `stock_manufacture_item_detail_api_view`       | Update an existing item      |
+| `DELETE` | `/api/stock-manufacture/<pk>/`    | `stock_manufacture_item_detail_api_view`       | Delete an item               |
+
+#### API + serializer
+
+- `stock_manufacture_api.py` uses a dedicated serializer: `StockManufactureItemSerializer`
+- `StockManufactureItemSerializer` performs item-master sync for `item_name`, `item_type`, `uom`, and dimensions
+- duplicate manufacturing records for the same `item_code` are blocked
+
+### React Frontend
+
+#### Routes — `frontend/src/App.jsx`
+
+| Route                                  | Component                  | Description                  |
+|----------------------------------------|----------------------------|------------------------------|
+| `/stock-manufacture`                   | `StockManufacturePage`     | List + inline add/edit page  |
+
+#### List Page — `StockManufacturePage.jsx`
+
+Uses a custom inline CRUD table (same interaction pattern as stock purchase items).
+
+**Columns displayed:**
+
+| Column       | Key            | Min Width |
+|--------------|----------------|-----------|
+| Item Category | `item_category` | 280 px   |
+| Item Code    | `item_code`    | 110 px    |
+| Item Name    | `item_name`    | 300 px    |
+| Item Type    | `item_type`    | 120 px    |
+| GRN No.      | computed label | 120 px    |
+| UOM          | `uom`          | 140 px    |
+| Qty/Size     | `quantity`     | 80 px     |
+| Unit Price   | `unit_price`   | 100 px    |
+| Total Price  | `total_price`  | 100 px    |
+| Length       | `length`       | 80 px     |
+| Width        | `width`        | 80 px     |
+| Height/Thk   | `height`       | 90 px     |
+| Volume       | `volume`       | 90 px     |
+
+**Features:**
+
+- Add button opens inline add section on the same page (no navigation)
+- Edit opens inline editable row in list table
+- Item code selection auto-fills read-only `item_name`, `item_type`, `uom`, and dimensions
+- Horizontal table scroll keeps the page responsive on mobile
+
+### Frontend Service Functions — `crudApi.js`
+
+| Function                        | Method   | Endpoint                            |
+|---------------------------------|----------|-------------------------------------|
+| `listStockManufactureItems()`   | `GET`    | `/api/stock-manufacture/`           |
+| `createStockManufactureItem(payload)` | `POST` | `/api/stock-manufacture/create/` |
+| `updateStockManufactureItem(id, payload)` | `PATCH` | `/api/stock-manufacture/<id>/` |
+| `deleteStockManufactureItem(id)` | `DELETE` | `/api/stock-manufacture/<id>/`  |
+
+### Data Flow
+
+```
+User selects Item Category
+  ↓
+User selects Item Code
+  ↓
+[Frontend] inline add/edit row item-code handler triggered
+  ↓
+[Frontend] Looks up LabFurnitureItem from itemMasterOptions
+  ↓
+[Frontend] Auto-populates (all read-only):
+  - item_name, item_type, uom
+  - length, width, height → volume (calculated)
+  ↓
+User enters quantity & unit_price → total_price auto-calculated
+  ↓
+Form submitted from same list page (POST /api/stock-manufacture/create/ or PATCH /api/stock-manufacture/<id>/)
+  ↓
+[Backend] StockManufactureItemSerializer + stock_manufacture_api
+  - resolves FK ids
+  - derives item_name / item_type / uom from Item Master when item_code present
+  - calculates total_price & volume server-side
+  - prevents duplicate stock manufacture rows for the same item_code
+  ↓
+201 response with serialized record
+```
+
+### Migration
+
+```powershell
+python manage.py migrate erp_app 0049
+```
+
+---
+
+## Project Quotation Module
+
+Prepare project quotations per project with BOM hierarchy validation and cost-type-aware item entry.
+
+### Highlights
+
+- Cost types are stored in `erp/erp_app/sub_models/CostType_mod.py` as `CostTypeInfo`
+- Quotation rows are stored in `erp/erp_app/sub_models/project_quotation_mod.py` as `ProjectQuotationItemInfo`
+- Material rows enforce the chain `Item Category → Item Name → Item Code`
+- Non-material rows automatically clear item master fields
+- BOM hierarchy rejects skipped levels with the message:
+  `Invalid BOM hierarchy: children must be linked to immediate parent level.`
+- `cost_per_qty` auto-resolves from Item Costing first, then the latest stock purchase costs
+- UI on `/projects/quotation` uses the same visual styling pattern as Project Costing summary (shared header/table/alert theme)
+- Shared style baseline is imported from `erp/frontend/src/styles/ProjectCostingSummary.css` in addition to `ProjectQuotation.css`
+- Retrieval workflow logic is intentionally excluded from quotation items and remains Project Costing-only
+- Navigation: **Home -> Projects -> Quotation -> Quotation Summary + Items**
+- Quotation Summary status change from `Work In Progress` to `Completed` requires an `AlertMessage` confirmation (`OK` / `Cancel`).
+- On confirmation `OK`, status updates to `Completed`; non-admin users are read-only while admin users retain edit rights.
+- On confirmation `Cancel`, status is reverted and the summary remains editable.
+- Admin users can revert status from `Completed` to `Work In Progress` after confirmation (`Revert status to Work in Progress? This will unlock editing for all users.`).
+- Non-admin users cannot revert status once `Completed`.
+- Confirmation popup `OK` now calls `/api/project-quotation/<id>/status/` and re-fetches summary data before applying UI lock/unlock state.
+- Quotation item validation alerts are rendered at the top of the Quotation Items table section.
+- Non-admin users opening a `Completed` quotation see: `Status is Completed. Only admin can edit this form.` at the top of the summary section.
+- Save Summary uses a popup warning when `Completed` is selected with no quotation items; confirmation allows save for backward compatibility.
+- Quotation status change from `Work In Progress` to `Completed` validates Quotation Items first:
+  - if items exist → standard completion confirmation popup,
+  - if items are empty → warning confirmation popup (`No quotation items added...`).
+- Summary alerts are status-related and shown above the Quotation Summary section.
+- Item alerts are item-related and shown above the Quotation Items table.
+
+---
+
+## Project Costing Module
+
+Clone approved quotation summaries and items into project costing records, then track retrieval workflow using the same database schema.
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Summary model | `erp/erp_app/sub_models/project_costing_summary_mod.py` | Stores cloned quotation summary values plus generated `costing_id` |
+| Item model | `erp/erp_app/sub_models/project_costing_items_mod.py` | Stores cloned quotation item rows plus `retrieval_status` |
+| Retrieval status model | `erp/erp_app/sub_models/retrieval_status_mod.py` | Defines allowed costing retrieval workflow statuses |
+| Summary serializer | `erp/erp_app/project_costing_summary_serializer.py` | Exposes costing summary display/edit fields |
+| Item serializer | `erp/erp_app/project_costing_items_serializer.py` | Exposes costing items with nested `retrieval_status` |
+| View helpers | `erp/erp_app/sub_views/project_costing_view.py` | Clone/list/detail payload logic for costing summaries and items |
+| API views | `erp/erp_app/sub_views/project_costing_api.py` | List, generate, edit, import, retrieval, and return endpoints |
+| URL registration | `erp/erp_app/urls.py` | Registers costing summary/item API routes |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/ProjectCostingPage.jsx` | Costing list and costing summary edit page |
+| Styles | `erp/frontend/src/styles/ProjectCosting.css` | All costing page styling and status badge classes |
+| Service API | `erp/frontend/src/services/crudApi.js` | Fetch helpers for costing CRUD, completed quotation lookup, item import, and template download |
+
+### Key API routes
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/project-costing/` | List project costing summaries with quotation number and project code |
+| `GET` | `/api/project-costing/quotations/` | List completed quotations for the costing generation dropdown |
+| `POST` | `/api/project-costing/generate/` | Clone a quotation summary and its items into project costing |
+| `GET` | `/api/project-costing/<id>/` | Load costing summary detail and linked items |
+| `PATCH` | `/api/project-costing/<id>/` | Update costing summary fields |
+| `GET/PATCH` | `/api/project-costing/<id>/edit/` | Compatibility edit endpoint for summary + linked item updates |
+| `GET/POST` | `/api/project-costing/<id>/items/` | List or create costing items for a summary |
+| `PATCH/DELETE` | `/api/project-costing/<costing_id>/items/<item_id>/` | Update or delete a costing item |
+| `GET` | `/api/purchase-items/<item_code>/grns/` | List GRNs and available balance for a selected item code |
+| `GET` | `/api/stock/<item_code>/summary/` | Stock summary by GRN (Purchased / Consumed / Balance) |
+| `GET` | `/api/stock-retrieval/` | List costing items with retrieval status `Item Requested` |
+| `GET` | `/api/stock-return/` | List costing items with retrieval status `Item Return` |
+
+### UI behavior
+
+- `Generate Project Costing` clones quotation summary financial fields and quotation item rows.
+- New costing item rows default `retrieval_status` to `Item Requested`.
+- Material item selection now requires GRN-aware allocation from Stock Purchase (`/api/purchase-items/<item_code>/grns/`).
+- Requested Qty can be split across multiple GRNs in the Costing Item editor; total split must equal Requested Qty.
+- `StockPurchaseItem.purchase_qty` stores the original purchase quantity and remains immutable during costing allocation.
+- Consumption is tracked in `ProjectCostingItem` (`accepted_qty`) using GRN allocations without mutating original purchase quantity.
+- `StocksListPage.jsx` shows GRN-level Purchased Qty, Consumed Qty, and Balance Qty.
+- Rows marked `Item Accepted` are frozen for non-admin users.
+- Rows marked `Item Return` flow into the Stock Return module.
+- `ProjectCostingPage.jsx` keeps all styles in `ProjectCosting.css` with badge/popup classes only.
+- `StockRetrievalPage.jsx` now displays `purchase_qty`, `length`, `width`, `height`, and `volume`.
+- In Stock Retrieval, `retrieval_status` is read-only when `stock_status = No Stock` (legacy `Not Purchased` rows are still recognized).
+- Stock Retrieval actions use `Item Requested` -> `Item Accepted` (Accept) and `Item Return` (Reject).
+
+### Django API Routes
+
+Registered in `erp/erp_app/urls.py` — view files: `erp/erp_app/sub_views/project_quotation_api.py` and `erp/erp_app/sub_views/project_quotation_view.py`
+
+| Method   | URL                                 | Description                              |
+|----------|--------------------------------------|------------------------------------------|
+| `GET`    | `/api/project-quotations/`           | List project-grouped quotation payloads  |
+| `POST`   | `/api/project-quotations/create/`    | Create a quotation row                   |
+| `GET`    | `/api/project-quotations/<pk>/`      | Fetch one quotation row + project group  |
+| `PATCH`  | `/api/project-quotations/<pk>/`      | Update a quotation row                   |
+| `DELETE` | `/api/project-quotations/<pk>/`      | Delete a quotation row                   |
+
+### React Frontend
+
+- Route: `/projects/quotation`
+- Page: `erp/frontend/src/pages/ProjectQuotationPage.jsx`
+- Service calls: `erp/frontend/src/services/crudApi.js`
+- Shared style file: `erp/frontend/src/styles/ProjectCostingSummary.css`
+- Standard confirmation popup component: `erp/frontend/src/components/ConfirmPopupModal.jsx`
+
+### Confirmation modal tracing
+
+- `ProjectQuotationPage.jsx`: status change confirmation + save-without-items warning.
+- `StockRetrievalPage.jsx`: accept/reject retrieval confirmations.
+- `StockAcceptancePage.jsx`: accept/return stock confirmations.
+- `StockReturnPage.jsx`: approve/reject return confirmations.
+
+### Quotation summary + item API routes
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/project-quotation/<id>/summary/` | Fetch quotation summary payload for one quotation |
+| `PATCH` | `/api/project-quotation/<id>/status/` | Update quotation status with admin/non-admin edit-permission flags |
+| `PATCH` | `/api/project-quotation/<id>/save/` | Save summary fields with optional confirmation for `Completed` status when no items exist |
+| `GET` | `/api/project-quotation/<id>/items/` | Fetch quotation item list without retrieval status fields |
+
+### Migration
+
+The schema and default quotation cost types are created by:
+
+```powershell
+Set-Location "C:\Users\BVM\PycharmProjects\elite_erp_v1.0\erp"
+python manage.py migrate erp_app
+```
+
+---
+
+## Vendor Module
+
+Manage master vendor records with generated vendor codes and validation.
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Vendor model | `erp/erp_app/sub_models/vendor.py` | Stores vendor master records with auto-generated `vendor_code` (`VC_` + `10000 + id`) |
+| Vendor proxy class | `erp/erp_app/sub_models/vendor_mod.py` | Exposes `VendorInfo` naming convention |
+| Serializer | `erp/erp_app/vendor_serializer.py` | Validates duplicates and email (`@` required), returns legacy + new field aliases |
+| API views | `erp/erp_app/sub_views/vendor_api.py` | Vendor CRUD endpoints |
+| URL registration | `erp/erp_app/urls.py` | Registers vendor API routes |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/VendorsPage.jsx` | Add/edit/delete vendors with inline validation |
+| Styles | `erp/frontend/src/styles/Vendor.css` | Vendor page layout and table styles (no inline JSX styles) |
+
+### Vendor behavior
+
+- Vendor code auto-generates in format `VC_XXXXX` from record id.
+- Duplicate `vendor_name` is rejected at UI + API.
+- `email_id` must contain `@`.
+- Address input uses a 3-row textarea with vertical resize.
+
+---
+
+## Place Stock Order Module
+
+Separate stock-purchase workflow to place vendor orders for not-purchased costing items.
+
+### Routing and navigation
+
+- Route: `/stock-purchase/place-order`
+- Navigation: **Home Page -> Stocks -> Stock Purchase -> Place Stock Order**
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Order models | `erp/erp_app/sub_models/place_stock_order_mod.py` | Stores order header (`PlaceStockOrderInfo`) and selected items (`PlaceStockOrderItem`) |
+| API views | `erp/erp_app/sub_views/place_stock_order_api.py` | Meta endpoint (vendors + items) and create endpoint |
+| URL registration | `erp/erp_app/urls.py` | Registers `/api/stock-purchase/place-order/meta/` and `/api/stock-purchase/place-order/` |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/PlaceStockOrderPage.jsx` | Vendor auto-fill + multi-item selection + save order |
+| Service helpers | `erp/frontend/src/services/crudApi.js` | `listPlaceStockOrderMeta`, `createPlaceStockOrder` |
+| Styles | `erp/frontend/src/styles/PlaceStockOrder.css` | All page/table styles (no inline JSX styles) |
+
+### Place Stock Order behavior
+
+- Vendor dropdown auto-populates `vendor_code`, `address`, `phone_number`, `email_id`, and `contact_person`.
+- Order item list includes only Project Costing rows with `stock_status = No Stock`.
+- Multi-select item table includes: category, name, code, type, purchase qty, requested qty, size, volume, stock status.
+- Save persists linkages to both `costing_id` and `vendor_id`.
+
+
+
+## Stock Acceptance Module
+
+Handle post-supply stock acceptance decisions for Project Costing items.
+
+### Routing and navigation
+
+- Route: `/stock-acceptance`
+- Navigation: **Home Page -> Stocks -> Stock Acceptance**
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| API views | `erp/erp_app/sub_views/stock_acceptance_api.py` | Lists supplied items and enforces owner/admin-only status updates |
+| URL registration | `erp/erp_app/urls.py` | Registers `/api/stock-acceptance/` and `/api/stock-acceptance/edit/` |
+| Item serializer | `erp/erp_app/project_costing_items_serializer.py` | Exposes project and owner fields used by Stock Acceptance UI |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Page | `erp/frontend/src/pages/StockAcceptancePage.jsx` | Shows only supplied rows and supports allowed status changes |
+| Page | `erp/frontend/src/pages/StockRetrievalPage.jsx` | Retrieval action workflow with confirmation screen + refreshed list return |
+| Page | `erp/frontend/src/pages/StockReturnPage.jsx` | Return action workflow with confirmation screen + refreshed list return |
+| Shared confirmation component | `erp/frontend/src/components/ActionConfirmationPage.jsx` | Action summary + `Return to List` button after updates |
+| Shared alert component | `erp/frontend/src/components/AlertMessage.jsx` | Consistent success/info/danger/warning/default messages |
+| Shared alert + confirmation styles | `erp/frontend/src/styles/ProjectCostingSummary.css` | Reusable alert variants and confirmation layout |
+| Service API | `erp/frontend/src/services/crudApi.js` | `listStockAcceptanceItems`, `updateStockAcceptanceItem` |
+| Route registration | `erp/frontend/src/App.jsx` | Registers `/stock-acceptance` page route |
+| Home navigation | `erp/frontend/src/config/homeNavigation.js` | Adds **Stock Acceptance** under Stocks menu |
+
+### Rules and behavior
+
+- Stock Acceptance list includes only rows in supplied state (`Stock Supplied` / `Item Supplied`).
+- Non-admin users only see rows where the linked project's `project_owner` matches the logged-in user.
+- Only project owner or admin can update status.
+- Allowed transitions are restricted to:
+  - `Stock Supplied -> Stock Accepted`
+  - `Stock Supplied -> Stock Returned`
+- After update, the row no longer appears in Stock Acceptance list.
+
+### Action confirmation workflow (Retrieval / Acceptance / Return)
+
+- Every update action now follows: **Action -> Confirmation -> Refreshed List**.
+- After submitting an action, the page shows a confirmation screen with:
+  - summary fields: `item_name`, `item_code`, `project_name`, `quotation_number`
+  - status message shown through `AlertMessage`
+  - `Return to List` button
+- `Return to List` goes back to the same module list route and reloads data from API:
+  - `/stock-retrieval`
+  - `/stock-acceptance`
+  - `/stock-return`
+- Refresh keeps backward compatibility with existing quotation/project costing records and does not require schema changes.
+
+### Project owner integration
+
+- `Project` model includes `project_owner` FK (`erp/erp_app/sub_models/project.py`), surfaced by proxy `ProjectInfo` in `erp/erp_app/sub_models/project_mod.py`.
+- Project APIs support `project_owner` create/edit via `erp/erp_app/sub_views/projects_api.py` (`/api/projects/<id>/edit/`).
+- Project serializer exposes `project_owner` fields in `erp/erp_app/project_serializer.py`.
+- Project add/edit page (`erp/frontend/src/pages/ProjectsAddPage.jsx`) includes **Project Owner** dropdown populated by `/api/projects/meta/`.
+
+---
+
+## Stock Retrieval Workflow
+
+Complete stock retrieval workflow with GRN references and status transitions for project costing items.
+
+### Backend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Item model | `erp/erp_app/sub_models/project_costing_items_mod.py` | `ProjectCostingItemInfo` with `retrieval_status` FK and `accepted_qty` field |
+| Status model | `erp/erp_app/sub_models/retrieval_status_mod.py` | `RetrievalStatusInfo` defines 7 retrieval workflow statuses |
+| Retrieval + return API views | `erp/erp_app/sub_views/project_costing_api.py` | GRN-wise retrieval updates and return approval/rejection workflow |
+| Acceptance API views | `erp/erp_app/sub_views/stock_acceptance_api.py` | Item-code level acceptance list and accept/reject transitions |
+| URL registration | `erp/erp_app/urls.py` | Registers retrieval/acceptance/return endpoints |
+
+### Frontend file mapping
+
+| Area | File | Purpose |
+|------|------|---------|
+| Retrieval page | `erp/frontend/src/pages/StockRetrievalPage.jsx` | Shows `Item Requested` items with Accept/Reject actions |
+| Acceptance page | `erp/frontend/src/pages/StockAcceptancePage.jsx` | Shows `Item Supplied` items with Accept/Reject actions |
+| Return page | `erp/frontend/src/pages/StockReturnPage.jsx` | Shows `Item Return` items with Accept/Reject actions |
+| Stock list page | `erp/frontend/src/pages/StocksListPage.jsx` | Shows GRN-level purchased/consumed/balance quantities |
+| Confirmation component | `erp/frontend/src/components/ActionConfirmationPage.jsx` | Summary screen after action submission |
+| Service API | `erp/frontend/src/services/crudApi.js` | Service functions for all retrieval/acceptance/return endpoints |
+
+### Retrieval Status Lifecycle
+
+```
+┌─────────────────┐
+│  No Action      │  (initial/rejected state)
+└────────┬────────┘
+         ▼
+┌──────────────────────┐
+│  Item Requested      │  (engineering creates item in costing)
+└────────┬─────────────┘
+         │ Accept
+         ▼
+┌──────────────────────┐
+│  Item Supplied       │  (stock team confirms supply)
+└────────┬─────────────┘
+         │ Accept       │ Reject
+         ▼              ▼
+┌──────────────────────┐  ┌──────────────────────┐
+│  Item Accepted       │  │  Item Requested      │
+└────────┬─────────────┘  └──────────────────────┘
+         │ Initiate Return
+         ▼
+┌──────────────────────┐
+│  Item Return         │  (material is returned to vendor)
+└────────┬─────────────┘
+         │ Accept       │ Reject
+         ▼              ▼
+┌──────────────────────────┐  ┌──────────────────────┐
+│  Item Return Accepted    │  │  Item Accepted       │
+└──────────────────────────┘  └──────────────────────┘
+(return processed, stock updated)
+```
+
+### Retrieval Status Transitions
+
+| Status | Source | Accept Action | Reject Action | Notes |
+|--------|--------|---------------|---------------|-------|
+| **Item Requested** | Engineering (create costing item) | → Item Supplied | → No Action | Stock team reviews request |
+| **Item Supplied** | Stock team (retrieval list) | → Item Accepted | → Item Requested | Acceptance workflow step |
+| **Item Accepted** | Acceptance workflow | → Item Return | — | Item is consumed; can initiate return |
+| **Item Return** | Accepted items (manual initiation) | → Item Return Accepted | → Item Accepted | Return is being processed |
+| **Item Return Accepted** | Return workflow approved | (terminal) | — | Return approved; stock balance updated |
+| **No Action** | Rejection | (idle) | — | Item is not processed further |
+
+### API Endpoints
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/stock-retrieval/` | List costing items with `retrieval_status = "Item Requested"` |
+| `PATCH` | `/api/stock-retrieval/<id>/` | Accept/Reject item in retrieval (→ Item Supplied / → No Action) |
+| `GET` | `/api/stock-acceptance/` | List costing items with `retrieval_status = "Item Supplied"` |
+| `PATCH` | `/api/stock-acceptance/edit/` | Accept/Reject item in acceptance (→ Item Accepted / → Item Requested) |
+| `GET` | `/api/stock-return/` | List costing items with `retrieval_status = "Item Return"` |
+| `PATCH` | `/api/stock-return/<id>/` | Accept/Reject return (→ Item Return Accepted / → Item Accepted) |
+
+### Workflow Steps
+
+#### 1. Retrieval List → Stock Acceptance
+- **Page:** `/stock-retrieval`
+- **Status:** Shows only items with `retrieval_status = "Item Requested"`
+- **Actions:**
+  - **Accept:** Set the selected **GRN line** to `"Item Supplied"`
+  - **Reject:** Set the selected **GRN line** to `"No Action"`
+- **Behavior:** Stock team can approve or reject each GRN allocation separately for the same Item Code. The parent costing item moves to `"Item Supplied"` only after all linked GRN lines are supplied.
+- **Permissions:** Project owner, admin, or stock team
+
+#### 2. Stock Acceptance → Return (Optional)
+- **Page:** `/stock-acceptance`
+- **Status:** Shows only items with `retrieval_status = "Item Supplied"`
+- **Grouping:** Rows are grouped at **Item Code** level (not split into separate GRN rows)
+- **Actions:**
+  - **Accept:** Set **all GRN lines for that Item Code** to `"Item Accepted"`
+  - **Reject:** Reset **all GRN lines for that Item Code** to `"Item Requested"`
+- **Permissions:** Project owner, admin, or stock team
+- **Note:** Once accepted, the next allowed workflow step is `"Item Return"`
+
+#### 3. Return Workflow (When Item Needs Return)
+- **Page:** `/stock-return`
+- **Status:** Shows pending items with `retrieval_status = "Item Return"` and accepted items that can create a new return request
+- **Return Request Rule:** User enters only the **return qty** at item-code level; the system assigns the GRN breakdown automatically using FIFO
+- **FIFO Allocation:**
+  - Sort accepted GRN allocations by `purchase_date` (fallback `GRN number`)
+  - Apply the return qty to the earliest consumed GRN first
+  - Continue to the next GRN only when the earlier one is fully exhausted
+- **Actions:**
+  - **Accept Return:** Set all linked GRN lines to `"Item Return Accepted"` → Stock balance is restored for those GRNs
+  - **Reject Return:** Reset all linked GRN lines to `"Item Accepted"` → Item remains consumed; no stock balance change
+- **Permissions:** Project owner, admin, or stock team
+- **Effect on Stock:**
+  - Balance Qty = Purchased Qty − Consumed Qty + Returned Qty
+  - Stock is restored **only after return approval**
+  - API response includes the FIFO GRN breakdown used for the return request
+
+#### 4. Stock List Display
+- **Page:** `/stocks`
+- **Content:** For each Item Code + GRN combination:
+  - **Purchased Qty:** `StockPurchaseItem.purchase_qty` (immutable)
+  - **Consumed Qty:** Sum of GRN allocations currently in `Item Accepted` or pending `Item Return`
+  - **Balance Qty:** Purchased − Consumed + Returned
+  - **GRN Number, Vendor, Unit Price, Total Price, LCE Cost**
+- **Visibility:** All users can view (filtered by project owner if non-admin)
+
+### Implementation Details
+
+#### Model Fields
+- **`ProjectCostingItemInfo.retrieval_status`** (FK → `RetrievalStatusInfo`)
+  - Tracks workflow state for each costing item
+  - Initialized to `"Item Requested"` for new costing workflow rows
+  - Updated via retrieval/acceptance/return workflows
+
+- **`ProjectCostingItemInfo.accepted_qty`** (Decimal)
+  - Stores quantity accepted in the Item Accepted state
+  - Used to calculate consumed qty for stock balance
+  - Decremented when item return is accepted
+
+- **`ProjectCostingItemInfo.purchase_item`** (FK → `StockPurchaseItem`)
+  - Links costing item to original GRN
+  - Enables stock balance tracking per GRN
+  - Facilitates returned qty updates
+
+- **`ProjectCostingItemAllocation.pending_return_qty`** (Decimal)
+  - Stores FIFO-assigned return qty waiting for stock return approval
+  - Does **not** restore stock balance until approved
+
+- **`ProjectCostingItemAllocation.returned_qty`** (Decimal)
+  - Stores FIFO-approved returned qty per GRN allocation
+  - Used by stock summary to restore GRN balance automatically
+
+#### Service Functions (Frontend crudApi.js)
+```javascript
+// Retrieval
+listStockRetrievalItems()
+updateStockRetrievalItem(id, {action: "accept"|"reject", purchase_item_id, rejection_comment: ""})
+
+// Acceptance
+listStockAcceptanceItems()
+updateStockAcceptanceItem(id, {action: "accept"|"reject"})
+
+// Return
+listStockReturnItems()
+createStockReturnRequest({ item_id, item_code, return_qty })
+updateStockReturnItem(id, {action: "accept"|"reject"})
+```
+
+#### Permission Model
+- **Non-admin users:** See only items linked to their project (where `project_owner = user`)
+- **Admin users:** See all items
+- **Stock team members:** Can update status in retrieval/acceptance/return workflows
+- **Project owners:** Can update status if they own the project
+- **Non-authorized users:** Receive 403 Forbidden response
+
+#### Validation Rules
+- Only `Item Requested` items can be acted upon in Stock Retrieval
+- Only `Item Supplied` items can be acted upon in Stock Acceptance
+- Only `Item Return` items can be acted upon in Stock Return
+- Retrieval approval/rejection is performed **per GRN allocation**
+- Acceptance approval/rejection is performed **per Item Code** and updates all linked GRN allocations together
+- Return requests are created **per Item Code** with a single `return_qty`; FIFO decides the affected GRNs automatically
+- Accept action changes status forward; Reject reverses to previous logical state
+- Stock balance is restored only after `Item Return Accepted`
+
+### Backward Compatibility
+
+- Existing costing items may still contain historical `No Action` rows, but new workflow rows default to `Item Requested`
+- Items without a `retrieval_status` are skipped in retrieval/acceptance/return lists
+- Stock list calculation filters by `retrieval_status` to ensure only completed items affect balance
+- No required schema changes for existing quotation/costing records

@@ -1,0 +1,4 @@
+from .project_quotation_items_serializer import ProjectQuotationItemSerializer
+
+ProjectQuotationSerializer = ProjectQuotationItemSerializer
+

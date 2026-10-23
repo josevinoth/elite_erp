@@ -139,8 +139,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'erp_app'
+    'erp_app',
+    'rest_framework'
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',   # works with Django login sessions
+        'rest_framework.authentication.BasicAuthentication',     # optional, for testing
+        # 'rest_framework.authentication.TokenAuthentication',   # if you want token-based auth
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',            # default: require login
+    ],
+}
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -173,6 +186,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'erp.wsgi.application'
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases

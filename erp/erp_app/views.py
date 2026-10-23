@@ -29,6 +29,8 @@ from .sub_views import (
     list_pending_registrations_api_view,
     list_vendors_api_view,
     list_projects_api_view,
+    list_layout_drawing_approvals_api_view,
+    list_project_layout_drawings_api_view,
     list_project_lifecycle_meta_api_view,
     list_stock_purchases_api_view,
     list_stock_maintenance_api_view,
@@ -38,6 +40,8 @@ from .sub_views import (
     login_api_view,
     logout_api_view,
     project_detail_api_view,
+    project_edit_api_view,
+    save_project_layout_drawings_api_view,
     register_api_view,
     register_meta_api_view,
     reset_password_api_view,
@@ -48,8 +52,8 @@ from .sub_views import (
     stock_purchase_vendor_detail_api_view,
     stock_maintenance_detail_api_view,
     task_detail_api_view,
-    create_task_status_option_api_view,
     create_activity_option_api_view,
+    create_task_status_option_api_view,
     create_project_status_option_api_view,
     create_timesheet_api_view,
     download_timesheet_template_api_view,
@@ -84,27 +88,57 @@ from .sub_views import (
     lce_estimate_record_api_view,
     lce_purchase_items_api_view,
     list_lce_estimates_api_view,
+    list_item_code_names_api_view,
     list_lab_furniture_items_api_view,
     list_lab_furniture_item_categories_api_view,
     create_lab_furniture_item_category_api_view,
     create_lab_furniture_item_api_view,
     lab_furniture_item_detail_api_view,
+    list_item_costing_api_view,
+    item_costing_meta_api_view,
+    item_costing_cost_preview_api_view,
+    create_item_costing_api_view,
+    item_costing_detail_api_view,
     list_cut_optimiser,
     create_cut_optimiser,
     cut_optimiser_detail,
     list_stock_purchase_status_options_api_view,
     list_cut_sizes,
-    cut_size_detail
+    cut_size_detail,
+    project_layout_drawing_view,
+    project_costing_api_view,
+    project_costing_detail_api_view,
+    project_costing_edit_api_view,
+    generate_project_costing_api_view,
+    download_costing_items_import_template_api_view,
+    import_costing_items_excel_api_view,
+    project_costing_items_api_view,
+    project_costing_item_detail_api_view,
+    stock_retrieval_api_view,
+    stock_retrieval_item_detail_api_view,
+    stock_return_api_view,
+    stock_return_item_detail_api_view,
+    stock_acceptance_api_view,
+    stock_acceptance_edit_api_view,
+    place_stock_order_api_view,
+    place_stock_order_meta_api_view,
 )
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .serializers import UOMSerializer
+from .serializers import UOMSerializer, ItemTypeSerializer
 from .sub_models.cut_optimiser import UOM
+from .sub_models.item_type_mod import ItemType_info
 
 @api_view(['GET'])
 def list_uoms_api_view(request):
     uoms = UOM.objects.all()
     serializer = UOMSerializer(uoms, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+def list_item_types_api_view(request):
+    item_types = ItemType_info.objects.all()
+    serializer = ItemTypeSerializer(item_types, many=True)
     return Response(serializer.data)
 
 __all__ = [
@@ -126,10 +160,14 @@ __all__ = [
     "create_vendor_api_view",
     "vendor_detail_api_view",
     "list_projects_api_view",
+    "list_layout_drawing_approvals_api_view",
+    "list_project_layout_drawings_api_view",
     "list_project_lifecycle_meta_api_view",
     "create_project_api_view",
     "create_project_lifecycle_status_option_api_view",
     "project_detail_api_view",
+    "project_edit_api_view",
+    "save_project_layout_drawings_api_view",
     "list_stock_purchases_api_view",
     "create_stock_purchase_api_view",
     "stock_purchase_detail_api_view",
@@ -147,6 +185,7 @@ __all__ = [
     "import_tasks_excel_api_view",
     "download_task_template_api_view",
     "list_task_meta_api_view",
+    "create_activity_option_api_view",
     "create_task_status_option_api_view",
     "create_project_status_option_api_view",
     "list_timesheet_meta_api_view",
@@ -197,11 +236,22 @@ __all__ = [
     "list_lab_furniture_items_api_view",
     "create_lab_furniture_item_api_view",
     "lab_furniture_item_detail_api_view",
+    "list_item_costing_api_view",
+    "item_costing_meta_api_view",
+    "item_costing_cost_preview_api_view",
+    "create_item_costing_api_view",
+    "item_costing_detail_api_view",
     "list_uoms_api_view",
+    "list_item_types_api_view",
     "list_cut_optimiser",
     "create_cut_optimiser",
     "cut_optimiser_detail",
     "list_stock_purchase_status_options_api_view",
     "list_cut_sizes",
-    "cut_size_detail"
+    "cut_size_detail",
+    "project_layout_drawing_view",
+    "place_stock_order_api_view",
+    "place_stock_order_meta_api_view",
+    "stock_acceptance_api_view",
+    "stock_acceptance_edit_api_view",
 ]

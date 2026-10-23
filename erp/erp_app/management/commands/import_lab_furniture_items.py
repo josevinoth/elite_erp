@@ -4,7 +4,7 @@ from pathlib import Path
 from django.db.utils import OperationalError, ProgrammingError
 from django.core.management.base import BaseCommand, CommandError
 
-from ...sub_models import ItemCategory, LabFurnitureItem
+from ...sub_models import ItemCategory, ItemCodeName, LabFurnitureItem
 from ...utils import normalize_text
 
 
@@ -137,10 +137,17 @@ class Command(BaseCommand):
             used_names[item_text.casefold()] += 1
             preview_rows.append(("create", row_idx, category_name, item_text, code))
             if not dry_run:
-                LabFurnitureItem.objects.create(
-                    item_name=item_text,
-                    item_category=current_category,
+                lookup, _ = ItemCodeName.objects.get_or_create(
                     item_code=code,
+                    defaults={"item_name": item_text, "item_category": current_category},
+                )
+                if lookup.item_category_id != getattr(current_category, "id", None):
+                    lookup.item_category = current_category
+                    lookup.save(update_fields=["item_category"])
+                LabFurnitureItem.objects.create(
+                    item_code_ref=lookup,
+                    item_name_ref=lookup,
+                    item_category=current_category,
                 )
             item_count += 1
 

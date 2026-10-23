@@ -5,6 +5,7 @@ import ErrorBoundary from "../components/ErrorBoundary";
 import ExpenseBarChart from "../components/ExpenseBarChart";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import {
+  addExpenseItemOption,
   addExpenseSessionOption,
   addExpenseStatusOption,
   bulkUpdateCdcTeamExpences,
@@ -57,7 +58,6 @@ const IMPORT_REPORT_COLUMNS = [
 
 function CdcTeamExpencePage() {
   const currentUser = useMemo(() => getSessionUser(), []);
-  const loggedInUsername = useMemo(() => currentUser?.username || "", [currentUser]);
   const isAdmin = useMemo(() => {
     const role = (currentUser?.role || "").trim().toLowerCase();
     return ["admin", "super admin", "staff"].includes(role);
@@ -95,15 +95,6 @@ function CdcTeamExpencePage() {
     [statusOptions]
   );
 
-  const defaultPaidBy = useMemo(() => {
-    const current = loggedInUsername.trim().toLowerCase();
-    if (!current) return "";
-
-    return paidByOptions.some((option) => String(option.label || "").trim().toLowerCase() === current)
-      ? loggedInUsername
-      : "";
-  }, [loggedInUsername, paidByOptions]);
-
   const loadMeta = useCallback(async () => {
     try {
       const data = await listCdcTeamExpenceMeta();
@@ -133,6 +124,12 @@ function CdcTeamExpencePage() {
     });
   }, [loadMeta]);
 
+  const appendItem = async (name) => {
+    const data = await addExpenseItemOption(name);
+    await loadMeta();
+    return data.id;
+  };
+
   const appendStatus = async (name) => {
     const data = await addExpenseStatusOption(name);
     await loadMeta();
@@ -143,6 +140,17 @@ function CdcTeamExpencePage() {
     const data = await addExpenseSessionOption(name);
     await loadMeta();
     return data.id;
+  };
+
+  const appendPaidBy = async (name) => {
+    // For Paid By, we add it to the options directly
+    // The validation will occur in the backend
+    setPaidByOptions((prev) => {
+      const newOption = { value: name, label: name };
+      const exists = prev.some((opt) => opt.value === name);
+      return exists ? prev : [...prev, newOption];
+    });
+    return name;
   };
 
   const computeValues = useCallback((changedKey, changedValue, allValues) => {
@@ -173,6 +181,7 @@ function CdcTeamExpencePage() {
         key: "item",
         label: "Item",
         options: itemOptions,
+        onAppend: appendItem,
         required: true,
       },
       {
@@ -193,7 +202,7 @@ function CdcTeamExpencePage() {
         required: true,
         default: unpaidStatusId,
       },
-      { key: "paid_by", label: "Paid By", options: paidByOptions, default: defaultPaidBy, required: true },
+      { key: "paid_by", label: "Paid By", options: paidByOptions, onAppend: appendPaidBy, required: true },
       { key: "settled_on", label: "Settled On", type: "date" },
       {
         key: "settled_by",
@@ -201,16 +210,7 @@ function CdcTeamExpencePage() {
         options: cdcUsers,
       },
     ],
-    [
-      itemOptions,
-      sessionOptions,
-      statusOptions,
-      cdcUsers,
-      paidByOptions,
-      currentDateDefault,
-      unpaidStatusId,
-      defaultPaidBy,
-    ]
+    [itemOptions, sessionOptions, statusOptions, cdcUsers, paidByOptions, currentDateDefault, unpaidStatusId]
   );
 
   const fetchFn = useCallback(async () => {
@@ -427,7 +427,7 @@ function CdcTeamExpencePage() {
       {latestImportResult?.row_reports?.length ? (
         <section className="module-page" style={{ marginTop: "1rem" }}>
           <div className="crud-page__header">
-            <h2 className="module-page__title" style={{ fontSize: "1.1rem" }}>Import Report</h2>
+            <h2 className="module-page__title module-page__title--expenses module-page__title--report" style={{ fontSize: "1.1rem" }}>Import Report</h2>
           </div>
           <div className="users-table-wrap users-table-wrap--sticky" style={{ maxHeight: "40vh", overflowY: "auto" }}>
             <table className="users-table">

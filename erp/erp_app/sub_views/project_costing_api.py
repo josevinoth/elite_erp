@@ -1,0 +1,1723 @@
+import logging
+from decimal import Decimal
+from io import BytesIO
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.http import HttpResponse, JsonResponse
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_protect
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+from ..project_costing_items_serializer import ProjectCostingItemSerializer
+from ..project_costing_summary_serializer import ProjectCostingSummarySerializer
+from ..sub_models.CostType_mod import CostTypeInfo
+from ..sub_models.lab_furniture_item import LabFurnitureItem
+from ..sub_models.project_costing_items_mod import ProjectCostingItemAllocation, ProjectCostingItemInfo
+from ..sub_models.project_costing_summary_mod import ProjectCostingSummaryInfo
+from ..sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
+from ..sub_models.quotation_status_mod import QuotationStatusInfo
+from ..sub_models.retrieval_status_mod import RetrievalStatusInfo
+from ..sub_models.room_data_mod import RoomDataInfo
+from ..utils import normalize_text
+from .project_costing_view import ProjectCostingItemView, ProjectCostingSummaryView
+
+logger = logging.getLogger(__name__)
+
+ALLOWED_RETRIEVAL_STATUSES = {
+    RetrievalStatusInfo.STATUS_NO_ACTION,
+    RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
+    RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+    RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
+    RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+    RetrievalStatusInfo.STATUS_ITEM_RETURN,
+    RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+}
+
+
+def _ensure_authenticated(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"status": "error", "message": "Authentication required."}, status=401)
+    return None
+
+
+def _is_admin_user(user):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    return bool({g.name.strip().lower() for g in user.groups.all()}.intersection({"admin", "super admin", "staff"}))
+
+
+def _summary_status_name(summary):
+    return str(getattr(getattr(summary, "status", None), "status_name", getattr(summary, "status_id", "")) or "").strip()
+
+
+def _user_team_name(user):
+    try:
+        profile = user.profile
+    except Exception:
+        return ""
+    return str(getattr(getattr(profile, "team", None), "name", "") or "").strip().lower()
+
+
+def _can_edit_costing_retrieval(user):
+    return _is_admin_user(user) or _user_team_name(user) in {"engineering team", "engineering", "engg team"}
+
+
+def _can_edit_stock_retrieval(user):
+    if _is_admin_user(user):
+        return True
+    team_name = _user_team_name(user)
+    if team_name in {"stock team", "stock", "stores team"}:
+        return True
+    return bool({g.name.strip().lower() for g in user.groups.all()}.intersection({"stock team", "stock", "stores team"}))
+
+
+def _status_obj(name):
+    normalized_name = str(name or "").strip()
+    if normalized_name.lower() in {"request rejected", "item rejected"}:
+        normalized_name = RetrievalStatusInfo.STATUS_REQUEST_REJECTED
+    canonical_name = next((row for row in ALLOWED_RETRIEVAL_STATUSES if row.lower() == normalized_name.lower()), None)
+    if not canonical_name:
+        return None
+    status_obj = RetrievalStatusInfo.objects.filter(status_name__iexact=canonical_name).first()
+    if not status_obj:
+        status_obj = RetrievalStatusInfo.objects.create(status_name=canonical_name)
+    return status_obj
+
+
+def _is_valid_status_transition(current_name, target_name, source):
+    if not target_name:
+        return False
+    if current_name and current_name.lower() == target_name.lower():
+        return True
+
+    source_transition_map = {
+        "costing": {
+            RetrievalStatusInfo.STATUS_NO_ACTION,
+            RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
+            RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+            RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
+            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        },
+        "retrieval": {
+            RetrievalStatusInfo.STATUS_NO_ACTION,
+            RetrievalStatusInfo.STATUS_ITEM_REQUESTED,
+            RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+            RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
+        },
+        "return": {
+            RetrievalStatusInfo.STATUS_NO_ACTION,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+        },
+    }
+    return target_name in source_transition_map.get(source, set())
+
+
+def _apply_request_tracking(payload, item, status_obj, user):
+    if not status_obj:
+        return
+    current_name = getattr(getattr(item, "retrieval_status", None), "status_name", "")
+    if status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+        if current_name != RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+            payload["requested_by_id"] = user.pk
+            payload["requested_on"] = timezone.now()
+        payload["rejection_comment"] = ""
+    elif status_obj.status_name == RetrievalStatusInfo.STATUS_REQUEST_REJECTED:
+        payload["requested_by_id"] = getattr(item, "requested_by_id", None)
+        payload["requested_on"] = getattr(item, "requested_on", None)
+    else:
+        payload["rejection_comment"] = ""
+
+
+def _allocation_status_name(allocation):
+    return str(getattr(getattr(allocation, "retrieval_status", None), "status_name", "") or "").strip()
+
+
+def _item_status_name(item):
+    return str(getattr(getattr(item, "retrieval_status", None), "status_name", "") or "").strip()
+
+
+def _get_item_allocations(item):
+    return list(item.grn_allocations.select_related("retrieval_status", "purchase_item__vendor_detail").order_by("id"))
+
+
+def _allocation_pending_return_qty(allocation):
+    return Decimal(str(getattr(allocation, "pending_return_qty", 0) or 0))
+
+
+def _allocation_returned_qty(allocation):
+    return Decimal(str(getattr(allocation, "returned_qty", 0) or 0))
+
+
+def _allocation_remaining_consumed_qty(allocation):
+    allocated_qty = Decimal(str(getattr(allocation, "allocated_qty", 0) or 0))
+    remaining = allocated_qty - _allocation_returned_qty(allocation)
+    if remaining < 0:
+        remaining = Decimal("0")
+    return remaining
+
+
+def _allocation_fifo_sort_key(allocation):
+    vendor_detail = getattr(getattr(allocation, "purchase_item", None), "vendor_detail", None)
+    purchase_date = getattr(vendor_detail, "invoice_date", None)
+    grn_number = str(getattr(getattr(allocation, "purchase_item", None), "grn_number", "") or "")
+    return (purchase_date is None, purchase_date or "", grn_number.upper(), allocation.pk or 0)
+
+
+def _derive_item_status_name_from_allocations(item, allocations):
+    allocation_list = list(allocations or [])
+    status_names = [_allocation_status_name(row) or RetrievalStatusInfo.STATUS_NO_ACTION for row in allocation_list]
+    if not status_names:
+        return _item_status_name(item) or RetrievalStatusInfo.STATUS_NO_ACTION
+
+    if any(_allocation_pending_return_qty(row) > 0 for row in allocation_list):
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN
+
+    normalized = {name.lower(): name for name in status_names if name}
+    if len(normalized) == 1:
+        only_status = next(iter(normalized.values()))
+        if only_status == RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED and any(
+            _allocation_remaining_consumed_qty(row) > 0 for row in allocation_list
+        ):
+            return RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+        return only_status
+
+    retrieval_stage_statuses = {
+        RetrievalStatusInfo.STATUS_NO_ACTION.lower(),
+        RetrievalStatusInfo.STATUS_ITEM_REQUESTED.lower(),
+        RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower(),
+    }
+    allocation_statuses = set(normalized.keys())
+
+    if allocation_statuses.issubset(retrieval_stage_statuses):
+        if allocation_statuses == {RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower()}:
+            return RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
+        if allocation_statuses == {RetrievalStatusInfo.STATUS_NO_ACTION.lower()}:
+            return RetrievalStatusInfo.STATUS_NO_ACTION
+        return RetrievalStatusInfo.STATUS_ITEM_REQUESTED
+
+    if allocation_statuses == {RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED.lower()}:
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED
+    if RetrievalStatusInfo.STATUS_ITEM_ACCEPTED.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+    if RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED.lower() in allocation_statuses:
+        if any(_allocation_remaining_consumed_qty(row) > 0 for row in allocation_list):
+            return RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED
+    if RetrievalStatusInfo.STATUS_ITEM_RETURN.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_RETURN
+    if RetrievalStatusInfo.STATUS_ITEM_SUPPLIED.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
+    if RetrievalStatusInfo.STATUS_ITEM_REQUESTED.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_ITEM_REQUESTED
+    if RetrievalStatusInfo.STATUS_NO_ACTION.lower() in allocation_statuses:
+        return RetrievalStatusInfo.STATUS_NO_ACTION
+    return status_names[0]
+
+
+def _calculate_item_accepted_qty(item, allocations):
+    allocation_list = list(allocations or [])
+    if not allocation_list:
+        return Decimal("0")
+    return sum(
+        (
+            _allocation_remaining_consumed_qty(row)
+            for row in allocation_list
+            if _allocation_status_name(row) in {
+                RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+            }
+        ),
+        Decimal("0"),
+    )
+
+
+def _save_item_from_allocations(item, allocations, *, request_user=None, rejection_comment=None):
+    next_status_name = _derive_item_status_name_from_allocations(item, allocations)
+    next_status = _status_obj(next_status_name)
+    accepted_qty = _calculate_item_accepted_qty(item, allocations)
+
+    fields = []
+    if next_status and item.retrieval_status_id != next_status.pk:
+        item.retrieval_status = next_status
+        fields.append("retrieval_status")
+    if item.accepted_qty != accepted_qty:
+        item.accepted_qty = accepted_qty
+        fields.append("accepted_qty")
+
+    if rejection_comment is not None:
+        comment_value = str(rejection_comment or "")
+        if item.rejection_comment != comment_value:
+            item.rejection_comment = comment_value
+            fields.append("rejection_comment")
+    elif next_status_name not in {
+        RetrievalStatusInfo.STATUS_NO_ACTION,
+        RetrievalStatusInfo.STATUS_REQUEST_REJECTED,
+    } and item.rejection_comment:
+        item.rejection_comment = ""
+        fields.append("rejection_comment")
+
+    if request_user is not None and next_status_name == RetrievalStatusInfo.STATUS_ITEM_REQUESTED:
+        item.requested_by = request_user
+        item.requested_on = timezone.now()
+        fields.extend(["requested_by", "requested_on"])
+
+    if fields:
+        item.save(update_fields=[*dict.fromkeys([*fields, "updated_at"])] )
+    return item
+
+
+def _apply_allocation_status(item, target_status_name, *, purchase_item_id=None):
+    target_status = _status_obj(target_status_name)
+    if not target_status:
+        raise ValueError("Invalid retrieval status.")
+
+    allocations = _get_item_allocations(item)
+    if purchase_item_id is not None:
+        allocations = [row for row in allocations if str(row.purchase_item_id) == str(purchase_item_id)]
+        if not allocations:
+            raise ValueError("Selected GRN allocation was not found for this item.")
+
+    for allocation in allocations:
+        if allocation.retrieval_status_id != target_status.pk:
+            allocation.retrieval_status = target_status
+            allocation.save(update_fields=["retrieval_status", "updated_at"])
+    return target_status
+
+
+def _build_return_breakdown(item, allocations=None):
+    allocation_list = list(allocations or _get_item_allocations(item))
+    breakdown = []
+    total_pending = Decimal("0")
+    total_returned = Decimal("0")
+    for allocation in allocation_list:
+        pending_qty = _allocation_pending_return_qty(allocation)
+        returned_qty = _allocation_returned_qty(allocation)
+        remaining_qty = _allocation_remaining_consumed_qty(allocation)
+        total_pending += pending_qty
+        total_returned += returned_qty
+        purchase_item = getattr(allocation, "purchase_item", None)
+        vendor_detail = getattr(purchase_item, "vendor_detail", None)
+        breakdown.append({
+            "allocation_id": allocation.pk,
+            "purchase_item_id": getattr(allocation, "purchase_item_id", None),
+            "grn_number": getattr(purchase_item, "grn_number", "") or "-",
+            "purchase_date": str(getattr(vendor_detail, "invoice_date", "") or ""),
+            "allocated_qty": str(getattr(allocation, "allocated_qty", 0) or 0),
+            "pending_return_qty": str(pending_qty),
+            "returned_qty": str(returned_qty),
+            "remaining_consumed_qty": str(remaining_qty),
+            "retrieval_status_name": _allocation_status_name(allocation) or RetrievalStatusInfo.STATUS_NO_ACTION,
+        })
+    return {
+        "return_qty": str(total_pending),
+        "returned_qty": str(total_returned),
+        "return_breakdown": breakdown,
+    }
+
+
+def _sum_allocation_qty(allocations):
+    return sum((Decimal(str(getattr(row, "allocated_qty", 0) or 0)) for row in (allocations or [])), Decimal("0"))
+
+
+def _first_purchase_item(allocations, fallback=None):
+    for allocation in allocations or []:
+        purchase_item = getattr(allocation, "purchase_item", None)
+        if purchase_item is not None:
+            return purchase_item
+    return fallback
+
+
+def _save_costing_item_quantities(item, allocations, retrieval_status_name):
+    status_obj = _status_obj(retrieval_status_name)
+    item.retrieval_status = status_obj
+    item.requested_qty = _sum_allocation_qty(allocations)
+    item.accepted_qty = _calculate_item_accepted_qty(item, allocations)
+    item.purchase_item = _first_purchase_item(allocations, fallback=getattr(item, "purchase_item", None))
+    if item.purchase_item_id:
+        item.purchase_qty = Decimal(
+            str(getattr(item.purchase_item, "purchase_qty", None) or getattr(item.purchase_item, "quantity", 0) or 0)
+        )
+    else:
+        item.purchase_qty = Decimal("0")
+    item.save()
+    return item
+
+
+def _create_return_split_item(source_item, return_allocations):
+    return_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_RETURN)
+    first_purchase_item = return_allocations[0]["purchase_item"] if return_allocations else None
+    return_item = ProjectCostingItemInfo(
+        costing_id=source_item.costing_id,
+        cost_type=source_item.cost_type,
+        item_category=source_item.item_category,
+        item_name=source_item.item_name,
+        item_code=source_item.item_code,
+        item_type=source_item.item_type,
+        room_name=source_item.room_name,
+        purchase_item=first_purchase_item,
+        requested_qty=sum((row["qty"] for row in return_allocations), Decimal("0")),
+        accepted_qty=sum((row["qty"] for row in return_allocations), Decimal("0")),
+        actual_cost=source_item.actual_cost,
+        retrieval_status=return_status,
+        requested_by=source_item.requested_by,
+        requested_on=source_item.requested_on,
+        rejection_comment="",
+        split_from=source_item,
+    )
+    return_item.save()
+
+    for row in return_allocations:
+        ProjectCostingItemAllocation.objects.create(
+            costing_item=return_item,
+            purchase_item=row["purchase_item"],
+            allocated_qty=row["qty"],
+            pending_return_qty=row["qty"],
+            returned_qty=Decimal("0"),
+            retrieval_status=return_status,
+        )
+
+    allocations = _get_item_allocations(return_item)
+    _save_costing_item_quantities(return_item, allocations, RetrievalStatusInfo.STATUS_ITEM_RETURN)
+    return return_item
+
+
+def _merge_return_item_back_to_source(return_item):
+    source_item = getattr(return_item, "split_from", None)
+    if not source_item:
+        allocations = _get_item_allocations(return_item)
+        for allocation in allocations:
+            allocation.pending_return_qty = Decimal("0")
+            allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+            allocation.save(update_fields=["pending_return_qty", "retrieval_status", "updated_at"])
+        _save_costing_item_quantities(return_item, allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+        return return_item
+
+    source_allocations = {
+        row.purchase_item_id: row
+        for row in source_item.grn_allocations.select_related("purchase_item", "retrieval_status").all()
+    }
+    return_allocations = _get_item_allocations(return_item)
+    accepted_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+
+    for allocation in return_allocations:
+        source_allocation = source_allocations.get(allocation.purchase_item_id)
+        if source_allocation is None:
+            source_allocation = ProjectCostingItemAllocation(
+                costing_item=source_item,
+                purchase_item=allocation.purchase_item,
+                allocated_qty=Decimal("0"),
+                pending_return_qty=Decimal("0"),
+                returned_qty=Decimal("0"),
+                retrieval_status=accepted_status,
+            )
+        source_allocation.allocated_qty = Decimal(str(source_allocation.allocated_qty or 0)) + Decimal(str(allocation.allocated_qty or 0))
+        source_allocation.pending_return_qty = Decimal("0")
+        source_allocation.retrieval_status = accepted_status
+        source_allocation.save()
+        source_allocations[source_allocation.purchase_item_id] = source_allocation
+
+    merged_allocations = list(source_allocations.values())
+    _save_costing_item_quantities(source_item, merged_allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+    return_item.delete()
+    return source_item
+
+
+def _request_fifo_return(item, return_qty):
+    if return_qty <= 0:
+        raise ValueError("Return quantity must be greater than 0.")
+
+    allocations = sorted(_get_item_allocations(item), key=_allocation_fifo_sort_key)
+    if not allocations:
+        raise ValueError("No GRN allocations found for this item.")
+    if any(_allocation_pending_return_qty(row) > 0 for row in allocations):
+        raise ValueError("This item already has a pending return request.")
+
+    total_available = sum((_allocation_remaining_consumed_qty(row) for row in allocations), Decimal("0"))
+    if total_available <= 0:
+        raise ValueError("No consumed quantity is available for return.")
+    if return_qty > total_available:
+        raise ValueError(f"Return quantity {return_qty} exceeds consumed quantity {total_available}.")
+
+    item_return_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_RETURN)
+    remaining = return_qty
+    fifo_breakdown = []
+    for allocation in allocations:
+        available = _allocation_remaining_consumed_qty(allocation)
+        if available <= 0:
+            continue
+        if remaining <= 0:
+            break
+        fifo_qty = available if available <= remaining else remaining
+        fifo_breakdown.append({"purchase_item": allocation.purchase_item, "qty": fifo_qty, "source_allocation": allocation})
+        remaining -= fifo_qty
+
+    if remaining > 0:
+        raise ValueError("FIFO allocation failed to distribute the entire return quantity.")
+
+    if return_qty == total_available:
+        for allocation in allocations:
+            allocation.pending_return_qty = _allocation_remaining_consumed_qty(allocation)
+            allocation.retrieval_status = item_return_status
+            allocation.save(update_fields=["pending_return_qty", "retrieval_status", "updated_at"])
+        refreshed_allocations = _get_item_allocations(item)
+        _save_costing_item_quantities(item, refreshed_allocations, RetrievalStatusInfo.STATUS_ITEM_RETURN)
+        return item, refreshed_allocations
+
+    source_updated = False
+    for row in fifo_breakdown:
+        allocation = row["source_allocation"]
+        allocation.allocated_qty = Decimal(str(allocation.allocated_qty or 0)) - row["qty"]
+        allocation.pending_return_qty = Decimal("0")
+        allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+        if allocation.allocated_qty > 0:
+            allocation.save(update_fields=["allocated_qty", "pending_return_qty", "retrieval_status", "updated_at"])
+        else:
+            allocation.delete()
+        source_updated = True
+
+    if source_updated:
+        refreshed_source_allocations = _get_item_allocations(item)
+        _save_costing_item_quantities(item, refreshed_source_allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+
+    return_item = _create_return_split_item(item, fifo_breakdown)
+    return return_item, _get_item_allocations(return_item)
+
+
+def _parse_return_qty(value):
+    try:
+        return Decimal(str(value or 0))
+    except Exception as exc:
+        raise ValueError("return_qty must be a valid number.") from exc
+
+
+def _summary_not_found():
+    return JsonResponse({"status": "error", "message": "Project costing summary not found."}, status=404)
+
+
+def _item_not_found():
+    return JsonResponse({"status": "error", "message": "Project costing item not found."}, status=404)
+
+
+def _allow_completed_without_items_requested(payload):
+    if not isinstance(payload, dict):
+        return False
+    return str(payload.get("confirm_completed_without_items") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _update_costing_items_from_payload(request, summary, items_payload):
+    if items_payload in (None, ""):
+        return None
+    if not isinstance(items_payload, list):
+        return Response({"status": "error", "message": "items must be a list."}, status=400)
+    if not (_is_admin_user(request.user) or _can_edit_costing_retrieval(request.user)):
+        return Response(
+            {"status": "error", "message": "Only engineering team or admin can update costing items."},
+            status=403,
+        )
+
+    for row in items_payload:
+        if not isinstance(row, dict):
+            return Response({"status": "error", "message": "Each item update must be an object."}, status=400)
+
+        item_pk = row.get("id") or row.get("item_id")
+        if not item_pk:
+            return Response({"status": "error", "message": "Each item update requires an id."}, status=400)
+
+        try:
+            item = ProjectCostingItemInfo.objects.select_related("retrieval_status", "costing_id").get(
+                pk=item_pk,
+                costing_id=summary,
+            )
+        except ProjectCostingItemInfo.DoesNotExist:
+            return Response(
+                {"status": "error", "message": f"Project costing item {item_pk} not found."},
+                status=404,
+            )
+
+        if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
+            return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
+
+        payload = {}
+        if "requested_qty" in row:
+            payload["requested_qty"] = row.get("requested_qty")
+
+        new_status_name = row.get("retrieval_status_name")
+        if new_status_name is None and row.get("retrieval_status_id") is not None:
+            status_by_id = RetrievalStatusInfo.objects.filter(pk=row.get("retrieval_status_id")).first()
+            new_status_name = status_by_id.status_name if status_by_id else None
+        if new_status_name is not None:
+            status_obj = _status_obj(new_status_name)
+            if not status_obj:
+                return Response({"status": "error", "message": "Invalid retrieval status."}, status=400)
+            current_name = getattr(item.retrieval_status, "status_name", "")
+            if not _is_valid_status_transition(current_name, status_obj.status_name, "costing"):
+                return Response(
+                    {"status": "error", "message": "Invalid retrieval status transition from Project Costing."},
+                    status=400,
+                )
+            payload["retrieval_status_id"] = status_obj.pk
+            _apply_request_tracking(payload, item, status_obj, request.user)
+
+        if not payload:
+            continue
+
+        serializer = ProjectCostingItemSerializer(item, data=payload, partial=True)
+        if not serializer.is_valid():
+            return Response(
+                {"status": "error", "message": "Validation failed.", "errors": serializer.errors},
+                status=400,
+            )
+        serializer.save()
+
+    return None
+
+
+@api_view(["GET"])
+@csrf_protect
+def project_costing_quotations_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    project_id = normalize_text(request.GET.get("project_id"))
+    # Filter quotations by Completed status and exclude those that already have a costing summary
+    quotations = (
+        ProjectQuotationSummaryInfo.objects.select_related("project", "status")
+        .filter(status__status_name__iexact="Completed")
+        .exclude(project_costing_summaries__isnull=False)
+        .order_by("project__project_id", "id")
+    )
+    if project_id:
+        quotations = quotations.filter(project_id=project_id)
+
+    payload = [
+        {
+            "id": row.pk,
+            "quotation_id": row.pk,
+            "quotation_number": row.quotation_number,
+            "project_id": row.project_id,
+            "project_name": row.project_name,
+            "status": getattr(row, "status_id", "") or getattr(getattr(row, "status", None), "status_name", ""),
+        }
+        for row in quotations
+    ]
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["GET", "POST"])
+@csrf_protect
+def project_costing_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    if request.method == "GET":
+        payload = ProjectCostingSummaryView(request).list_payload()
+        return Response(payload, status=status.HTTP_200_OK)
+
+    serializer = ProjectCostingSummarySerializer(
+        data=request.data,
+        context={
+            "allow_completed_without_items": _allow_completed_without_items_requested(request.data),
+            "request": request,
+        },
+    )
+    if not serializer.is_valid():
+        return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
+
+    summary = serializer.save()
+    payload = ProjectCostingSummaryView(request).detail_payload(summary)
+    return Response({"success": True, **payload}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+@csrf_protect
+def project_costing_detail_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    if request.method == "GET":
+        payload = ProjectCostingSummaryView(request).detail_payload(summary)
+        return Response(payload, status=status.HTTP_200_OK)
+
+    if request.method == "DELETE":
+        summary.delete()
+        payload = ProjectCostingSummaryView(request).list_payload()
+        return Response({"success": True, "message": "Project costing deleted.", **payload}, status=status.HTTP_200_OK)
+
+    current_status = _summary_status_name(summary)
+    is_admin = _is_admin_user(request.user)
+    if current_status == ProjectCostingSummaryInfo.STATUS_COMPLETED and not is_admin:
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing is read-only for non-admin users.",
+                "is_admin": is_admin,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    serializer = ProjectCostingSummarySerializer(
+        summary,
+        data=request.data,
+        partial=True,
+        context={
+            "allow_completed_without_items": _allow_completed_without_items_requested(request.data),
+            "request": request,
+        },
+    )
+    if not serializer.is_valid():
+        return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
+
+    updated = serializer.save()
+    payload = ProjectCostingSummaryView(request).detail_payload(updated)
+    return Response({"success": True, **payload}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET", "PATCH"])
+@csrf_protect
+def project_costing_edit_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    if request.method == "GET":
+        payload = ProjectCostingSummaryView(request).detail_payload(summary)
+        return Response(payload, status=status.HTTP_200_OK)
+
+    current_status = _summary_status_name(summary)
+    is_admin = _is_admin_user(request.user)
+    if current_status == ProjectCostingSummaryInfo.STATUS_COMPLETED and not is_admin:
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing is read-only for non-admin users.",
+                "is_admin": is_admin,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    request_payload = request.data if isinstance(request.data, dict) else {}
+    summary_payload = request_payload.get("summary") if isinstance(request_payload.get("summary"), dict) else {
+        key: value for key, value in request_payload.items() if key != "items"
+    }
+    items_payload = request_payload.get("items")
+
+    with transaction.atomic():
+        updated_summary = summary
+        if summary_payload:
+            serializer = ProjectCostingSummarySerializer(
+                summary,
+                data=summary_payload,
+                partial=True,
+                context={
+                    "allow_completed_without_items": _allow_completed_without_items_requested(summary_payload),
+                    "request": request,
+                },
+            )
+            if not serializer.is_valid():
+                return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
+            updated_summary = serializer.save()
+
+        item_error = _update_costing_items_from_payload(request, updated_summary, items_payload)
+        if item_error is not None:
+            return item_error
+
+    payload = ProjectCostingSummaryView(request).detail_payload(updated_summary)
+    return Response(
+        {"success": True, "message": "Project costing updated successfully.", **payload},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["PATCH"])
+@csrf_protect
+def project_costing_status_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    requested_status = normalize_text(request.data.get("status") or request.data.get("quotation_status"))
+    if not requested_status:
+        return Response({"status": "error", "message": "Costing status is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    allowed_status_map = {
+        str(choice_value).strip().lower(): choice_value
+        for choice_value, _choice_label in QuotationStatusInfo.STATUS_CHOICES
+    }
+    resolved_status = allowed_status_map.get(requested_status.lower())
+    if not resolved_status:
+        return Response({"status": "error", "message": "Invalid costing status."}, status=status.HTTP_400_BAD_REQUEST)
+
+    is_admin = _is_admin_user(request.user)
+    current_status = _summary_status_name(summary)
+    if not is_admin and resolved_status != current_status:
+        is_allowed_non_admin_transition = (
+            current_status == ProjectCostingSummaryInfo.STATUS_WORK_IN_PROGRESS
+            and resolved_status == ProjectCostingSummaryInfo.STATUS_COMPLETED
+        )
+        if not is_allowed_non_admin_transition:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Non-admin users can only change status from Work in Progress to Completed.",
+                    "costing": ProjectCostingSummaryView(request).detail_payload(summary),
+                    "is_admin": is_admin,
+                    "can_edit": current_status != ProjectCostingSummaryInfo.STATUS_COMPLETED,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+    allow_without_items = str(request.data.get("confirm_completed_without_items") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    allow_invalid_retrieval = str(request.data.get("confirm_invalid_retrieval_status") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    requested_completed = resolved_status == ProjectCostingSummaryInfo.STATUS_COMPLETED
+    items = ProjectCostingItemInfo.objects.filter(costing_id=summary)
+    has_items = items.exists()
+
+    # Validation for Completed status: costing items and retrieval status checks
+    if requested_completed:
+        # Check 1: Costing items list cannot be empty
+        if not has_items and not allow_without_items:
+            payload = ProjectCostingSummaryView(request).detail_payload(summary)
+            return Response(
+                {
+                    "success": False,
+                    "status": "warning",
+                    "message": "No costing items added. Do you still want to save as Completed?",
+                    "requires_confirmation": True,
+                    "is_admin": is_admin,
+                    "can_edit": True,
+                    **payload,
+                },
+                status=status.HTTP_200_OK,
+            )
+        
+        # Check 2: Validate retrieval status of each item (only if items exist and not confirmed)
+        if has_items and not allow_invalid_retrieval:
+            # Items must NOT be in incomplete/in-progress states
+            # Rejected items are also not allowed to complete costing
+            blocked_statuses = {
+                RetrievalStatusInfo.STATUS_NO_ACTION,           # "No Action" - not processed
+                RetrievalStatusInfo.STATUS_ITEM_REQUESTED,      # "Item Requested" - in process
+                RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,       # "Item Supplied" - in process
+                RetrievalStatusInfo.STATUS_REQUEST_REJECTED,    # "Item Rejected" - rejected
+            }
+            invalid_items = items.filter(
+                retrieval_status__status_name__in=blocked_statuses
+            ).select_related("retrieval_status", "item_code")
+            
+            if invalid_items.exists():
+                invalid_item_details = [
+                    {
+                        "item_id": item.pk,
+                        "item_code": str(getattr(item.item_code, "item_code", "")),
+                        "retrieval_status": str(getattr(item.retrieval_status, "status_name", "Unknown"))
+                    }
+                    for item in invalid_items[:10]  # Show first 10 invalid items
+                ]
+                payload = ProjectCostingSummaryView(request).detail_payload(summary)
+                return Response(
+                    {
+                        "success": False,
+                        "status": "warning",
+                        "message": f"Cannot mark costing as Completed. {invalid_items.count()} item(s) have incomplete retrieval status. See details below.",
+                        "requires_confirmation": True,
+                        "invalid_items": invalid_item_details,
+                        "invalid_count": invalid_items.count(),
+                        "warning_type": "invalid_retrieval_status",
+                        "is_admin": is_admin,
+                        "can_edit": True,
+                        **payload,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+    # Fetch the QuotationStatusInfo object to ensure proper object relationships
+    try:
+        resolved_status_obj = QuotationStatusInfo.objects.get(status_name=resolved_status)
+        summary.status = resolved_status_obj
+    except QuotationStatusInfo.DoesNotExist:
+        return Response(
+            {
+                "status": "error",
+                "message": f"Status '{resolved_status}' is not configured in the system.",
+                "is_admin": is_admin,
+                "can_edit": True,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    summary._allow_completed_without_items = allow_without_items
+    summary.updated_by = request.user
+    try:
+        summary.save()
+    except Exception as exc:
+        logger.exception("Failed to update costing status.")
+        return Response(
+            {
+                "status": "error",
+                "message": str(exc) or "Failed to update costing status.",
+                "is_admin": is_admin,
+                "can_edit": current_status != ProjectCostingSummaryInfo.STATUS_COMPLETED or is_admin,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    payload = ProjectCostingSummaryView(request).detail_payload(summary)
+    can_edit = resolved_status != ProjectCostingSummaryInfo.STATUS_COMPLETED or is_admin
+    warning_message = "No items added" if (requested_completed and not has_items) else ""
+    return Response(
+        {
+            "success": True,
+            "status": resolved_status,
+            "result_status": "success",
+            "costing_status": resolved_status,
+            "message": "Project costing status updated successfully.",
+            "warning": warning_message,
+            "is_admin": is_admin,
+            "can_edit": can_edit,
+            **payload,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@csrf_protect
+def generate_project_costing_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    quotation_id = request.data.get("quotation_id")
+    if not quotation_id:
+        return Response({"status": "error", "message": "quotation_id is required."}, status=400)
+
+    try:
+        quotation = ProjectQuotationSummaryInfo.objects.select_related("project").get(pk=quotation_id)
+    except ProjectQuotationSummaryInfo.DoesNotExist:
+        return Response({"status": "error", "message": "Quotation summary not found."}, status=404)
+
+    # Check if a costing already exists for this quotation (enforce unique constraint)
+    existing = ProjectCostingSummaryInfo.objects.filter(quotation_number=quotation).first()
+    if existing:
+        payload = ProjectCostingSummaryView(request).detail_payload(existing)
+        return Response(
+            {
+                "success": True,
+                "message": "Project costing already exists for this quotation. Only one costing summary per quotation is allowed.",
+                **payload,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    duplicate_project_costing = ProjectCostingSummaryInfo.objects.filter(project=quotation.project).first()
+    if duplicate_project_costing:
+        payload = ProjectCostingSummaryView(request).detail_payload(duplicate_project_costing)
+        return Response(
+            {
+                "success": False,
+                "status": "error",
+                "message": "A project costing already exists for this project.",
+                **payload,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        costing = ProjectCostingSummaryView(request).clone_from_quotation(quotation)
+    except DjangoValidationError as exc:
+        error_message = exc.message_dict if hasattr(exc, "message_dict") else exc.messages
+        return Response(
+            {"success": False, "status": "error", "message": "Validation failed.", "errors": error_message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    payload = ProjectCostingSummaryView(request).detail_payload(costing)
+    return Response({"success": True, "message": "Project costing generated successfully.", **payload}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "POST"])
+@csrf_protect
+def project_costing_items_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    if request.method == "GET":
+        payload = ProjectCostingItemView(request).list_payload(summary)
+        return Response(payload, status=status.HTTP_200_OK)
+
+    current_status = _summary_status_name(summary)
+    if current_status == ProjectCostingSummaryInfo.STATUS_COMPLETED and not _is_admin_user(request.user):
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing items are read-only for non-admin users.",
+                "is_admin": False,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    serializer = ProjectCostingItemSerializer(data={**request.data, "costing_id": summary.pk})
+    if not serializer.is_valid():
+        return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
+
+    item = serializer.save()
+    payload = ProjectCostingItemView(request).list_payload(summary)
+    return Response({"success": True, "item_id": item.pk, **payload}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+@csrf_protect
+def project_costing_item_detail_api_view(request, costing_pk, item_pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        summary = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number").get(pk=costing_pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    try:
+        item = (
+            ProjectCostingItemInfo.objects.select_related(
+                "item_category",
+                "item_code__item_type",
+                "stock_status",
+                "retrieval_status",
+                "costing_id",
+                "requested_by",
+                "purchase_item",
+                "purchase_item__vendor_detail__vendor",
+            )
+            .prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
+            .get(pk=item_pk, costing_id=summary)
+        )
+    except ProjectCostingItemInfo.DoesNotExist:
+        return _item_not_found()
+
+    if request.method == "GET":
+        payload = ProjectCostingItemSerializer(item).data
+        return Response(payload, status=status.HTTP_200_OK)
+
+    if request.method == "DELETE":
+        if not (_is_admin_user(request.user) or _can_edit_costing_retrieval(request.user)):
+            return Response({"status": "error", "message": "Only engineering team or admin can delete costing items."}, status=403)
+        if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
+            return Response({"status": "error", "message": "Accepted items can only be deleted by admin."}, status=403)
+        item.delete()
+        payload = ProjectCostingItemView(request).list_payload(summary)
+        return Response({"success": True, "message": "Project costing item deleted.", **payload}, status=status.HTTP_200_OK)
+
+    if _summary_status_name(summary) == ProjectCostingSummaryInfo.STATUS_COMPLETED and not _is_admin_user(request.user):
+        return Response(
+            {
+                "status": "error",
+                "message": "Completed costing items are read-only for non-admin users.",
+                "is_admin": False,
+                "can_edit": False,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if not (_is_admin_user(request.user) or _can_edit_costing_retrieval(request.user)):
+        return Response({"status": "error", "message": "Only engineering team or admin can update costing items."}, status=403)
+
+    payload = request.data.copy()
+    current_name = getattr(item.retrieval_status, "status_name", "")
+
+    new_status_name = payload.get("retrieval_status_name")
+    if new_status_name is None and request.data.get("retrieval_status_id") is not None:
+        status_by_id = RetrievalStatusInfo.objects.filter(pk=payload.get("retrieval_status_id")).first()
+        new_status_name = status_by_id.status_name if status_by_id else None
+    if new_status_name is not None:
+        status_obj = _status_obj(new_status_name)
+        if not status_obj:
+            return Response({"status": "error", "message": "Invalid retrieval status."}, status=400)
+        if not _is_valid_status_transition(current_name, status_obj.status_name, "costing"):
+            return Response({"status": "error", "message": "Invalid retrieval status transition from Project Costing."}, status=400)
+
+        is_return_request = (
+            str(current_name or "").strip().lower() == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED.lower()
+            and status_obj.status_name == RetrievalStatusInfo.STATUS_ITEM_RETURN
+        )
+        if is_return_request:
+            try:
+                return_qty = _parse_return_qty(request.data.get("return_qty"))
+                with transaction.atomic():
+                    return_item, _return_allocations = _request_fifo_return(item, return_qty)
+            except ValueError as exc:
+                return Response({"status": "error", "message": str(exc)}, status=400)
+
+            response_payload = ProjectCostingItemView(request).list_payload(summary)
+            return Response(
+                {
+                    "success": True,
+                    "item_id": return_item.pk,
+                    "message": "FIFO return request created successfully.",
+                    "return_qty": str(return_qty),
+                    **response_payload,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
+            return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
+
+        payload["retrieval_status_id"] = status_obj.pk
+        _apply_request_tracking(payload, item, status_obj, request.user)
+    elif item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
+        return Response({"status": "error", "message": "Accepted items are frozen."}, status=403)
+
+    serializer = ProjectCostingItemSerializer(item, data=payload, partial=True)
+    if not serializer.is_valid():
+        return Response({"status": "error", "message": "Validation failed.", "errors": serializer.errors}, status=400)
+
+    updated = serializer.save()
+    payload = ProjectCostingItemView(request).list_payload(summary)
+    return Response({"success": True, "item_id": updated.pk, **payload}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@csrf_protect
+def stock_retrieval_api_view(request):
+    """List costing items with retrieval status = 'Item Requested'"""
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    requested_status = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED
+    ).first()
+
+    queryset = ProjectCostingItemInfo.objects.select_related(
+        "costing_id",
+        "costing_id__quotation_number",
+        "costing_id__project",
+        "cost_type",
+        "item_category",
+        "item_code__item_type",
+        "room_name",
+        "stock_status",
+        "retrieval_status",
+        "purchase_item",
+        "purchase_item__vendor_detail__vendor",
+    ).prefetch_related("grn_allocations__retrieval_status")
+
+    if requested_status:
+        queryset = queryset.filter(retrieval_status=requested_status)
+    else:
+        queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED)
+
+    if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
+        queryset = queryset.filter(costing_id__project__project_owner=request.user)
+
+    items = queryset.order_by("id")
+    data = ProjectCostingItemSerializer(items, many=True, context={"request": request}).data
+    return Response(
+        {"items": data, "status": "success", "message": "Stock retrieval items loaded successfully."},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET", "PATCH"])
+@csrf_protect
+def stock_retrieval_item_detail_api_view(request, item_pk):
+    """Get or update a retrieval item. On PATCH, change status to Item Supplied (Accept) or No Action (Reject)"""
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        item = ProjectCostingItemInfo.objects.select_related(
+            "costing_id__project",
+            "stock_status",
+            "retrieval_status",
+        ).get(pk=item_pk)
+    except ProjectCostingItemInfo.DoesNotExist:
+        return Response({"status": "error", "message": "Project costing item not found."}, status=404)
+
+    if request.method == "GET":
+        serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+        return Response(serialized, status=status.HTTP_200_OK)
+
+    # PATCH: Update retrieval status
+    is_admin = _is_admin_user(request.user)
+    is_owner = item.costing_id.project.project_owner_id == request.user.id
+    is_stock_team = _can_edit_stock_retrieval(request.user)
+
+    if not (is_admin or is_owner or is_stock_team):
+        return Response(
+            {"status": "error", "message": "Only project owner, admin, or stock team can update stock retrieval status."},
+            status=403,
+        )
+
+    # Only allow actions from "Item Requested" status
+    current_status = str(getattr(item.retrieval_status, "status_name", "") or "").strip().lower()
+    if current_status != RetrievalStatusInfo.STATUS_ITEM_REQUESTED.lower():
+        return Response(
+            {"status": "error", "message": "Only Item Requested items can be updated from Stock Retrieval."},
+            status=400,
+        )
+
+    action = request.data.get("action", "").strip().lower()
+    if action == "approve":
+        action = "accept"
+    if action not in {"accept", "reject"}:
+        return Response(
+            {"status": "error", "message": "Action must be 'accept' or 'reject'."},
+            status=400,
+        )
+
+    if action == "accept":
+        target_status_name = RetrievalStatusInfo.STATUS_ITEM_SUPPLIED
+        rejection_comment = ""
+    else:
+        target_status_name = RetrievalStatusInfo.STATUS_NO_ACTION
+        rejection_comment = request.data.get("rejection_comment", "")
+
+    purchase_item_id = request.data.get("purchase_item_id")
+
+    try:
+        with transaction.atomic():
+            _apply_allocation_status(item, target_status_name, purchase_item_id=purchase_item_id)
+            allocations = _get_item_allocations(item)
+            _save_item_from_allocations(item, allocations, rejection_comment=rejection_comment)
+    except ValueError as exc:
+        return Response({"status": "error", "message": str(exc)}, status=400)
+
+    serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+    message = "GRN supplied and moved toward Stock Acceptance." if action == "accept" else "GRN moved to No Action."
+    return Response(
+        {"success": True, "item": serialized, "message": message},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET", "POST"])
+@csrf_protect
+def stock_return_api_view(request):
+    """List pending return items or create a FIFO return request for an accepted item."""
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    if request.method == "POST":
+        item_id = request.data.get("item_id")
+        item_code = normalize_text(request.data.get("item_code"))
+
+        try:
+            return_qty = _parse_return_qty(request.data.get("return_qty"))
+        except ValueError as exc:
+            return Response({"status": "error", "message": str(exc)}, status=400)
+
+        queryset = ProjectCostingItemInfo.objects.select_related(
+            "costing_id__project",
+            "retrieval_status",
+            "item_code",
+        ).prefetch_related("grn_allocations__purchase_item__vendor_detail", "grn_allocations__retrieval_status")
+
+        if item_id:
+            queryset = queryset.filter(pk=item_id)
+        elif item_code:
+            queryset = queryset.filter(item_code__item_code_ref__item_code__iexact=item_code)
+        else:
+            return Response({"status": "error", "message": "item_id or item_code is required."}, status=400)
+
+        accepted_status = RetrievalStatusInfo.objects.filter(
+            status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+        ).first()
+        if accepted_status:
+            queryset = queryset.filter(retrieval_status=accepted_status)
+        else:
+            queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+
+        if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
+            queryset = queryset.filter(costing_id__project__project_owner=request.user)
+
+        items = list(queryset.order_by("id"))
+        if not items:
+            return Response({"status": "error", "message": "No accepted item found for the return request."}, status=404)
+        if not item_id and len(items) > 1:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Multiple accepted items found for this item code. Please submit item_id as well.",
+                },
+                status=400,
+            )
+
+        item = items[0]
+        is_admin = _is_admin_user(request.user)
+        is_owner = item.costing_id.project.project_owner_id == request.user.id
+        is_stock_team = _can_edit_stock_retrieval(request.user)
+        if not (is_admin or is_owner or is_stock_team):
+            return Response(
+                {"status": "error", "message": "Only project owner, admin, or stock team can create a return request."},
+                status=403,
+            )
+
+        try:
+            with transaction.atomic():
+                return_item, allocations = _request_fifo_return(item, return_qty)
+                breakdown = _build_return_breakdown(return_item, allocations)
+        except ValueError as exc:
+            return Response({"status": "error", "message": str(exc)}, status=400)
+
+        serialized = ProjectCostingItemSerializer(return_item, context={"request": request}).data
+        return Response(
+            {
+                "success": True,
+                "item": serialized,
+                "message": "FIFO return request created successfully.",
+                **breakdown,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    return_status = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN
+    ).first()
+
+    queryset = ProjectCostingItemInfo.objects.select_related(
+        "costing_id",
+        "costing_id__quotation_number",
+        "costing_id__project",
+        "cost_type",
+        "item_category",
+        "item_code__item_type",
+        "room_name",
+        "stock_status",
+        "retrieval_status",
+        "purchase_item",
+        "purchase_item__vendor_detail__vendor",
+    ).prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
+
+    if return_status:
+        queryset = queryset.filter(retrieval_status=return_status)
+    else:
+        queryset = queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_RETURN)
+
+    if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
+        queryset = queryset.filter(costing_id__project__project_owner=request.user)
+
+    items = list(queryset.order_by("id"))
+    data = ProjectCostingItemSerializer(items, many=True, context={"request": request}).data
+
+    accepted_status = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+    ).first()
+    eligible_queryset = ProjectCostingItemInfo.objects.select_related(
+        "costing_id",
+        "costing_id__quotation_number",
+        "costing_id__project",
+        "cost_type",
+        "item_category",
+        "item_code__item_type",
+        "room_name",
+        "stock_status",
+        "retrieval_status",
+        "purchase_item",
+        "purchase_item__vendor_detail__vendor",
+    ).prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
+    if accepted_status:
+        eligible_queryset = eligible_queryset.filter(retrieval_status=accepted_status)
+    else:
+        eligible_queryset = eligible_queryset.filter(retrieval_status__status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+    eligible_queryset = eligible_queryset.filter(accepted_qty__gt=0)
+    if not (_is_admin_user(request.user) or _can_edit_stock_retrieval(request.user)):
+        eligible_queryset = eligible_queryset.filter(costing_id__project__project_owner=request.user)
+    eligible_items = list(eligible_queryset.order_by("id"))
+    eligible_data = ProjectCostingItemSerializer(eligible_items, many=True, context={"request": request}).data
+
+    items_with_breakdown = [
+        {
+            **row,
+            **_build_return_breakdown(item),
+        }
+        for item, row in zip(items, data)
+    ]
+
+    eligible_with_breakdown = [
+        {
+            **row,
+            **_build_return_breakdown(item),
+        }
+        for item, row in zip(eligible_items, eligible_data)
+    ]
+    return Response(
+        {
+            "items": items_with_breakdown,
+            "eligible_items": eligible_with_breakdown,
+            "status": "success",
+            "message": "Stock return items loaded successfully.",
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET", "PATCH"])
+@csrf_protect
+def stock_return_item_detail_api_view(request, item_pk):
+    """Get or update a return item. On PATCH, change status to Item Return Accepted (Accept) or back to Item Accepted (Reject)"""
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        item = ProjectCostingItemInfo.objects.select_related(
+            "costing_id__project",
+            "stock_status",
+            "retrieval_status",
+        ).get(pk=item_pk)
+    except ProjectCostingItemInfo.DoesNotExist:
+        return Response({"status": "error", "message": "Project costing item not found."}, status=404)
+
+    if request.method == "GET":
+        serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+        return Response(serialized, status=status.HTTP_200_OK)
+
+    # PATCH: Update return status
+    is_admin = _is_admin_user(request.user)
+    is_owner = item.costing_id.project.project_owner_id == request.user.id
+    is_stock_team = _can_edit_stock_retrieval(request.user)
+
+    if not (is_admin or is_owner or is_stock_team):
+        return Response(
+            {"status": "error", "message": "Only project owner, admin, or stock team can update stock return status."},
+            status=403,
+        )
+
+    # Only allow actions from "Item Return" status
+    current_status = str(getattr(item.retrieval_status, "status_name", "") or "").strip().lower()
+    if current_status != RetrievalStatusInfo.STATUS_ITEM_RETURN.lower():
+        return Response(
+            {"status": "error", "message": "Only Item Return items can be updated from Stock Return."},
+            status=400,
+        )
+
+    action = request.data.get("action", "").strip().lower()
+    if action not in {"accept", "reject"}:
+        return Response(
+            {"status": "error", "message": "Action must be 'accept' or 'reject'."},
+            status=400,
+        )
+
+    if action == "accept":
+        target_status_name = RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED
+    else:  # reject
+        target_status_name = RetrievalStatusInfo.STATUS_ITEM_ACCEPTED
+
+    try:
+        with transaction.atomic():
+            if action == "reject" and item.split_from_id:
+                item = _merge_return_item_back_to_source(item)
+                refreshed_allocations = _get_item_allocations(item)
+                breakdown = _build_return_breakdown(item, refreshed_allocations)
+            else:
+                allocations = _get_item_allocations(item)
+                pending_allocations = [row for row in allocations if _allocation_pending_return_qty(row) > 0]
+                if not pending_allocations:
+                    raise ValueError("No pending FIFO return quantities found for this item.")
+
+                target_status = _status_obj(target_status_name)
+                for allocation in pending_allocations:
+                    pending_qty = _allocation_pending_return_qty(allocation)
+                    if action == "accept":
+                        allocation.returned_qty = _allocation_returned_qty(allocation) + pending_qty
+                    allocation.pending_return_qty = Decimal("0")
+
+                    remaining = _allocation_remaining_consumed_qty(allocation)
+                    if remaining > 0:
+                        allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+                    else:
+                        allocation.retrieval_status = target_status
+                    allocation.save(update_fields=["returned_qty", "pending_return_qty", "retrieval_status", "updated_at"])
+
+                if action == "reject":
+                    for allocation in allocations:
+                        if _allocation_status_name(allocation) == RetrievalStatusInfo.STATUS_ITEM_RETURN and _allocation_pending_return_qty(allocation) <= 0:
+                            allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+                            allocation.save(update_fields=["retrieval_status", "updated_at"])
+
+                refreshed_allocations = _get_item_allocations(item)
+                _save_item_from_allocations(item, refreshed_allocations, rejection_comment="")
+                breakdown = _build_return_breakdown(item, refreshed_allocations)
+    except ValueError as exc:
+        return Response({"status": "error", "message": str(exc)}, status=400)
+
+    serialized = ProjectCostingItemSerializer(item, context={"request": request}).data
+    message = "Return approved and stock balance updated." if action == "accept" else "Return rejected; item moved back to accepted."
+    return Response(
+        {"success": True, "item": serialized, "message": message, **breakdown},
+        status=status.HTTP_200_OK,
+    )
+
+
+def _costing_items_import_template_bytes():
+    try:
+        import openpyxl
+    except ImportError:
+        return None
+
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Costing Items Import"
+    worksheet.append(["Room Name", "Item Category", "Item Name", "Item Code", "Requested Qty"])
+    worksheet.append(["Laboratory", "Category A", "Sample Item", "ITEM01", "1"])
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def _as_excel_text(value):
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _to_decimal_or_none(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value).strip())
+    except Exception:
+        return None
+
+
+@api_view(["GET"])
+def download_costing_items_import_template_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    template_bytes = _costing_items_import_template_bytes()
+    if template_bytes is None:
+        return Response(
+            {"status": "error", "message": "Excel template dependency not installed."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    resp = HttpResponse(
+        template_bytes.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp["Content-Disposition"] = "attachment; filename=costing_items_import_template.xlsx"
+    return resp
+
+
+@api_view(["POST"])
+@csrf_protect
+def import_costing_items_excel_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        costing = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    excel_file = request.FILES.get("file")
+    if not excel_file:
+        return Response({"status": "error", "message": "Excel file is required."}, status=400)
+
+    try:
+        import openpyxl
+    except ImportError:
+        return Response({"status": "error", "message": "Excel import dependency not installed."}, status=500)
+
+    try:
+        workbook = openpyxl.load_workbook(excel_file, data_only=True)
+        worksheet = workbook.active
+    except Exception:
+        return Response({"status": "error", "message": "Invalid or unreadable Excel file."}, status=400)
+
+    rows = list(worksheet.iter_rows(values_only=True))
+    if not rows:
+        return Response({"status": "error", "message": "Excel file is empty."}, status=400)
+
+    # Detect header row
+    first_vals = [normalize_text(v).lower().replace("_", " ") for v in (rows[0] or [])]
+    has_header = "item code" in first_vals
+    header_map = {h: i for i, h in enumerate(first_vals)} if has_header else {}
+
+    col_room = header_map.get("room name", 0)
+    col_category = header_map.get("item category", 1)
+    col_name = header_map.get("item name", 2)
+    col_code = header_map.get("item code", 3)
+    col_qty = header_map.get("requested qty", 4)
+
+    material_ct = CostTypeInfo.objects.filter(name__iexact="MATERIAL").order_by("id").first()
+
+    default_retrieval = RetrievalStatusInfo.objects.filter(
+        status_name__iexact=RetrievalStatusInfo.STATUS_NO_ACTION
+    ).first()
+    if not default_retrieval:
+        default_retrieval = RetrievalStatusInfo.objects.create(status_name=RetrievalStatusInfo.STATUS_NO_ACTION)
+
+    data_rows = rows[1:] if has_header else rows
+    created_count = updated_count = failed_count = blank_count = 0
+    row_reports = []
+    base_row = 2 if has_header else 1
+
+    for idx, row_vals in enumerate(data_rows, start=base_row):
+        vals = list(row_vals or [])
+        max_col = max(col_room, col_category, col_name, col_code, col_qty)
+        if len(vals) <= max_col:
+            vals.extend([None] * (max_col + 1 - len(vals)))
+
+        if not any(vals):
+            blank_count += 1
+            continue
+
+        item_code_input = _as_excel_text(vals[col_code])
+        item_category_input = _as_excel_text(vals[col_category])
+        item_name_input = _as_excel_text(vals[col_name])
+        room_name_input = _as_excel_text(vals[col_room])
+        requested_qty_input = _as_excel_text(vals[col_qty])
+
+        report_base = {
+            "row": idx,
+            "item_code_input": item_code_input,
+            "item_name_input": item_name_input,
+            "item_category_input": item_category_input,
+            "room_name_input": room_name_input,
+        }
+
+        if not item_code_input:
+            failed_count += 1
+            row_reports.append({**report_base, "status": "failed", "message": "Item Code is required."})
+            continue
+
+        item_master = LabFurnitureItem.objects.select_related("item_category").filter(
+            item_code_ref__item_code__iexact=item_code_input
+        ).order_by("id").first()
+        if not item_master:
+            failed_count += 1
+            row_reports.append({**report_base, "status": "failed", "message": f"Invalid Item Code '{item_code_input}'."})
+            continue
+
+        # Validate category if provided
+        if item_category_input:
+            resolved_cat = _as_excel_text(getattr(getattr(item_master, "item_category", None), "name", ""))
+            if item_category_input.lower() != resolved_cat.lower():
+                failed_count += 1
+                row_reports.append({**report_base, "status": "failed",
+                                     "message": f"Item Category '{item_category_input}' does not match Item Master ('{resolved_cat}')."})
+                continue
+
+        # Validate item_name if provided
+        if item_name_input and item_name_input.lower() != _as_excel_text(getattr(item_master, "item_name", "")).lower():
+            failed_count += 1
+            row_reports.append({**report_base, "status": "failed",
+                                 "message": f"Item Name '{item_name_input}' does not match Item Master."})
+            continue
+
+        requested_qty_value = _to_decimal_or_none(requested_qty_input) or Decimal("0")
+        if requested_qty_value < 0:
+            requested_qty_value = Decimal("0")
+
+        room_obj = None
+        if room_name_input:
+            room_obj = RoomDataInfo.objects.filter(room_name__iexact=room_name_input).first()
+
+        existing = ProjectCostingItemInfo.objects.filter(costing_id=costing, item_code=item_master).first()
+        item_category = getattr(item_master, "item_category", None)
+        item_category_id = getattr(item_category, "pk", None) or getattr(item_master, "item_category_id", None)
+
+        payload = {
+            "costing_id": costing.pk,
+            "cost_type_id": material_ct.pk if material_ct else None,
+            "item_category_id": item_category_id,
+            "item_name": item_master.item_name,
+            "item_code_id": item_master.pk,
+            "room_name_id": room_obj.pk if room_obj else None,
+            "requested_qty": str(requested_qty_value),
+            "retrieval_status_id": default_retrieval.pk if (existing is None) else None,
+        }
+        if existing is not None:
+            payload.pop("retrieval_status_id", None)
+
+        if existing:
+            ser = ProjectCostingItemSerializer(existing, data=payload, partial=True)
+        else:
+            ser = ProjectCostingItemSerializer(data=payload)
+
+        if not ser.is_valid():
+            failed_count += 1
+            msg = next(
+                (str(v[0]) for v in ser.errors.values() if isinstance(v, list) and v),
+                "Validation failed."
+            )
+            row_reports.append({**report_base, "status": "failed", "message": msg})
+            continue
+
+        try:
+            ser.save()
+        except Exception as exc:
+            failed_count += 1
+            row_reports.append({**report_base, "status": "failed", "message": str(exc)})
+            continue
+
+        if existing:
+            updated_count += 1
+            row_reports.append({**report_base, "status": "updated", "message": f"Updated item {item_code_input}."})
+        else:
+            created_count += 1
+            row_reports.append({**report_base, "status": "created", "message": f"Created item {item_code_input}."})
+
+    payload = ProjectCostingSummaryView(request).detail_payload(costing)
+    return Response(
+        {
+            "success": True,
+            "status": "success",
+            "message": "Costing item import completed.",
+            "summary": {
+                "created": created_count,
+                "updated": updated_count,
+                "blank_rows": blank_count,
+                "failed": failed_count,
+                "total_processed": created_count + updated_count + failed_count,
+            },
+            "row_reports": row_reports,
+            **payload,
+        },
+        status=status.HTTP_200_OK,
+    )

@@ -1,6 +1,19 @@
 from rest_framework import serializers
-from .sub_models.cut_optimiser import CutOptimiserRecord, CutSize, UOM
 
+from .sub_models import Project
+from .sub_models import ItemCategory, LabFurnitureItem, StockManufactureItem
+from .sub_models.cut_optimiser import CutOptimiserRecord, CutSize, UOM
+from .sub_models.item_type_mod import ItemType_info
+from .sub_models.project_layout_drawing import ProjectLayoutDrawing
+from .utils import normalize_text
+
+class ProjectSerializer(serializers.ModelSerializer):
+    updated_by = serializers.CharField(source="updated_by.username", read_only=True)
+    status = serializers.CharField(source="status.name", read_only=True)
+
+    class Meta:
+        model = Project
+        fields = "__all__"
 
 class CutSizeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -102,3 +115,194 @@ class UOMSerializer(serializers.ModelSerializer):
     class Meta:
         model = UOM
         fields = ['id', 'name', 'symbol']
+
+
+class ItemTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemType_info
+        fields = ['id', 'it_name']
+
+
+def _resolve_stock_manufacture_master(item_category, item_name):
+    if not item_category:
+        return None
+
+    normalized_name = normalize_text(item_name)
+    if not normalized_name:
+        return None
+
+    qs = LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(
+        item_category=item_category,
+        item_name_ref__item_name__iexact=normalized_name,
+    ).order_by("id")
+
+    # Deterministic only: avoid guessing when multiple item masters share the same name.
+    if qs.count() == 1:
+        return qs.first()
+    return None
+
+
+class StockManufactureItemSerializer(serializers.ModelSerializer):
+    item_category = serializers.SerializerMethodField(read_only=True)
+    item_code = serializers.SerializerMethodField(read_only=True)
+    item_type = serializers.SerializerMethodField(read_only=True)
+    uom = serializers.SerializerMethodField(read_only=True)
+
+    item_category_id = serializers.PrimaryKeyRelatedField(
+        source="item_category",
+        queryset=ItemCategory.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    item_code_id = serializers.PrimaryKeyRelatedField(
+        source="item_code",
+        queryset=LabFurnitureItem.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    item_type_id = serializers.PrimaryKeyRelatedField(
+        source="item_type",
+        queryset=ItemType_info.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    uom_id = serializers.PrimaryKeyRelatedField(
+        source="uom",
+        queryset=UOM.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = StockManufactureItem
+        fields = [
+            "id",
+            "item_category",
+            "item_category_id",
+            "item_code",
+            "item_code_id",
+            "item_name",
+            "item_type",
+            "item_type_id",
+            "uom",
+            "uom_id",
+            "quantity",
+            "unit_price",
+            "total_price",
+            "length",
+            "width",
+            "height",
+            "volume",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "total_price", "volume", "created_at", "updated_at"]
+
+    def get_uom(self, obj):
+        master = obj.item_code or _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        if obj.uom:
+            return f"{obj.uom.name} ({obj.uom.symbol})"
+        if not master or not master.uom:
+            return ""
+        return f"{master.uom.name} ({master.uom.symbol})"
+
+    def get_item_category(self, obj):
+        if obj.item_category:
+            return obj.item_category.name
+        master = obj.item_code or _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        return master.item_category.name if master and master.item_category else ""
+
+    def get_item_code(self, obj):
+        if obj.item_code:
+            return obj.item_code.item_code
+        master = _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        return master.item_code if master else ""
+
+    def get_item_type(self, obj):
+        if obj.item_type:
+            return obj.item_type.it_name
+        master = obj.item_code or _resolve_stock_manufacture_master(obj.item_category, obj.item_name)
+        return master.item_type.it_name if master and master.item_type else ""
+
+    def validate(self, attrs):
+        item_code = attrs.get("item_code")
+        if item_code is None and self.instance is not None:
+            item_code = self.instance.item_code
+
+        item_category = attrs.get("item_category")
+        if item_category is None and self.instance is not None:
+            item_category = self.instance.item_category
+
+        item_name = attrs.get("item_name")
+        if item_name is None and self.instance is not None:
+            item_name = self.instance.item_name
+
+        if not item_code:
+            raise serializers.ValidationError(
+                {"item_code_id": "Select a valid item from Item Master."}
+            )
+
+        if item_code is not None:
+            should_check_duplicate = True
+            if self.instance is not None and self.instance.item_code_id == item_code.id:
+                # Backward compatible: allow updates to legacy duplicate rows
+                # when the item code itself is not being changed.
+                should_check_duplicate = False
+
+            if should_check_duplicate:
+                duplicate_qs = StockManufactureItem.objects.filter(item_code=item_code)
+                if self.instance is not None:
+                    duplicate_qs = duplicate_qs.exclude(pk=self.instance.pk)
+                if duplicate_qs.exists():
+                    raise serializers.ValidationError(
+                        {"item_code_id": "This item code already exists in Stock Manufacture."}
+                    )
+
+            if item_category and getattr(item_code, "item_category_id", None) and item_category.id != item_code.item_category_id:
+                raise serializers.ValidationError(
+                    {"item_category_id": "Selected item name/code does not belong to the chosen category."}
+                )
+
+            attrs["item_code"] = item_code
+            attrs["item_name"] = normalize_text(item_code.item_name)
+            attrs["item_category"] = item_code.item_category
+            attrs["item_type"] = item_code.item_type
+            attrs["uom"] = item_code.uom
+            attrs["length"] = item_code.length
+            attrs["width"] = item_code.width
+            attrs["height"] = item_code.height
+
+        quantity = attrs.get("quantity", getattr(self.instance, "quantity", 0))
+        unit_price = attrs.get("unit_price", getattr(self.instance, "unit_price", 0))
+        length = attrs.get("length", getattr(self.instance, "length", 0))
+        width = attrs.get("width", getattr(self.instance, "width", 0))
+        height = attrs.get("height", getattr(self.instance, "height", 0))
+
+        attrs["total_price"] = quantity * unit_price
+        attrs["volume"] = length * width * height
+        if "item_name" in attrs:
+            attrs["item_name"] = normalize_text(attrs["item_name"])
+        return attrs
+
+
+class ProjectLayoutDrawingSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProjectLayoutDrawing
+        fields = [
+            "id", "project", "drawing_name", "file_url",
+            "level_one_approver", "level_one_status",
+            "level_one_message", "created_at", "updated_at"
+        ]
+
+    def get_file_url(self, obj):
+        request = self.context.get("request")
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return None
+

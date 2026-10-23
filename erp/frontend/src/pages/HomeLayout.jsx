@@ -2,24 +2,42 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BsBarChartFill,
+  BsBell,
+  BsBoxSeam,
+  BsBoxArrowUpRight,
   BsBuildingFill,
-  BsCashCoin,
+  BsClipboardData,
   BsFolder2Open,
   BsHourglassSplit,
   BsKanbanFill,
-  BsListTask,
   BsPeopleFill,
   BsPersonPlusFill,
+  BsPerson,
+  BsScissors,
 } from "react-icons/bs";
 import HomeSideNav from "../components/HomeSideNav";
 import { listPendingRegistrations } from "../services/authApi";
+import { listLayoutDrawingApprovals, listStockPlanningItems } from "../services/crudApi";
 
 function HomeLayout({ currentUser }) {
   const [pendingCount, setPendingCount] = useState(0);
+  const [layoutApprovalCount, setLayoutApprovalCount] = useState(0);
+  const [stockPlanningCount, setStockPlanningCount] = useState(0);
   const roleName = String(currentUser?.role || "").toLowerCase();
   const teamName = String(currentUser?.team || "").toLowerCase();
   const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
+  const isSuperAdmin = Boolean(currentUser?.is_superuser) || roleName === "super admin";
   const isCdcTeam = teamName === "cdc team";
+
+  useEffect(() => {
+    listLayoutDrawingApprovals()
+      .then((data) => {
+        setLayoutApprovalCount(Array.isArray(data.records) ? data.records.length : 0);
+      })
+      .catch(() => {
+        setLayoutApprovalCount(0);
+      });
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -31,6 +49,16 @@ function HomeLayout({ currentUser }) {
       .then((data) => setPendingCount(data.count || 0))
       .catch(() => {});
   }, [isAdmin]);
+
+  useEffect(() => {
+    listStockPlanningItems()
+      .then((data) => {
+        setStockPlanningCount(Array.isArray(data.items) ? data.items.length : 0);
+      })
+      .catch(() => {
+        setStockPlanningCount(0);
+      });
+  }, []);
 
   const dashboardCards = [
     ...(isAdmin
@@ -51,24 +79,46 @@ function HomeLayout({ currentUser }) {
         ]
       : []),
     { title: "Projects", stat: "Track active work", to: "/projects", icon: BsFolder2Open },
+    {
+      title: "Layout Drawing Approval",
+      stat: layoutApprovalCount > 0 ? `${layoutApprovalCount} awaiting your action` : "No pending approvals",
+      to: "/projects/layout-drawing-approval",
+      icon: BsClipboardData,
+      badge: layoutApprovalCount,
+    },
+    {
+      title: "Item Costing",
+      stat: "Costing records and totals",
+      to: "/item-costing",
+      icon: BsBarChartFill,
+    },
+    {
+      title: "Stock Planning",
+      stat: stockPlanningCount > 0 ? `${stockPlanningCount} items to plan` : "No pending planning items",
+      to: "/stock-planning",
+      icon: BsKanbanFill,
+      badge: stockPlanningCount,
+    },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
-    { title: "Stocks:", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },
+    { title: "Orders", stat: "Project Orders", to: "/stocks", icon: BsBoxArrowUpRight },
+    { title: "Stocks", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },
+    { title: "Stock Manufacture", stat: "In-house manufactured items", to: "/stock-manufacture", icon: BsBoxSeam },
     ...(isAdmin || isCdcTeam
       ? [
           {
             title: "CDC Team Expence",
             stat: "Track CDC team expenses",
             to: "/cdc-team-expence",
-            icon: BsCashCoin,
+            icon: BsBell,
           },
         ]
       : []),
-    { title: "Tasks", stat: "Execution board", to: "/task", icon: BsListTask },
+    { title: "Tasks", stat: "Execution board", to: "/task", icon: BsPerson },
     {
       title: "Cut Optimiser",
       stat: "Estimate required panel sheets",
       to: "/projects/cut-optimiser",
-      icon: BsKanbanFill,
+      icon: BsScissors,
     },
     {
       title: "Timesheet",
@@ -81,10 +131,10 @@ function HomeLayout({ currentUser }) {
 
   return (
     <section className="home-layout">
-      <HomeSideNav badges={{ pendingCount }} isAdmin={isAdmin} isCdcTeam={isCdcTeam} />
+      <HomeSideNav badges={{ pendingCount }} isAdmin={isAdmin} isCdcTeam={isCdcTeam} isSuperAdmin={isSuperAdmin} />
       <main className="home-main">
         <section className="dashboard-panel">
-          <h1 className="module-page__title">Dashboard</h1>
+          <h1 className="module-page__title module-page__title--dashboard">Dashboard</h1>
           <p className="module-page__description">
             Home space is reserved for dashboards. Open modules from the side navigator.
           </p>

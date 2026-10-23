@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
+  BsArrowCounterclockwise,
+  BsBarChartFill,
   BsBoxSeam,
+  BsBoxArrowRight,
+  BsBoxArrowUpRight,
   BsBoxes,
+  BsBell,
   BsBuildingFill,
   BsCashCoin,
   BsCartCheckFill,
@@ -11,34 +16,54 @@ import {
   BsClipboardData,
   BsFileEarmarkTextFill,
   BsFolder2Open,
+  BsGear,
   BsHourglassSplit,
+  BsHouseDoor,
   BsKanbanFill,
   BsListTask,
   BsPeopleFill,
+  BsPerson,
   BsPersonCheck,
   BsPersonPlusFill,
+  BsPersonBadge,
   BsReceiptCutoff,
+  BsScissors,
 } from "react-icons/bs";
 import { homeNavItems } from "../config/homeNavigation";
 
 const iconMap = {
   users: BsPeopleFill,
   projects: BsFolder2Open,
+  projectsList: BsListTask,
   vendors: BsBuildingFill,
   stocks: BsBoxes,
+  stocksList: BsBarChartFill,
   stockPurchase: BsCartCheckFill,
-  stockMaintenance: BsBoxes,
-  itemMaster: BsBoxSeam,
-  cdcExpense: BsCashCoin,
-  task: BsListTask,
+  placeStockOrder: BsBoxArrowRight,
+  stockMaintenance: BsGear,
+  stockManufacture: BsBoxSeam,
+  stockRetrieval: BsArrowCounterclockwise,
+  stockAcceptance: BsPersonCheck,
+  stockReturn: BsHourglassSplit,
+  itemMaster: BsHouseDoor,
+  itemCodeNames: BsPersonBadge,
+  cdcExpense: BsBell,
+  task: BsPerson,
   timesheet: BsHourglassSplit,
   requirements: BsClipboardData,
   quotation: BsFileEarmarkTextFill,
   customerPo: BsReceiptCutoff,
   costing: BsCashCoin,
   cutOptimiser: BsKanbanFill,
+  layoutDrawingApproval: BsFileEarmarkTextFill,
   pendingApprovals: BsPersonCheck,
   userRegistration: BsPersonPlusFill,
+  stockPlanning: BsBarChartFill,
+  itemCosting: BsBoxSeam,
+  projectCosting: BsCashCoin,
+  lce: BsReceiptCutoff,
+  orders: BsBoxArrowUpRight,
+  cutSheet: BsScissors,
 };
 
 function NavIcon({ icon }) {
@@ -52,22 +77,30 @@ function pathMatches(targetPath, currentPathname) {
   return currentPathname.startsWith(`${targetPath}/`);
 }
 
-function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
+function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false, isSuperAdmin = false }) {
   const location = useLocation();
   const [expandedGroups, setExpandedGroups] = useState({});
 
   const visibleItems = useMemo(
     () =>
       homeNavItems
-        .filter((item) => (!item.adminOnly || isAdmin) && (!item.cdcOnly || isAdmin || isCdcTeam))
+        .filter(
+          (item) =>
+            (!item.adminOnly || isAdmin)
+            && (!item.cdcOnly || isAdmin || isCdcTeam)
+            && (!item.superAdminOnly || isSuperAdmin)
+        )
         .map((item) => ({
           ...item,
           disabled: !isAdmin && item.to === "/timesheet",
           children: item.children?.filter(
-            (child) => (!child.adminOnly || isAdmin) && (!child.cdcOnly || isAdmin || isCdcTeam)
+            (child) =>
+              (!child.adminOnly || isAdmin)
+              && (!child.cdcOnly || isAdmin || isCdcTeam)
+              && (!child.superAdminOnly || isSuperAdmin)
           ),
         })),
-    [isAdmin, isCdcTeam]
+    [isAdmin, isCdcTeam, isSuperAdmin]
   );
 
   useEffect(() => {
@@ -90,8 +123,6 @@ function HomeSideNav({ badges = {}, isAdmin = false, isCdcTeam = false }) {
 
   return (
     <aside className="home-sidenav" aria-label="Main navigation">
-      <h2 className="home-sidenav__title">Modules</h2>
-
       <nav className="home-sidenav__nav">
         {visibleItems.map((item) => {
           const itemBadge = item.badgeKey && badges[item.badgeKey] > 0

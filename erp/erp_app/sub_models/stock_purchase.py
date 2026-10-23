@@ -1,7 +1,10 @@
 from django.db import models
 
 from ..utils import normalize_text
+from .item_category import ItemCategory
+from .lab_furniture_item import LabFurnitureItem
 from .vendor import Vendor
+from .cut_optimiser import UOM
 
 
 class StockPurchaseVendorDetail(models.Model):
@@ -10,6 +13,8 @@ class StockPurchaseVendorDetail(models.Model):
     invoice_date = models.DateField(null=True, blank=True)
     tax = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_value = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    notes = models.TextField(blank=True, null=True)
+    status_id = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     purchase_id = models.CharField(max_length=10, unique=True, blank=True, null=True, db_index=True)
@@ -46,13 +51,22 @@ class StockPurchaseItem(models.Model):
         related_name="linked_items",
     )
     grn_number = models.CharField(max_length=7, unique=True, blank=True)
-    item_category = models.CharField(max_length=120, blank=True)
+    item_category = models.ForeignKey(
+        ItemCategory,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="stock_purchase_items",
+    )
     item_name = models.CharField(max_length=200)
-    item_code = models.CharField(max_length=100, blank=True)
-    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    item_code = models.ForeignKey(LabFurnitureItem,on_delete=models.PROTECT,null=True,blank=True,related_name="stock_purchase_items",)
+    quantity = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    purchase_qty = models.DecimalField(max_digits=12, decimal_places=0, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    lce_cost = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    lce_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_purchase_items")
+    item_type = models.ForeignKey("erp_app.ItemType_info", on_delete=models.PROTECT, default=1,related_name="stock_purchase_items",)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -62,11 +76,44 @@ class StockPurchaseItem(models.Model):
     def __str__(self):
         return self.item_name
 
+    def _resolve_item_master_from_category_and_name(self):
+        if getattr(self, "item_code_id", None):
+            return self.item_code
+        item_category_id = getattr(self, "item_category_id", None)
+        if not item_category_id:
+            return None
+
+        normalized_name = normalize_text(self.item_name)
+        if not normalized_name:
+            return None
+
+        matches = LabFurnitureItem.objects.filter(
+            item_category_id=item_category_id,
+            item_name_ref__item_name__iexact=normalized_name,
+        ).order_by("id")
+
+        # Backward compatible: only auto-assign when mapping is deterministic.
+        if matches.count() == 1:
+            return matches.first()
+        return None
+
     def save(self, *args, **kwargs):
-        self.item_category = normalize_text(self.item_category)
+        resolved_master = self._resolve_item_master_from_category_and_name()
+        if resolved_master:
+            self.item_code = resolved_master
+            self.item_name = normalize_text(resolved_master.item_name)
+            if getattr(resolved_master, "item_category_id", None):
+                self.item_category = resolved_master.item_category
+            # Also pull item_type and uom from Item Master
+            if getattr(resolved_master, "item_type_id", None):
+                self.item_type_id = resolved_master.item_type_id
+            if getattr(resolved_master, "uom_id", None):
+                self.uom_id = resolved_master.uom_id
         self.item_name = normalize_text(self.item_name)
-        self.item_code = normalize_text(self.item_code)
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
+        # Keep purchase_qty as the immutable reference quantity used for stock allocation.
+        if self.pk is None and self.purchase_qty in (None, "", 0, "0"):
+            self.purchase_qty = self.quantity or 0
 
         # Normalize legacy GRN values (e.g. 0000001) to prefixed format (GRN0001).
         if self.grn_number and not str(self.grn_number).upper().startswith("GRN"):

@@ -1,11 +1,12 @@
 import json
 from decimal import Decimal, InvalidOperation
 
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import LCECostDetail, LCEEstimate, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import ItemCategory, ItemType_info, LabFurnitureItem, LCECostDetail, LCEEstimate, ProjectCostingItemAllocation, RetrievalStatusInfo, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -31,6 +32,84 @@ def _to_decimal(value, fallback="0"):
         return Decimal(str(fallback))
 
 
+def _resolve_item_category(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return ItemCategory.objects.filter(pk=int(value)).first()
+    raw = normalize_text(value)
+    if not raw:
+        return None
+    return ItemCategory.objects.filter(name__iexact=raw).first()
+
+
+def _resolve_item_master(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, LabFurnitureItem):
+        return value
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(pk=int(value)).first()
+    raw = normalize_text(value).upper()
+    if not raw:
+        return None
+    return LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(item_code_ref__item_code__iexact=raw).first()
+
+
+def _resolve_item_master_from_category_and_name(item_category, item_name):
+    if not item_category:
+        return None
+    normalized_name = normalize_text(item_name)
+    if not normalized_name:
+        return None
+
+    qs = LabFurnitureItem.objects.select_related("item_category", "uom", "item_type").filter(
+        item_category=item_category,
+        item_name_ref__item_name__iexact=normalized_name,
+    ).order_by("id")
+
+    # Keep backward compatibility by auto-resolving only deterministic mappings.
+    if qs.count() == 1:
+        return qs.first()
+    return None
+
+
+def _resolve_item_row_references(row):
+    raw_category_id = row.get("item_category_id", row.get("item_category", ""))
+    raw_item_name = row.get("item_name", "")
+    raw_item_id = row.get("item_code_id", row.get("item_master_id", row.get("item_code", "")))
+    item_category = _resolve_item_category(raw_category_id)
+    item_master = _resolve_item_master(raw_item_id)
+
+    if not item_master:
+        item_master = _resolve_item_master_from_category_and_name(item_category, raw_item_name)
+
+    if raw_category_id not in (None, "") and not item_category:
+        raise ValueError("Selected item category was not found.")
+    if raw_item_name not in (None, "") and not item_master:
+        raise ValueError("Selected item name was not found for the chosen category.")
+    if raw_item_id not in (None, "") and not item_master:
+        raise ValueError("Selected item code was not found.")
+
+    if item_master and item_category and item_master.item_category_id != item_category.pk:
+        raise ValueError("Selected item name/code does not belong to the chosen category.")
+
+    return item_category, item_master
+
+
+def _resolve_item_type(value):
+    if isinstance(value, ItemType_info):
+        return value
+    if value in (None, ""):
+        return ItemType_info.objects.filter(pk=1).first()
+    if isinstance(value, int) or (isinstance(value, str) and str(value).isdigit()):
+        return ItemType_info.objects.filter(pk=int(value)).first() or ItemType_info.objects.filter(pk=1).first()
+    raw = normalize_text(value)
+    if not raw:
+        return ItemType_info.objects.filter(pk=1).first()
+    return ItemType_info.objects.filter(it_name__iexact=raw).first() or ItemType_info.objects.filter(pk=1).first()
+
+
 def _serialize_vendor_detail(vendor_detail):
     if not vendor_detail:
         return None
@@ -46,22 +125,54 @@ def _serialize_vendor_detail(vendor_detail):
     }
 
 
-def _serialize_item(item):
+def _serialize_item(item, item_master_by_code=None):
     raw_grn = str(item.grn_number or "").strip()
     if raw_grn and not raw_grn.upper().startswith("GRN"):
         raw_grn = f"GRN{item.id:04d}"
 
+    item_master = getattr(item, "item_code", None)
+    if not item_master:
+        item_master = _resolve_item_master_from_category_and_name(
+            getattr(item, "item_category", None),
+            item.item_name,
+        )
+    item_category = getattr(item, "item_category", None) or getattr(item_master, "item_category", None)
+    resolved_item_master_id = getattr(item, "item_code_id", None) or getattr(item_master, "id", None)
+
+    # Pull item_name from Item Master if available, otherwise use item's item_name
+    resolved_item_name = item_master.item_name if item_master else item.item_name
+
+    # Pull uom and item_type from Item Master
+    resolved_uom = getattr(item_master, "uom", None) or getattr(item, "uom", None)
+    resolved_item_type = getattr(item_master, "item_type", None) or getattr(item, "item_type", None)
+    item_type_name = getattr(resolved_item_type, "it_name", None) or "BUY"
+    item_type_id = getattr(resolved_item_type, "pk", None)
+    purchase_qty = getattr(item, "purchase_qty", None) or item.quantity
+
     return {
         "id": item.id,
         "grn_number": raw_grn,
-        "item_category": item.item_category,
-        "item_name": item.item_name,
-        "item_code": item.item_code,
+        "item_category": item_category.name if item_category else "",
+        "item_category_id": getattr(item, "item_category_id", None) or getattr(item_master, "item_category_id", None),
+        "item_name": resolved_item_name,
+        "item_code": item_master.item_code if item_master else "",
+        "item_code_id": resolved_item_master_id,
+        "item_master_id": resolved_item_master_id,
+        "item_type": item_type_name,
+        "item_type_id": item_type_id,
         "quantity": str(item.quantity),
+        "purchase_qty": str(purchase_qty),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
+        "uom_id": getattr(resolved_uom, "pk", None),
+        "uom_name": getattr(resolved_uom, "name", None),
+        "uom_symbol": getattr(resolved_uom, "symbol", None),
+        "length": str(item_master.length) if item_master else "0",
+        "width": str(item_master.width) if item_master else "0",
+        "height": str(item_master.height) if item_master else "0",
+        "volume": str(item_master.volume) if item_master else "0",
     }
 
 
@@ -73,6 +184,12 @@ def _serialize(obj):
 
     return {
         "id": obj.pk,
+        "purchase_number": obj.purchase_id,
+        "vendor_detail": vendor_detail,
+        "notes": obj.notes or "",
+        "status_id": obj.status_id,
+        "items": [_serialize_item(item) for item in items] if items else [],
+        # Legacy/compatibility fields for lists view
         "purchase_id": getattr(obj, "purchase_id", obj.pk),
         "invoice_number": obj.invoice_number,
         "invoice_date": str(obj.invoice_date) if obj.invoice_date else "",
@@ -80,20 +197,215 @@ def _serialize(obj):
         "total_value": str(obj.total_value),
         "vendor_id": obj.vendor.pk if obj.vendor else None,
         "vendor_name": obj.vendor.name if obj.vendor else None,
-        "items": [_serialize_item(item) for item in items] if items else [],
         "items_count": len(items),
         "lce_linked_count": sum(1 for item in items if getattr(item, 'lce_estimate_id', None)),
         "purchase_total": str(sum((getattr(item, 'total_price', 0) for item in items), Decimal("0"))),
-        # legacy keys for UI compatibility
+        # legacy keys for UI compatibility in list view
         "item_name": first_item.item_name if first_item else "",
-        "category": first_item.item_category if first_item else "",
+        "category": ((first_item.item_category.name if getattr(first_item, "item_category_id", None) else "") if first_item else ""),
         "vendor": obj.vendor.name if obj.vendor else "",
         "quantity": str(first_item.quantity) if first_item else "0",
         "unit_price": str(first_item.unit_price) if first_item else "0",
         "total_price": str(first_item.total_price) if first_item else "0",
-        "status": None,  # No status field in vendor detail
-        "status_id": None,
+        "status": None,
     }
+
+
+def _resolve_item_master_by_code_or_id(item_code):
+    normalized = normalize_text(item_code)
+    if not normalized:
+        return None
+    if normalized.isdigit():
+        return LabFurnitureItem.objects.filter(pk=int(normalized)).first()
+    return LabFurnitureItem.objects.filter(item_code_ref__item_code__iexact=normalized).first()
+
+
+def _purchase_items_for_item_master(item_master):
+    code_value = normalize_text(getattr(item_master, "item_code", ""))
+    qs = StockPurchaseItem.objects.select_related("vendor_detail__vendor", "item_code")
+    if code_value:
+        return list(
+            qs.filter(
+                Q(item_code=item_master) | Q(item_code__item_code_ref__item_code__iexact=code_value)
+            )
+            .order_by("vendor_detail__invoice_date", "id")
+            .distinct()
+        )
+    return list(qs.filter(item_code=item_master).order_by("vendor_detail__invoice_date", "id"))
+
+
+def _allocation_totals_for_purchase_items(purchase_item_ids):
+    consumed_rows = ProjectCostingItemAllocation.objects.filter(
+        purchase_item_id__in=purchase_item_ids,
+        retrieval_status__status_name__in=[
+            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        ],
+        costing_item__retrieval_status__status_name__in=[
+            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        ],
+    )
+
+    consumed_by_id = {}
+    for row in consumed_rows.values("purchase_item_id", "allocated_qty", "returned_qty"):
+        pid = row["purchase_item_id"]
+        net_qty = Decimal(str(row["allocated_qty"] or 0)) - Decimal(str(row.get("returned_qty") or 0))
+        if net_qty < 0:
+            net_qty = Decimal("0")
+        consumed_by_id[pid] = consumed_by_id.get(pid, Decimal("0")) + net_qty
+    for pid in purchase_item_ids:
+        consumed_by_id.setdefault(pid, Decimal("0"))
+    return consumed_by_id
+
+
+def _downstream_reasons_for_purchase_items(purchase_item_ids):
+    ids = [int(v) for v in (purchase_item_ids or []) if str(v).isdigit()]
+    reasons_by_id = {pid: [] for pid in ids}
+    if not ids:
+        return reasons_by_id
+
+    for row in StockPurchaseItem.objects.filter(id__in=ids).values("id", "lce_estimate_id"):
+        if row.get("lce_estimate_id"):
+            reasons_by_id[row["id"]].append("linked to an LCE estimate")
+
+    allocation_counts = (
+        ProjectCostingItemAllocation.objects.filter(purchase_item_id__in=ids)
+        .values("purchase_item_id")
+        .annotate(total=Count("id"))
+    )
+    for row in allocation_counts:
+        total = int(row.get("total") or 0)
+        if total > 0:
+            label = "allocation" if total == 1 else "allocations"
+            reasons_by_id[row["purchase_item_id"]].append(f"used in {total} project costing {label}")
+
+    return reasons_by_id
+
+
+def _blocked_delete_message(items):
+    if not items:
+        return ""
+
+    reasons_by_id = _downstream_reasons_for_purchase_items([item.id for item in items])
+    blocked_lines = []
+    for item in items:
+        reasons = reasons_by_id.get(item.id) or []
+        if not reasons:
+            continue
+        grn = normalize_text(getattr(item, "grn_number", "")) or f"Item #{item.id}"
+        blocked_lines.append(f"{grn} ({'; '.join(reasons)})")
+
+    if not blocked_lines:
+        return ""
+
+    return "Cannot delete downstream-linked GRN row(s): " + ", ".join(blocked_lines) + "."
+
+
+@require_GET
+def purchase_item_grns_api_view(request, item_code):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    item_master = _resolve_item_master_by_code_or_id(item_code)
+    if not item_master:
+        return JsonResponse({"message": "Item code not found."}, status=404)
+
+    purchase_items = _purchase_items_for_item_master(item_master)
+    consumed_by_id = _allocation_totals_for_purchase_items([row.id for row in purchase_items])
+
+    payload = []
+    for row in purchase_items:
+        purchased_qty = Decimal(str(getattr(row, "purchase_qty", None) or row.quantity or 0))
+        consumed_qty = consumed_by_id.get(row.id, Decimal("0"))
+        balance_qty = purchased_qty - consumed_qty
+        if balance_qty < 0:
+            balance_qty = Decimal("0")
+        payload.append(
+            {
+                "id": row.id,
+                "grn_number": row.grn_number,
+                "vendor": getattr(getattr(row, "vendor_detail", None), "vendor", None).name if getattr(getattr(row, "vendor_detail", None), "vendor", None) else "",
+                "purchase_date": str(getattr(getattr(row, "vendor_detail", None), "invoice_date", "") or ""),
+                "purchase_qty": str(purchased_qty),
+                "cost": str(row.unit_price),
+                "consumed_qty": str(consumed_qty),
+                "balance_qty": str(balance_qty),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "item_code": item_master.item_code,
+            "item_code_id": item_master.pk,
+            "grns": payload,
+        }
+    )
+
+
+@require_GET
+def stock_item_summary_api_view(request, item_code):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    item_master = _resolve_item_master_by_code_or_id(item_code)
+    if not item_master:
+        return JsonResponse({"message": "Item code not found."}, status=404)
+
+    purchase_items = _purchase_items_for_item_master(item_master)
+    consumed_by_id = _allocation_totals_for_purchase_items([row.id for row in purchase_items])
+
+    summary_rows = []
+    for row in purchase_items:
+        purchased_qty = Decimal(str(getattr(row, "purchase_qty", None) or row.quantity or 0))
+        consumed_qty = consumed_by_id.get(row.id, Decimal("0"))
+        balance_qty = purchased_qty - consumed_qty
+        if balance_qty < 0:
+            balance_qty = Decimal("0")
+        summary_rows.append(
+            {
+                "purchase_item_id": row.id,
+                "grn_number": row.grn_number,
+                "vendor": getattr(getattr(row, "vendor_detail", None), "vendor", None).name if getattr(getattr(row, "vendor_detail", None), "vendor", None) else "",
+                "purchase_date": str(getattr(getattr(row, "vendor_detail", None), "invoice_date", "") or ""),
+                "purchased_qty": str(purchased_qty),
+                "consumed_qty": str(consumed_qty),
+                "balance_qty": str(balance_qty),
+                "unit_price": str(row.unit_price),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "item_code": item_master.item_code,
+            "item_code_id": item_master.pk,
+            "summary": summary_rows,
+        }
+    )
+
+
+@require_GET
+def stock_purchase_item_delete_check_api_view(request, item_id):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    item = StockPurchaseItem.objects.filter(pk=item_id).first()
+    if not item:
+        return JsonResponse({"message": "Purchase item not found."}, status=404)
+
+    message = _blocked_delete_message([item])
+    can_delete = not bool(message)
+    return JsonResponse(
+        {
+            "can_delete": can_delete,
+            "message": message or "This purchase item row can be deleted.",
+            "grn_number": item.grn_number,
+            "item_id": item.id,
+        }
+    )
 
 
 def _resolve_vendor_detail(payload):
@@ -204,11 +516,13 @@ def _sync_items(stock_purchase, items_payload):
         if item:
             retained_existing_ids.add(item.id)
         else:
-            item = StockPurchaseItem(stock_purchase=stock_purchase)
+            item = StockPurchaseItem(vendor_detail=stock_purchase)
 
-        item.item_category = normalize_text(row.get("item_category", ""))
-        item.item_name = item_name
-        item.item_code = normalize_text(row.get("item_code", ""))
+        item_category, item_master = _resolve_item_row_references(row)
+        item.item_code = item_master
+        item.item_category = item_category or (item_master.item_category if item_master else None)
+        item.item_name = item_master.item_name if item_master else item_name
+        item.item_type = _resolve_item_type(row.get("item_type", getattr(item, "item_type_id", None)))
         item.quantity = _to_decimal(row.get("quantity"), "0")
         item.unit_price = _to_decimal(row.get("unit_price"), "0")
         item.total_price = item.quantity * item.unit_price
@@ -236,7 +550,7 @@ def _sync_items(stock_purchase, items_payload):
 def _first_duplicate_code_in_payload(items_payload):
     seen = set()
     for row in items_payload:
-        code = normalize_text(row.get("item_code", "")).upper()
+        code = str(row.get("item_code_id") or row.get("item_master_id") or row.get("item_code") or "").strip().upper()
         if not code:
             continue
         if code in seen:
@@ -263,22 +577,22 @@ def _first_duplicate_code_for_invoice(invoice_number, items_payload, exclude_pur
         return None
 
     candidate_codes = {
-        normalize_text(row.get("item_code", "")).upper()
+        int(row.get("item_code_id") or row.get("item_master_id"))
         for row in items_payload
-        if normalize_text(row.get("item_code", ""))
+        if str(row.get("item_code_id") or row.get("item_master_id") or "").isdigit()
     }
     if not candidate_codes:
         return None
 
     for code in candidate_codes:
         qs = StockPurchaseItem.objects.filter(
-            stock_purchase__vendor_detail__invoice_number__iexact=invoice,
-            item_code__iexact=code,
+            vendor_detail__invoice_number__iexact=invoice,
+            item_code_id=code,
         )
         if exclude_purchase_id:
-            qs = qs.exclude(stock_purchase_id=exclude_purchase_id)
+            qs = qs.exclude(vendor_detail_id=exclude_purchase_id)
         if qs.exists():
-            return code
+            return str(code)
     return None
 
 
@@ -287,7 +601,13 @@ def list_stock_purchases_api_view(request):
     na = _ensure_authenticated(request)
     if na:
         return na
-    rows = StockPurchaseVendorDetail.objects.select_related("vendor").prefetch_related("items").order_by("-id")
+    rows = StockPurchaseVendorDetail.objects.select_related("vendor").prefetch_related(
+        "items__item_category",
+        "items__item_code",
+        "items__item_code__item_category",
+        "items__item_code__uom",
+        "items__item_code__item_type",
+    ).order_by("-id")
     return JsonResponse({"stock_purchases": [_serialize(o) for o in rows]})
 
 
@@ -315,20 +635,27 @@ def create_stock_purchase_api_view(request):
         invoice_date=p.get("invoice_date") or None,
         tax=_to_decimal(p.get("tax"), "0"),
         total_value=_to_decimal(p.get("total_value"), "0"),
+        notes=p.get("notes", ""),
+        status_id=p.get("status_id"),
     )
 
     items_payload = p.get("items") or []
-    for row in items_payload:
-        item = StockPurchaseItem(
-            vendor_detail=obj,
-            item_category=normalize_text(row.get("item_category", "")),
-            item_name=normalize_text(row.get("item_name", "")),
-            item_code=normalize_text(row.get("item_code", "")),
-            quantity=_to_decimal(row.get("quantity"), "0"),
-            unit_price=_to_decimal(row.get("unit_price"), "0"),
-        )
-        item.total_price = item.quantity * item.unit_price
-        item.save()
+    try:
+        for row in items_payload:
+            item_category, item_master = _resolve_item_row_references(row)
+            item = StockPurchaseItem(
+                vendor_detail=obj,
+                item_category=item_category or (item_master.item_category if item_master else None),
+                item_name=item_master.item_name if item_master else normalize_text(row.get("item_name", "")),
+                item_code=item_master,
+                quantity=_to_decimal(row.get("quantity"), "0"),
+                unit_price=_to_decimal(row.get("unit_price"), "0"),
+            )
+            item.total_price = item.quantity * item.unit_price
+            item.save()
+    except ValueError as exc:
+        obj.delete()
+        return JsonResponse({"message": str(exc)}, status=400)
 
     return JsonResponse({"success": True, "stock_purchase": _serialize(obj)}, status=201)
 
@@ -340,7 +667,13 @@ def stock_purchase_detail_api_view(request, pk):
     if na:
         return na
     try:
-        obj = StockPurchaseVendorDetail.objects.get(pk=pk)
+        obj = StockPurchaseVendorDetail.objects.prefetch_related(
+            "items__item_category",
+            "items__item_code",
+            "items__item_code__item_category",
+            "items__item_code__uom",
+            "items__item_code__item_type",
+        ).get(pk=pk)
     except StockPurchaseVendorDetail.DoesNotExist:
         return JsonResponse({'message': 'Record not found.'}, status=404)
 
@@ -357,31 +690,41 @@ def stock_purchase_detail_api_view(request, pk):
     obj.invoice_date = p.get("invoice_date", obj.invoice_date)
     obj.tax = _to_decimal(p.get("tax", obj.tax))
     obj.total_value = _to_decimal(p.get("total_value", obj.total_value))
+    obj.notes = p.get("notes", obj.notes)
+    obj.status_id = p.get("status_id", obj.status_id)
     obj.save()
 
     # Update items if provided
     items_payload = p.get("items")
     if isinstance(items_payload, list):
-        # Remove existing items not in payload
-        existing_ids = {item.pk for item in obj.items.all()}
-        payload_ids = {row.get("id") for row in items_payload if row.get("id")}
-        to_delete = existing_ids - payload_ids
-        if to_delete:
-            StockPurchaseItem.objects.filter(pk__in=list(to_delete)).delete()
-        # Update or create items
-        for row in items_payload:
-            item_id = row.get("id")
-            if item_id and StockPurchaseItem.objects.filter(pk=item_id, vendor_detail=obj).exists():
-                item = StockPurchaseItem.objects.get(pk=item_id, vendor_detail=obj)
-            else:
-                item = StockPurchaseItem(vendor_detail=obj)
-            item.item_category = normalize_text(row.get("item_category", ""))
-            item.item_name = normalize_text(row.get("item_name", ""))
-            item.item_code = normalize_text(row.get("item_code", ""))
-            item.quantity = _to_decimal(row.get("quantity"), "0")
-            item.unit_price = _to_decimal(row.get("unit_price"), "0")
-            item.total_price = item.quantity * item.unit_price
-            item.save()
+        try:
+            # Remove existing items not in payload
+            existing_ids = {item.pk for item in obj.items.all()}
+            payload_ids = {row.get("id") for row in items_payload if row.get("id")}
+            to_delete = existing_ids - payload_ids
+            if to_delete:
+                delete_rows = list(StockPurchaseItem.objects.filter(pk__in=list(to_delete)).only("id", "grn_number", "lce_estimate_id"))
+                blocked_message = _blocked_delete_message(delete_rows)
+                if blocked_message:
+                    return JsonResponse({"status": "warning", "message": blocked_message}, status=400)
+                StockPurchaseItem.objects.filter(pk__in=list(to_delete)).delete()
+            # Update or create items
+            for row in items_payload:
+                item_id = row.get("id")
+                if item_id and StockPurchaseItem.objects.filter(pk=item_id, vendor_detail=obj).exists():
+                    item = StockPurchaseItem.objects.get(pk=item_id, vendor_detail=obj)
+                else:
+                    item = StockPurchaseItem(vendor_detail=obj)
+                item_category, item_master = _resolve_item_row_references(row)
+                item.item_category = item_category or (item_master.item_category if item_master else None)
+                item.item_name = item_master.item_name if item_master else normalize_text(row.get("item_name", ""))
+                item.item_code = item_master
+                item.quantity = _to_decimal(row.get("quantity"), "0")
+                item.unit_price = _to_decimal(row.get("unit_price"), "0")
+                item.total_price = item.quantity * item.unit_price
+                item.save()
+        except ValueError as exc:
+            return JsonResponse({"message": str(exc)}, status=400)
 
     return JsonResponse({'success': True, 'stock_purchase': _serialize(obj)})
 
@@ -392,7 +735,7 @@ def stock_purchase_item_trace_api_view(request, item_id):
     if na:
         return na
 
-    item = StockPurchaseItem.objects.select_related("vendor_detail", "lce_estimate").filter(pk=item_id).first()
+    item = StockPurchaseItem.objects.select_related("vendor_detail", "lce_estimate", "item_code").filter(pk=item_id).first()
     if not item:
         return JsonResponse({"message": "Purchase item not found."}, status=404)
 
@@ -443,7 +786,7 @@ def stock_purchase_item_trace_api_view(request, item_id):
                 "item": {
                     "id": item.pk,
                     "grn_number": item.grn_number,
-                    "item_code": item.item_code,
+                    "item_code": item.item_code.item_code if getattr(item, "item_code_id", None) else "",
                     "item_name": item.item_name,
                     "purchase_id": item.vendor_detail.purchase_id if item.vendor_detail else None,
                     "purchase_number": item.vendor_detail.invoice_number if item.vendor_detail else "",

@@ -8,6 +8,8 @@ import {
   BsPerson,
   BsPersonBadge,
   BsToggleOn,
+  BsEye,
+  BsEyeSlash,   // 👁️ open/closed eye icons
 } from "react-icons/bs";
 
 export function HomeIcon({ className = "app-icon" }) {
@@ -44,5 +46,13 @@ export function BellIcon({ className = "app-icon" }) {
 
 export function MessageIcon({ className = "app-icon" }) {
   return <BsChatDots className={className} aria-hidden="true" focusable="false" />;
+}
+/* 👁️ Eye icons for password toggle */
+export function EyeIcon({ className = "app-icon" }) {
+  return <BsEye className={className} aria-hidden="true" focusable="false" />;
+}
+
+export function EyeOffIcon({ className = "app-icon" }) {
+  return <BsEyeSlash className={className} aria-hidden="true" focusable="false" />;
 }
 

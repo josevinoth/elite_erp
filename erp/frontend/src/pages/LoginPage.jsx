@@ -46,6 +46,7 @@ function LoginPage({ onLoginSuccess }) {
     loginUser,
     (data, _setValues, submittedValues) => {
       const resolvedUser = {
+        id: data?.user?.id || submittedValues.username || "",
         username: data?.user?.username || submittedValues.username || "Guest",
         role: data?.user?.role || "User",
         team: data?.user?.team || "",
