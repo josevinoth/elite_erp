@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from .safe_fields import SafeSourceCharField
 from .sub_models import Project, ProjectQuotationSummaryInfo
 from .sub_models.project_costing_summary_mod import ProjectCostingSummaryInfo
 from .sub_models.quotation_status_mod import QuotationStatusInfo
@@ -50,10 +51,10 @@ class ProjectCostingSummarySerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
-    quotation_number = serializers.CharField(source="quotation_number.quotation_number", read_only=True)
-    project_code = serializers.CharField(source="project.project_id", read_only=True)
+    quotation_number = SafeSourceCharField(source="quotation_number.quotation_number", read_only=True)
+    project_code = SafeSourceCharField(source="project.project_id", read_only=True)
     status_id = serializers.CharField(read_only=True)
-    status_name = serializers.CharField(source="status.status_name", read_only=True)
+    status_name = SafeSourceCharField(source="status.status_name", read_only=True)
     updated_by = serializers.StringRelatedField(read_only=True)
 
     class Meta:

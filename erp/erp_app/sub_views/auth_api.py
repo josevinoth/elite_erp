@@ -18,6 +18,22 @@ from ..sub_models import Team, UserProfile, UserStatusOption
 
 logger = logging.getLogger(__name__)
 
+ROLE_USER = "User"
+ROLE_ADMIN = "Admin"
+ROLE_SUPER_ADMIN = "Super Admin"
+ROLE_SUPER_USER = "Super User"
+
+
+def _canonical_role_label(role_name):
+    normalized = str(role_name or "").strip().lower()
+    if normalized in {"user"}:
+        return ROLE_USER
+    if normalized in {"admin", "staff"}:
+        return ROLE_ADMIN
+    if normalized in {"super user", "superuser", "super admin", "superadmin"}:
+        return ROLE_SUPER_ADMIN
+    return str(role_name or "").strip()
+
 
 def _mask_email(email: str) -> str:
     """Mask local-part to reduce PII exposure in logs."""
@@ -34,12 +50,12 @@ def _mask_email(email: str) -> str:
 def _resolve_user_role(user):
     first_group = user.groups.order_by("name").first()
     if first_group:
-        return first_group.name
+        return _canonical_role_label(first_group.name)
     if user.is_superuser:
-        return "Super Admin"
+        return ROLE_SUPER_ADMIN
     if user.is_staff:
-        return "Staff"
-    return "User"
+        return ROLE_ADMIN
+    return ROLE_USER
 
 
 def _resolve_user_team(user):
@@ -59,9 +75,13 @@ def csrf_token_view(request):
 @require_GET
 def register_meta_api_view(_request):
     """Returns registration dropdown metadata."""
-    role_options = list(Group.objects.filter(name__in=["User", "Admin"]).order_by("name").values_list("name", flat=True))
+    role_options = list(
+        Group.objects.filter(name__in=[ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN])
+        .order_by("name")
+        .values_list("name", flat=True)
+    )
     if not role_options:
-        role_options = ["User", "Admin"]
+        role_options = [ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN]
 
     status_options = list(UserStatusOption.objects.order_by("name").values_list("name", flat=True))
     if not status_options:

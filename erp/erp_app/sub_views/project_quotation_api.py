@@ -651,7 +651,9 @@ def list_project_quotations_api_view(request):
     if not_allowed:
         return not_allowed
 
-    return quotations_api_view(request)
+    project_id = request.GET.get("project_id")
+    payload = ProjectQuotationSummaryView(request).list_payload(project_id=project_id)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
