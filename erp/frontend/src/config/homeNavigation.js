@@ -82,6 +82,7 @@ export const homeNavItems = [
         label: "Place Stock Order",
         to: "/stock-purchase/place-order",
         icon: "placeStockOrder",
+        superAdminOnly: true,
       },
       {
         label: "Stock Maintenance",

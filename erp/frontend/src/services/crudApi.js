@@ -218,7 +218,7 @@ export async function listQuotationSummaries(projectId = null) {
   const query = projectId !== null && projectId !== undefined && String(projectId).trim()
     ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
     : "";
-  const res = await fetch(`/api/quotations/${query}`, { credentials: "include" });
+  const res = await fetch(`/api/quotations/list/${query}`, { credentials: "include" });
   return parseJson(res);
 }
 
@@ -238,13 +238,19 @@ export async function listStockPlanningItems(projectId = null) {
   return parseJson(res);
 }
 
-export async function createQuotationSummary(payload) {
+export async function createQuotationSummary(payload, options = {}) {
+  const normalizedPayload = payload && typeof payload === "object" ? payload : {};
+  const body = {
+    project_id: normalizedPayload.project_id,
+    quotation_data: normalizedPayload,
+    confirm_new_revision: Boolean(options.confirmNewRevision),
+  };
   const headers = await csrfHeaders();
-  const res = await fetch("/api/quotations/", {
+  const res = await fetch("/api/quotations/create/", {
     method: "POST",
     credentials: "include",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   return parseJson(res);
 }

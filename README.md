@@ -235,6 +235,12 @@ Prepare project quotations per project with BOM hierarchy validation and cost-ty
   - if items are empty → warning confirmation popup (`No quotation items added...`).
 - Summary alerts are status-related and shown above the Quotation Summary section.
 - Item alerts are item-related and shown above the Quotation Items table.
+- Quotation list page now includes **Project Number** dropdown + **Add Quotation** action.
+- Add flow:
+  1. Select project from dropdown.
+  2. Click `Add Quotation` to open/create quotation for that project.
+  3. If latest quotation is `Completed`, system prompts to create next revision.
+- Revision numbering is stored in `revision_number`; UI/API shows `revision_code` in format `R1`, `R2`, `R3`.
 
 ---
 
@@ -327,6 +333,8 @@ Registered in `erp/erp_app/urls.py` — view files: `erp/erp_app/sub_views/proje
 
 | Method | Route | Description |
 |--------|-------|-------------|
+| `GET` | `/api/quotations/list/` | List quotations with grouped-by-project payload including revision codes |
+| `POST` | `/api/quotations/create/` | Create/open quotation for selected project with completed-revision confirmation flow |
 | `GET` | `/api/project-quotation/<id>/summary/` | Fetch quotation summary payload for one quotation |
 | `PATCH` | `/api/project-quotation/<id>/status/` | Update quotation status with admin/non-admin edit-permission flags |
 | `PATCH` | `/api/project-quotation/<id>/save/` | Save summary fields with optional confirmation for `Completed` status when no items exist |

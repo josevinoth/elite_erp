@@ -22,6 +22,7 @@ import {
   importQuotationItemsExcel,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
+  listProjects,
   listProjectQuotationItems,
   listQuotationSummaries,
   listRooms,
@@ -247,6 +248,11 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const queryQuotationId = searchParams.get("quotationId");
 
   const [quotations, setQuotations] = useState([]);
+  const [projectOptions, setProjectOptions] = useState([]);
+  const [projectSelectionInput, setProjectSelectionInput] = useState("");
+  const [selectedProjectIdForCreate, setSelectedProjectIdForCreate] = useState(() => (
+    embedded && projectId ? String(projectId) : ""
+  ));
   const [selectedQuotationId, setSelectedQuotationId] = useState(() => queryQuotationId || "");
   const [summary, setSummary] = useState(null);
   const [savedSummaryStatus, setSavedSummaryStatus] = useState("");
@@ -284,6 +290,13 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   });
   const [saveNoItemsConfirmationOpen, setSaveNoItemsConfirmationOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [creatingQuotation, setCreatingQuotation] = useState(false);
+  const [revisionCreateConfirmation, setRevisionCreateConfirmation] = useState({
+    open: false,
+    message: "",
+    projectId: "",
+    nextRevisionCode: "",
+  });
 
   const sessionUser = useMemo(() => getSessionUser(), []);
   const isAdminUser = useMemo(() => {
@@ -308,6 +321,39 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     costTypes.forEach((row) => lookup.set(String(row.id), row));
     return lookup;
   }, [costTypes]);
+
+  const projectOptionLabel = useCallback(
+    (project) => `${project.project_id || "Project"} — ${project.project_name || "Unnamed"}`,
+    []
+  );
+
+  const handleProjectSelectionInput = useCallback((value) => {
+    const nextValue = String(value || "");
+    setProjectSelectionInput(nextValue);
+
+    const normalized = nextValue.trim().toLowerCase();
+    if (!normalized) {
+      setSelectedProjectIdForCreate("");
+      return;
+    }
+
+    const matched = projectOptions.find((project) => {
+      const label = projectOptionLabel(project).toLowerCase();
+      const projectCode = String(project.project_id || "").trim().toLowerCase();
+      return label === normalized || projectCode === normalized;
+    });
+    setSelectedProjectIdForCreate(matched ? String(matched.id) : "");
+  }, [projectOptionLabel, projectOptions]);
+
+  useEffect(() => {
+    if (!selectedProjectIdForCreate) return;
+    const selectedProject = projectOptions.find((row) => String(row.id) === String(selectedProjectIdForCreate));
+    if (!selectedProject) return;
+    const label = projectOptionLabel(selectedProject);
+    if (projectSelectionInput !== label) {
+      setProjectSelectionInput(label);
+    }
+  }, [projectOptionLabel, projectOptions, projectSelectionInput, selectedProjectIdForCreate]);
 
   const isMaterialCostType = useCallback((costTypeId) => {
     const normalized = String(costTypeId || "").trim();
@@ -457,11 +503,12 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     setLoading(true);
     try {
       const activeProjectId = embedded && projectId ? projectId : null;
-      const [summaryData, categoryData, itemData, roomData] = await Promise.all([
+      const [summaryData, categoryData, itemData, roomData, projectsData] = await Promise.all([
         listQuotationSummaries(activeProjectId),
         listLabFurnitureItemCategories(),
         listLabFurnitureItems(),
         listRooms(),
+        listProjects(),
       ]);
 
       const summaryRows = Array.isArray(summaryData.quotations) ? summaryData.quotations : [];
@@ -475,6 +522,19 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setMaterialCostTypeId(summaryData.material_cost_type_id || null);
       setCategoryOptions(Array.isArray(categoryData.item_categories) ? categoryData.item_categories : []);
       setRoomOptions(Array.isArray(roomData.rooms) ? roomData.rooms : []);
+      const projects = Array.isArray(projectsData.projects) ? projectsData.projects : [];
+      setProjectOptions(projects);
+      setSelectedProjectIdForCreate((prev) => {
+        if (embedded && projectId) return String(projectId);
+        const normalizedPrev = String(prev || "");
+        return projects.some((row) => String(row.id) === normalizedPrev) ? normalizedPrev : "";
+      });
+      if (!(embedded && projectId) && selectedProjectIdForCreate) {
+        const selectedProject = projects.find((row) => String(row.id) === String(selectedProjectIdForCreate));
+        if (!selectedProject) {
+          setProjectSelectionInput("");
+        }
+      }
       itemMasterRef.current = Array.isArray(itemData.lab_furniture_items) ? itemData.lab_furniture_items : [];
 
       let nextSelectedId = "";
@@ -518,21 +578,30 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setCostTypes([]);
       setCategoryOptions([]);
       setRoomOptions([]);
+      setProjectOptions([]);
       itemMasterRef.current = [];
     } finally {
       setLoading(false);
     }
-  }, [embedded, ensureEmbeddedSummary, loadItemsForSummary, projectId, queryQuotationId, selectedQuotationId, showStatus]);
+  }, [
+    embedded,
+    ensureEmbeddedSummary,
+    loadItemsForSummary,
+    projectId,
+    queryQuotationId,
+    selectedProjectIdForCreate,
+    selectedQuotationId,
+    showStatus,
+  ]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    if (!embedded) {
-      setSelectedQuotationId(queryQuotationId || "");
-    }
-  }, [embedded, queryQuotationId]);
+  const closeRevisionCreateConfirmation = useCallback(() => {
+    setRevisionCreateConfirmation({
+      open: false,
+      message: "",
+      projectId: "",
+      nextRevisionCode: "",
+    });
+  }, []);
 
   const refreshSelectedSummary = useCallback(async (quotationId) => {
     const listData = await listQuotationSummaries(embedded && projectId ? projectId : null);
@@ -553,6 +622,69 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setValidationMessages([]);
     }
   }, [embedded, loadItemsForSummary, projectId]);
+
+  const createQuotationForProject = useCallback(async (projectIdValue, confirmNewRevision = false) => {
+    const normalizedProjectId = String(projectIdValue || "").trim();
+    if (!normalizedProjectId) {
+      showStatus("Select a project before adding quotation.", "warning");
+      return;
+    }
+
+    setCreatingQuotation(true);
+    clearStatus();
+    try {
+      const response = await createQuotationSummary(
+        { project_id: normalizedProjectId },
+        { confirmNewRevision }
+      );
+
+      if (response?.requires_confirmation) {
+        setRevisionCreateConfirmation({
+          open: true,
+          message: response.message || "Create a new revision?",
+          projectId: normalizedProjectId,
+          nextRevisionCode: String(response.next_revision_code || ""),
+        });
+        return;
+      }
+
+      closeRevisionCreateConfirmation();
+      const nextSummaryId = String(response?.quotation?.id || "");
+      if (!nextSummaryId) {
+        throw new Error(response?.message || "Failed to open quotation.");
+      }
+
+      setSelectedQuotationId(nextSummaryId);
+      if (!embedded) {
+        setSearchParams({ quotationId: nextSummaryId });
+      }
+      await refreshSelectedSummary(nextSummaryId);
+      showStatus(response.message || "Quotation opened successfully.", response.status || "success");
+    } catch (error) {
+      showStatus(error.message || "Failed to create quotation.", "error");
+      window.alert(error.message || "Failed to create quotation.");
+    } finally {
+      setCreatingQuotation(false);
+    }
+  }, [clearStatus, closeRevisionCreateConfirmation, embedded, refreshSelectedSummary, setSearchParams, showStatus]);
+
+  const handleAddQuotation = useCallback(async () => {
+    await createQuotationForProject(selectedProjectIdForCreate, false);
+  }, [createQuotationForProject, selectedProjectIdForCreate]);
+
+  const confirmCreateRevision = useCallback(async () => {
+    await createQuotationForProject(revisionCreateConfirmation.projectId, true);
+  }, [createQuotationForProject, revisionCreateConfirmation.projectId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!embedded) {
+      setSelectedQuotationId(queryQuotationId || "");
+    }
+  }, [embedded, queryQuotationId]);
 
   const openRoomModal = useCallback(() => {
     setRoomModalOpen(true);
@@ -1505,13 +1637,40 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       {loading ? <p className="users-status">Loading quotations...</p> : null}
 
       {!loading && !embedded && !selectedQuotationId ? (
-        <div className="users-table-wrap pq-table-wrap-list project-costing-table-wrap">
+        <>
+          <div className="project-costing-card project-costing-actions">
+            <input
+              type="search"
+              list="quotation-project-options"
+              className="auth-input"
+              placeholder="Select project"
+              value={projectSelectionInput}
+              onChange={(event) => handleProjectSelectionInput(event.target.value)}
+              disabled={creatingQuotation}
+            />
+            <datalist id="quotation-project-options">
+              {projectOptions.map((project) => (
+                <option key={project.id} value={projectOptionLabel(project)} />
+              ))}
+            </datalist>
+            <button
+              type="button"
+              className="crud-add-btn"
+              onClick={handleAddQuotation}
+              disabled={!selectedProjectIdForCreate || creatingQuotation}
+            >
+              {creatingQuotation ? "Opening..." : "Add Quotation"}
+            </button>
+          </div>
+
+          <div className="users-table-wrap pq-table-wrap-list project-costing-table-wrap">
           <table className="users-table project-costing-table">
             <thead>
               <tr>
                 <th>Quotation Number</th>
                 <th>Project ID</th>
                 <th>Project Name</th>
+                <th>Revision Code</th>
                 <th>Total Quotation Cost</th>
                 <th>Status</th>
                 <th className="pq-text-center">Actions</th>
@@ -1520,7 +1679,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             <tbody>
               {quotations.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="pq-empty-cell">
+                  <td colSpan={7} className="pq-empty-cell">
                     No quotations found.
                   </td>
                 </tr>
@@ -1529,6 +1688,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                   <td className="pq-cell-link" onClick={() => openSummary(row.id)}>{row.quotation_number || "Auto"}</td>
                   <td>{row.project_code || row.project_id}</td>
                   <td>{row.project_name || "-"}</td>
+                  <td>{row.revision_code || `R${row.revision_number || 1}`}</td>
                   <td className="pq-text-right">{row.total_quotation_cost}</td>
                   <td>{getQuotationStatus(row)}</td>
                   <td className="pq-text-center">
@@ -1551,7 +1711,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       ) : null}
 
       {!loading && (embedded || selectedQuotationId) && summary ? (
@@ -1835,6 +1996,21 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         cancelDisabled={savingSummary}
         onConfirm={confirmSaveNoItems}
         onCancel={cancelSaveNoItemsConfirmation}
+      />
+
+      <ConfirmPopupModal
+        open={revisionCreateConfirmation.open}
+        title="Create Quotation Revision"
+        type="warning"
+        message={revisionCreateConfirmation.message || "Create a new quotation revision?"}
+        confirmLabel={creatingQuotation
+          ? "Creating..."
+          : `Create ${revisionCreateConfirmation.nextRevisionCode || "Revision"}`}
+        cancelLabel="Cancel"
+        confirmDisabled={creatingQuotation}
+        cancelDisabled={creatingQuotation}
+        onConfirm={confirmCreateRevision}
+        onCancel={closeRevisionCreateConfirmation}
       />
 
       {roomModalOpen ? (
