@@ -210,7 +210,7 @@ function formatPurchaseOption(row) {
   return { value: id, label };
 }
 
-/* ─────────────────── Purchase Item Selection Modal ─────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Purchase Item Selection Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function PurchaseItemModal({
   items,
   initialSelected,
@@ -285,7 +285,7 @@ function PurchaseItemModal({
         <input
           type="search"
           className="auth-input costing-modal-card__search"
-          placeholder="Search by GRN, item name, code, category, purchase or invoice…"
+          placeholder="Search by GRN, item name, code, category, purchase or invoiceâ€¦"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -332,7 +332,7 @@ function PurchaseItemModal({
                   const taken = isTaken(item);
                   const lceTag = item.lce_estimate_id
                     ? `LCE_${String(item.lce_estimate_id).padStart(3, "0")}`
-                    : "—";
+                    : "â€”";
                   const rowClassName = `costing-modal-card__row${
                     taken ? " costing-modal-card__row--taken" : ""
                   }${checked.has(item.id) && !taken ? " costing-modal-card__row--selected" : ""}`;
@@ -355,8 +355,8 @@ function PurchaseItemModal({
                         />
                       </td>
                       <td>{item.grn_number}</td>
-                      <td>{item.purchase_number || "—"}</td>
-                      <td>{item.invoice_number || "—"}</td>
+                      <td>{item.purchase_number || "â€”"}</td>
+                      <td>{item.invoice_number || "â€”"}</td>
                       <td>{item.item_category}</td>
                       <td>{item.item_name}</td>
                       <td>{item.item_code}</td>
@@ -405,7 +405,7 @@ function PurchaseItemModal({
   );
 }
 
-/* ─────────────────── Main LCE Add / Edit Page ─────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Main LCE Add / Edit Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function LCEAddPage() {
   const { lceId } = useParams();
   const navigate = useNavigate();
@@ -827,8 +827,8 @@ function LCEAddPage() {
         <p className="users-status">Loading LCE details...</p>
       ) : (
         <>
-          {/* ═════════ CARD 1: Add/Edit LCE ═════════ */}
-          <Card className="col-4 mx-auto mb-3">
+          {/* â•â•â•â•â•â•â•â•â• CARD 1: Add/Edit LCE â•â•â•â•â•â•â•â•â• */}
+          <Card className="lce-card mb-3">
             <CardHeader>
               <h2>Add/Edit LCE</h2>
               {lceId ? (
@@ -844,402 +844,645 @@ function LCEAddPage() {
                   handleSave();
                 }}
               >
-                {/* LCE Number */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">LCE Number</label>
-                  <div className="col-8">
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={lceId ? formatLceId(lceId) : "Auto-generated"}
-                      disabled
-                      readOnly
-                    />
-                  </div>
-                </div>
+                <div className="lce-fields-grid">
 
-                {/* Foreign Currency */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">Foreign Currency</label>
-                  <div className="col-8">
-                    <select
-                      className="form-control"
-                      value={form["foreign_currency_id"] || ""}
-                      onChange={(e) =>
-                        handleChange("foreign_currency_id", e.target.value)
-                      }
-                    >
-                      <option value="">Select currency</option>
-                      {currencyOptions.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Ex Works Material Cost */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    {withForeignCurrencyLabel(
-                      "ex_works_material_cost",
-                      "Ex Works Material Cost"
-                    )}
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["ex_works_material_cost"]}
-                      disabled
-                      readOnly
-                    />
-                  </div>
-                </div>
-
-                {/* Packing Charges */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    {withForeignCurrencyLabel(
-                      "packing_charges",
-                      "Packing Charges"
-                    )}
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["packing_charges"]}
-                      onChange={(e) =>
-                        handleChange("packing_charges", e.target.value)
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* Documentation */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    {withForeignCurrencyLabel("documentation", "Documentation")}
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["documentation"]}
-                      onChange={(e) =>
-                        handleChange("documentation", e.target.value)
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* Other Charges 1 to 4 */}
-                {OTHER_CHARGE_FIELDS.map(([key, label, typeKey]) => (
-                  <div key={key} className="row mb-3">
-                    <label className="col-4 col-form-label">
-                      {withForeignCurrencyLabel(key, label)}
-                    </label>
-                    <div className="col-8">
-                      <div className="lce-charge-control-row">
-                        <select
-                          className="form-control"
-                          value={form[typeKey] || ""}
-                          onChange={(e) => handleChange(typeKey, e.target.value)}
-                        >
-                          <option value="">Select charge type</option>
-                          {chargeTypeOptions.map((o) => (
-                            <option
-                              key={`${typeKey}-${o.value}`}
-                              value={o.value}
-                            >
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="crud-add-btn lce-btn-add-type"
-                          onClick={() => handleChargeTypeAdd(typeKey)}
-                          title="Add charge type"
-                        >
-                          +
-                        </button>
-                        <input
-                          type="number"
-                          step="any"
-                          className="form-control"
-                          value={form[key]}
-                          disabled={!form[typeKey]}
-                          onChange={(e) => handleChange(key, e.target.value)}
-                        />
-                      </div>
+                  {/* ── Header: LCE ID + Currency ── */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">LCE Number</label>
+                    <div className="lce-input">
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={lceId ? formatLceId(lceId) : "Auto-generated"}
+                        disabled
+                        readOnly
+                      />
                     </div>
                   </div>
-                ))}
 
-                {/* Advance Payment Value */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    {withForeignCurrencyLabel(
-                      "advance_payment_value",
-                      "Advance Payment Value"
-                    )}
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["advance_payment_value"]}
-                      disabled
-                      readOnly
-                    />
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Foreign Currency</label>
+                    <div className="lce-input">
+                      <select
+                        className="form-control"
+                        value={form["foreign_currency_id"] || ""}
+                        onChange={(e) =>
+                          handleChange("foreign_currency_id", e.target.value)
+                        }
+                      >
+                        <option value="">Select currency</option>
+                        {currencyOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
 
-                {/* Balance Payment Value */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    {withForeignCurrencyLabel(
-                      "balance_payment_value",
-                      "Balance Payment Value"
-                    )}
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["balance_payment_value"]}
-                      disabled
-                      readOnly
-                    />
+                  {/* ── Supplier Cost Section ── */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("ex_works_material_cost", "Ex Works Material Cost")}
+                    </label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["ex_works_material_cost"]} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Total Advance Payment (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Total Advance Payment (OMR)
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["bank_muscat_charge_advance_payment"]}
-                      disabled
-                      readOnly
-                    />
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("packing_charges", "Packing Charges")}
+                    </label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["packing_charges"]}
+                        onChange={(e) => handleChange("packing_charges", e.target.value)} />
+                    </div>
                   </div>
-                </div>
 
-                {/* Freight Charge (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Freight Charge (OMR)
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["freight_charge"]}
-                      onChange={(e) =>
-                        handleChange("freight_charge", e.target.value)
-                      }
-                    />
+                  <div className="lce-field-pair lce-field-pair--full">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("documentation", "Documentation Charges")}
+                    </label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["documentation"]}
+                        onChange={(e) => handleChange("documentation", e.target.value)} />
+                    </div>
                   </div>
-                </div>
 
-                {/* Customs Duty (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Customs Duty (OMR)
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["customs_duty_omr"]}
-                      onChange={(e) =>
-                        handleChange("customs_duty_omr", e.target.value)
-                      }
-                    />
-                  </div>
-                </div>
+                  {/* Other Charges 1–4 (full-width, complex 3-control row) */}
+                  {OTHER_CHARGE_FIELDS.map(([key, label, typeKey]) => (
+                    <div key={key} className="lce-field-pair lce-field-pair--full">
+                      <label className="lce-label" style={{ flex: "0 0 22%", maxWidth: "22%" }}>
+                        {withForeignCurrencyLabel(key, `Any Other Charges (${label.replace("Other Charges ", "")})`)}
+                      </label>
+                      <div className="lce-input" style={{ flex: "1" }}>
+                        <div className="lce-charge-control-row">
+                          <select
+                            className="form-control"
+                            value={form[typeKey] || ""}
+                            onChange={(e) => handleChange(typeKey, e.target.value)}
+                          >
+                            <option value="">Select charge type</option>
+                            {chargeTypeOptions.map((o) => (
+                              <option key={`${typeKey}-${o.value}`} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="crud-add-btn lce-btn-add-type"
+                            onClick={() => handleChargeTypeAdd(typeKey)}
+                            title="Add charge type"
+                          >+</button>
+                          <input
+                            type="number" step="any" className="form-control"
+                            value={form[key]}
+                            disabled={!form[typeKey]}
+                            onChange={(e) => handleChange(key, e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
 
-                {/* Oman Customs Boe Charge (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Oman Customs Boe Charge (OMR)
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["oman_customs_boe_charge_omr"]}
-                      onChange={(e) =>
-                        handleChange("oman_customs_boe_charge_omr", e.target.value)
-                      }
-                    />
+                  {/* ── Total Supplier Price (FC) — highlighted divider ── */}
+                  <div className="lce-field-pair lce-field-pair--full lce-section-divider lce-section-divider--blue">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("total_supplier_price", "Total Supplier Price")}
+                    </label>
+                    <div className="lce-input">
+                      <input type="number" className="form-control" value={form["total_supplier_price"]} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Rop Customs Inspection Charge (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Rop Customs Inspection Charge (OMR)
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["rop_customs_inspection_charge"]}
-                      onChange={(e) =>
-                        handleChange(
-                          "rop_customs_inspection_charge",
-                          e.target.value
-                        )
-                      }
-                    />
+                  {/* ── Advance Payment Section ── */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("advance_payment_value", "Advance Payment Value")}
+                    </label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["advance_payment_value"]} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Unloading Charge @ Muscat Stores 1 (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Unloading Charge @ Stores 1 (OMR)
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["unloading_charge_muscat_stores_1"]}
-                      onChange={(e) =>
-                        handleChange(
-                          "unloading_charge_muscat_stores_1",
-                          e.target.value
-                        )
-                      }
-                    />
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Advance Payment Value (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["bank_muscat_charge_advance_payment"]} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Unloading Charge @ Muscat Stores 2 (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Unloading Charge @ Stores 2 (OMR)
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["unloading_charge_muscat_stores_2"]}
-                      onChange={(e) =>
-                        handleChange(
-                          "unloading_charge_muscat_stores_2",
-                          e.target.value
-                        )
-                      }
-                    />
+                  {/* ── Balance Payment Section ── */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("balance_payment_value", "Balance Payment Value")}
+                    </label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["balance_payment_value"]} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Loading Charge @ Muscat Stores Delivery */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Loading Charge @ Delivery
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={form["loading_charge_muscat_stores_delivery"]}
-                      onChange={(e) =>
-                        handleChange(
-                          "loading_charge_muscat_stores_delivery",
-                          e.target.value
-                        )
-                      }
-                    />
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Balance Payment Value (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["bank_muscat_charge_balance_payment"] ?? "0"} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Total Supplier Price */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    Total Supplier Price
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={form["total_supplier_price"]}
-                      disabled
-                      readOnly
-                    />
+                  {/* ── Total Supplier Price (OMR) / LCE COST — bold black divider ── */}
+                  <div className="lce-field-pair lce-field-pair--full lce-section-divider lce-section-divider--dark">
+                    <label className="lce-label">
+                      <strong>Total Supplier Price (OMR)</strong>
+                    </label>
+                    <div className="lce-input">
+                      <input type="number" className="form-control lce-value--bold"
+                        value={form["total_supplier_price_omr"]} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* LCE COST (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    <strong>LCE COST (OMR)</strong>
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      className="form-control font-weight-bold"
-                      value={form["total_supplier_price_omr"]}
-                      disabled
-                      readOnly
-                    />
+                  {/* ── OMR Charges Section ── */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Bank Muscat Charge — Advance Payment (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["bank_muscat_charge_advance_payment"]} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Total (OMR) */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    <strong>Total (OMR)</strong>
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      className="form-control font-weight-bold"
-                      value={form["total"]}
-                      disabled
-                      readOnly
-                    />
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Bank Muscat Charge — Balance Payment (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["bank_muscat_charge_balance_payment"] ?? "0"} disabled readOnly />
+                    </div>
                   </div>
-                </div>
 
-                {/* Cost Factor */}
-                <div className="row mb-3">
-                  <label className="col-4 col-form-label">
-                    <strong>Cost Factor</strong>
-                  </label>
-                  <div className="col-8">
-                    <input
-                      type="number"
-                      className="form-control font-weight-bold"
-                      value={form["cost_factor"]}
-                      disabled
-                      readOnly
-                    />
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Freight Charge (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["freight_charge"]}
+                        onChange={(e) => handleChange("freight_charge", e.target.value)} />
+                    </div>
                   </div>
-                </div>
+
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Customs Duty (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["customs_duty_omr"]}
+                        onChange={(e) => handleChange("customs_duty_omr", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Oman Customs BOE Charge (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["oman_customs_boe_charge_omr"]}
+                        onChange={(e) => handleChange("oman_customs_boe_charge_omr", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="lce-field-pair">
+                    <label className="lce-label">ROP Customs Inspection Charge (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["rop_customs_inspection_charge"]}
+                        onChange={(e) => handleChange("rop_customs_inspection_charge", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Unloading Charge @ Muscat Stores 1 (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["unloading_charge_muscat_stores_1"]}
+                        onChange={(e) => handleChange("unloading_charge_muscat_stores_1", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Unloading Charge @ Muscat Stores 2 (OMR)</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["unloading_charge_muscat_stores_2"]}
+                        onChange={(e) => handleChange("unloading_charge_muscat_stores_2", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="lce-field-pair lce-field-pair--full">
+                    <label className="lce-label">Loading Charge @ Muscat Stores At The Time Of Customer Delivery</label>
+                    <div className="lce-input">
+                      <input type="number" step="any" className="form-control"
+                        value={form["loading_charge_muscat_stores_delivery"]}
+                        onChange={(e) => handleChange("loading_charge_muscat_stores_delivery", e.target.value)} />
+                    </div>
+                  </div>
+
+                  {/* ── Final Totals ── */}
+                  <div className="lce-field-pair lce-section-divider lce-section-divider--dark">
+                    <label className="lce-label"><strong>Total (OMR)</strong></label>
+                    <div className="lce-input">
+                      <input type="number" className="form-control lce-value--bold"
+                        value={form["total"]} disabled readOnly />
+                    </div>
+                  </div>
+
+                  <div className="lce-field-pair lce-section-divider lce-section-divider--dark">
+                    <label className="lce-label"><strong>Cost Factor</strong></label>
+                    <div className="lce-input">
+                      <input type="number" className="form-control lce-value--bold"
+                        value={form["cost_factor"]} disabled readOnly />
+                    </div>
+                  </div>
+
+                </div>{/* /lce-fields-grid */}
+
+
+                  {/* LCE Number */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">LCE Number</label>
+                    <div className="lce-input">
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={lceId ? formatLceId(lceId) : "Auto-generated"}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Foreign Currency */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Foreign Currency</label>
+                    <div className="lce-input">
+                      <select
+                        className="form-control"
+                        value={form["foreign_currency_id"] || ""}
+                        onChange={(e) =>
+                          handleChange("foreign_currency_id", e.target.value)
+                        }
+                      >
+                        <option value="">Select currency</option>
+                        {currencyOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Ex Works Material Cost */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel(
+                        "ex_works_material_cost",
+                        "Ex Works Material Cost"
+                      )}
+                    </label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["ex_works_material_cost"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Packing Charges */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel(
+                        "packing_charges",
+                        "Packing Charges"
+                      )}
+                    </label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["packing_charges"]}
+                        onChange={(e) =>
+                          handleChange("packing_charges", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Documentation */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("documentation", "Documentation")}
+                    </label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["documentation"]}
+                        onChange={(e) =>
+                          handleChange("documentation", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Total Supplier Price */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Total Supplier Price</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={form["total_supplier_price"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Other Charges 1 to 4 - each full width for the complex 3-control row */}
+                  {OTHER_CHARGE_FIELDS.map(([key, label, typeKey]) => (
+                    <div key={key} className="lce-field-pair lce-field-pair--full">
+                      <label className="lce-label" style={{ flex: "0 0 22%", maxWidth: "22%" }}>
+                        {withForeignCurrencyLabel(key, label)}
+                      </label>
+                      <div className="lce-input" style={{ flex: "1" }}>
+                        <div className="lce-charge-control-row">
+                          <select
+                            className="form-control"
+                            value={form[typeKey] || ""}
+                            onChange={(e) => handleChange(typeKey, e.target.value)}
+                          >
+                            <option value="">Select charge type</option>
+                            {chargeTypeOptions.map((o) => (
+                              <option
+                                key={`${typeKey}-${o.value}`}
+                                value={o.value}
+                              >
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="crud-add-btn lce-btn-add-type"
+                            onClick={() => handleChargeTypeAdd(typeKey)}
+                            title="Add charge type"
+                          >
+                            +
+                          </button>
+                          <input
+                            type="number"
+                            step="any"
+                            className="form-control"
+                            value={form[key]}
+                            disabled={!form[typeKey]}
+                            onChange={(e) => handleChange(key, e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Advance Payment Value */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel(
+                        "advance_payment_value",
+                        "Advance Payment Value"
+                      )}
+                    </label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["advance_payment_value"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Balance Payment Value */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel(
+                        "balance_payment_value",
+                        "Balance Payment Value"
+                      )}
+                    </label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["balance_payment_value"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Total Advance Payment (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Total Advance Payment (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["bank_muscat_charge_advance_payment"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Freight Charge (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Freight Charge (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["freight_charge"]}
+                        onChange={(e) =>
+                          handleChange("freight_charge", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Customs Duty (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Customs Duty (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["customs_duty_omr"]}
+                        onChange={(e) =>
+                          handleChange("customs_duty_omr", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Oman Customs Boe Charge (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Oman Customs Boe Charge (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["oman_customs_boe_charge_omr"]}
+                        onChange={(e) =>
+                          handleChange("oman_customs_boe_charge_omr", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Rop Customs Inspection Charge (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Rop Customs Inspection Charge (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["rop_customs_inspection_charge"]}
+                        onChange={(e) =>
+                          handleChange(
+                            "rop_customs_inspection_charge",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Unloading Charge @ Stores 1 (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Unloading Charge @ Stores 1 (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["unloading_charge_muscat_stores_1"]}
+                        onChange={(e) =>
+                          handleChange(
+                            "unloading_charge_muscat_stores_1",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Unloading Charge @ Stores 2 (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Unloading Charge @ Stores 2 (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["unloading_charge_muscat_stores_2"]}
+                        onChange={(e) =>
+                          handleChange(
+                            "unloading_charge_muscat_stores_2",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Loading Charge @ Delivery */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">Loading Charge @ Delivery</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["loading_charge_muscat_stores_delivery"]}
+                        onChange={(e) =>
+                          handleChange(
+                            "loading_charge_muscat_stores_delivery",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* LCE COST (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label"><strong>LCE COST (OMR)</strong></label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        className="form-control font-weight-bold"
+                        value={form["total_supplier_price_omr"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Total (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label"><strong>Total (OMR)</strong></label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        className="form-control font-weight-bold"
+                        value={form["total"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cost Factor */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label"><strong>Cost Factor</strong></label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        className="form-control font-weight-bold"
+                        value={form["cost_factor"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                </div>{/* /lce-fields-grid */}
 
                 {/* Card 1 Actions */}
                 <div className="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
@@ -1263,8 +1506,10 @@ function LCEAddPage() {
             </CardBody>
           </Card>
 
-          {/* ═════════ CARD 2: Payment History ═════════ */}
-          <Card className="col-4 mx-auto mb-3">
+
+
+          {/* â•â•â•â•â•â•â•â•â• CARD 2: Payment History â•â•â•â•â•â•â•â•â• */}
+          <Card className="lce-card mb-3">
             <CardHeader>
               <h3>Payment History</h3>
               <button
@@ -1376,8 +1621,8 @@ function LCEAddPage() {
             </CardBody>
           </Card>
 
-          {/* ═════════ CARD 3: Linked Purchase Items ═════════ */}
-          <Card className="col-4 mx-auto mb-3">
+          {/* â•â•â•â•â•â•â•â•â• CARD 3: Linked Purchase Items â•â•â•â•â•â•â•â•â• */}
+          <Card className="lce-card mb-3">
             <CardHeader>
               <h3>Linked Purchase Invoice Items & Linked Purchase Items</h3>
             </CardHeader>
@@ -1417,7 +1662,7 @@ function LCEAddPage() {
                         >
                           {selectedPurchaseLabel}
                         </span>
-                        <span>▼</span>
+                        <span>â–¼</span>
                       </summary>
                       <div
                         className="costing-selector-menu"
@@ -1488,7 +1733,7 @@ function LCEAddPage() {
                       color: "#16a34a",
                     }}
                   >
-                    {selectedItemIds.length} item(s) selected — save to persist
+                    {selectedItemIds.length} item(s) selected â€” save to persist
                     LCE link.
                   </p>
                 ) : null}
@@ -1559,7 +1804,7 @@ function LCEAddPage() {
         </>
       )}
 
-      {/* ── Selection Modal ── */}
+      {/* â”€â”€ Selection Modal â”€â”€ */}
       {modalOpen ? (
         <PurchaseItemModal
           items={modalItems}
