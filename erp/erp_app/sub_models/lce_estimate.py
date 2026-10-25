@@ -45,6 +45,7 @@ class LCEEstimate(models.Model):
     advance_payment_value_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
 
     balance_payment_value = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    bank_exchange_rate_balance = models.DecimalField(max_digits=14, decimal_places=6, default=0)
     balance_payment_value_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     total_supplier_price_omr = models.DecimalField(max_digits=14, decimal_places=3, default=0)
 

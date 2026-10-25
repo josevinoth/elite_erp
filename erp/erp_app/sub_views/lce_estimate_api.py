@@ -21,6 +21,7 @@ EDITABLE_FIELDS = [
     "other_charges_4",
     "advance_payment_value",
     "bank_exchange_rate",
+    "bank_exchange_rate_balance",
     "bank_muscat_charge_advance_payment",
     "bank_muscat_charge_balance_payment",
     "freight_charge",
@@ -206,11 +207,12 @@ def _calculate_totals(values):
 
     values["advance_payment_value_omr"] = values["advance_payment_value"] * values["bank_exchange_rate"]
     values["balance_payment_value"] = values["total_supplier_price"] - values["advance_payment_value"]
-    values["balance_payment_value_omr"] = values["balance_payment_value"] * values["bank_exchange_rate"]
+    values["balance_payment_value_omr"] = values["balance_payment_value"] * values.get("bank_exchange_rate_balance", Decimal("0"))
     values["total_supplier_price_omr"] = values["advance_payment_value_omr"] + values["balance_payment_value_omr"]
 
     values["total"] = (
-        values["bank_muscat_charge_advance_payment"]
+        values["total_supplier_price_omr"]
+        + values["bank_muscat_charge_advance_payment"]
         + values["bank_muscat_charge_balance_payment"]
         + values["freight_charge"]
         + values["customs_duty_omr"]
@@ -258,6 +260,7 @@ def _serialize(obj):
         "bank_exchange_rate": str(obj.bank_exchange_rate),
         "advance_payment_value_omr": str(obj.advance_payment_value_omr),
         "balance_payment_value": str(obj.balance_payment_value),
+        "bank_exchange_rate_balance": str(getattr(obj, "bank_exchange_rate_balance", 0)),
         "balance_payment_value_omr": str(obj.balance_payment_value_omr),
         "total_supplier_price_omr": str(obj.total_supplier_price_omr),
         "bank_muscat_charge_advance_payment": str(obj.bank_muscat_charge_advance_payment),

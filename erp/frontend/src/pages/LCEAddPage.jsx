@@ -24,7 +24,7 @@ const OTHER_CHARGE_FIELDS = [
 const EDITABLE_FIELDS = [
   ["ex_works_material_cost", "Ex Works Material Cost"],
   ["packing_charges", "Packing Charges"],
-  ["documentation", "Documentation"],
+  ["documentation", "Documentation Charges"],
   ...OTHER_CHARGE_FIELDS.map(([valueKey, label]) => [
     valueKey,
     label
@@ -33,20 +33,25 @@ const EDITABLE_FIELDS = [
       .join(" "),
   ]),
   ["advance_payment_value", "Advance Payment Value"],
-  ["bank_muscat_charge_advance_payment", "Total Advance Payment (OMR)"],
-  ["freight_charge", "Freight Charge (OMR)"],
+  ["bank_exchange_rate", "Bank Exchange Rate - Advance Payment"],
+  ["bank_exchange_rate_balance", "Bank Exchange Rate - Balance Payment"],
+  ["bank_muscat_charge_advance_payment", "Bank Muscat Charge - Advance Payment"],
+  ["bank_muscat_charge_balance_payment", "Bank Muscat Charge - Balance Payment"],
+  ["freight_charge", "Freight Charge"],
   ["customs_duty_omr", "Customs Duty (OMR)"],
-  ["oman_customs_boe_charge_omr", "Oman Customs Boe Charge (OMR)"],
-  ["rop_customs_inspection_charge", "Rop Customs Inspection Charge (OMR)"],
-  ["unloading_charge_muscat_stores_1", "Unloading Charge @ Muscat Stores 1 (OMR)"],
-  ["unloading_charge_muscat_stores_2", "Unloading Charge @ Muscat Stores 2 (OMR)"],
+  ["oman_customs_boe_charge_omr", "Oman Customs BOE Charge (OMR)"],
+  ["rop_customs_inspection_charge", "ROP Customs Inspection Charge"],
+  ["unloading_charge_muscat_stores_1", "Unloading Charge @ Muscat Stores 1"],
+  ["unloading_charge_muscat_stores_2", "Unloading Charge @ Muscat Stores 2"],
   ["loading_charge_muscat_stores_delivery", "Loading Charge @ Muscat Stores At The Time Of Customer Delivery"],
 ];
 
 const FORMULA_FIELDS = [
   ["total_supplier_price", "Total Supplier Price"],
+  ["advance_payment_value_omr", "Advance Payment Value (OMR)"],
   ["balance_payment_value", "Balance Payment Value"],
-  ["total_supplier_price_omr", "LCE COST (OMR)"],
+  ["balance_payment_value_omr", "Balance Payment Value (OMR)"],
+  ["total_supplier_price_omr", "Total Supplier Price (OMR)"],
   ["total", "Total (OMR)"],
   ["cost_factor", "Cost Factor"],
 ];
@@ -148,36 +153,47 @@ function applyFormulas(values, settlementRowsWithValue = []) {
     toNumber(next.other_charges_3) +
     toNumber(next.other_charges_4);
 
-  const advancePayment =
-    settlementRowsWithValue && settlementRowsWithValue.length > 0
-      ? settlementRowsWithValue.reduce(
-          (sum, row) => sum + toNumber(row.payment_amount || 0),
-          0
-        )
-      : 0;
+  let advancePayment = toNumber(next.advance_payment_value);
+  let advExchangeRate = toNumber(next.bank_exchange_rate);
 
-  const totalAdvancePaymentOMR =
-    settlementRowsWithValue && settlementRowsWithValue.length > 0
-      ? settlementRowsWithValue.reduce(
-          (sum, row) =>
-            sum + toNumber(row.payment_amount) * toNumber(row.factor),
-          0
-        )
-      : toNumber(next.bank_muscat_charge_advance_payment);
+  // If settlement rows exist with values, allow syncing
+  if (
+    settlementRowsWithValue &&
+    settlementRowsWithValue.some(
+      (r) => toNumber(r.payment_amount) > 0 || toNumber(r.factor) > 0
+    )
+  ) {
+    const sumAmt = settlementRowsWithValue.reduce(
+      (sum, row) => sum + toNumber(row.payment_amount || 0),
+      0
+    );
+    if (sumAmt > 0 && (!next.advance_payment_value || next.advance_payment_value === "0")) {
+      advancePayment = sumAmt;
+      next.advance_payment_value = toFixed(advancePayment, 2);
+    }
+    const firstFactorRow = settlementRowsWithValue.find((r) => toNumber(r.factor) > 0);
+    if (firstFactorRow && (!next.bank_exchange_rate || next.bank_exchange_rate === "0")) {
+      advExchangeRate = toNumber(firstFactorRow.factor);
+      next.bank_exchange_rate = String(firstFactorRow.factor);
+    }
+  }
 
-  const balancePayment = toNumber(next.ex_works_material_cost) - advancePayment;
-
-  next.advance_payment_value = toFixed(advancePayment, 2);
-  next.bank_muscat_charge_advance_payment = toFixed(totalAdvancePaymentOMR, 2);
-  next.bank_muscat_charge_balance_payment = toFixed(balancePayment, 2);
+  const advancePaymentOMR = advancePayment * advExchangeRate;
+  const balancePayment = Math.max(0, totalSupplierPrice - advancePayment);
+  const balExchangeRate = toNumber(next.bank_exchange_rate_balance);
+  const balancePaymentOMR = balancePayment * balExchangeRate;
+  const totalSupplierPriceOMR = advancePaymentOMR + balancePaymentOMR;
 
   next.total_supplier_price = toFixed(totalSupplierPrice, 2);
-  next.advance_payment_value_omr = toFixed(totalAdvancePaymentOMR, 2);
+  next.advance_payment_value = toFixed(advancePayment, 2);
+  next.advance_payment_value_omr = toFixed(advancePaymentOMR, 3);
   next.balance_payment_value = toFixed(balancePayment, 2);
-  next.balance_payment_value_omr = "";
-  next.total_supplier_price_omr = toFixed(totalAdvancePaymentOMR, 2);
+  next.balance_payment_value_omr = toFixed(balancePaymentOMR, 3);
+  next.total_supplier_price_omr = toFixed(totalSupplierPriceOMR, 3);
+
   next.total = toFixed(
-    toNumber(next.bank_muscat_charge_advance_payment) +
+    totalSupplierPriceOMR +
+      toNumber(next.bank_muscat_charge_advance_payment) +
       toNumber(next.bank_muscat_charge_balance_payment) +
       toNumber(next.freight_charge) +
       toNumber(next.customs_duty_omr) +
@@ -185,13 +201,16 @@ function applyFormulas(values, settlementRowsWithValue = []) {
       toNumber(next.rop_customs_inspection_charge) +
       toNumber(next.unloading_charge_muscat_stores_1) +
       toNumber(next.unloading_charge_muscat_stores_2) +
-      toNumber(next.loading_charge_muscat_stores_delivery)
+      toNumber(next.loading_charge_muscat_stores_delivery),
+    3
   );
+
   const exWorks = toNumber(next.ex_works_material_cost);
   next.cost_factor = toFixed(
     exWorks > 0 ? toNumber(next.total) / exWorks : 0,
-    2
+    4
   );
+
   return next;
 }
 
@@ -210,7 +229,7 @@ function formatPurchaseOption(row) {
   return { value: id, label };
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Purchase Item Selection Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ------------------- Purchase Item Selection Modal ------------------- */
 function PurchaseItemModal({
   items,
   initialSelected,
@@ -285,7 +304,7 @@ function PurchaseItemModal({
         <input
           type="search"
           className="auth-input costing-modal-card__search"
-          placeholder="Search by GRN, item name, code, category, purchase or invoiceâ€¦"
+          placeholder="Search by GRN, item name, code, category, purchase or invoice..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -332,7 +351,7 @@ function PurchaseItemModal({
                   const taken = isTaken(item);
                   const lceTag = item.lce_estimate_id
                     ? `LCE_${String(item.lce_estimate_id).padStart(3, "0")}`
-                    : "â€”";
+                    : "-";
                   const rowClassName = `costing-modal-card__row${
                     taken ? " costing-modal-card__row--taken" : ""
                   }${checked.has(item.id) && !taken ? " costing-modal-card__row--selected" : ""}`;
@@ -355,8 +374,8 @@ function PurchaseItemModal({
                         />
                       </td>
                       <td>{item.grn_number}</td>
-                      <td>{item.purchase_number || "â€”"}</td>
-                      <td>{item.invoice_number || "â€”"}</td>
+                      <td>{item.purchase_number || "-"}</td>
+                      <td>{item.invoice_number || "-"}</td>
                       <td>{item.item_category}</td>
                       <td>{item.item_name}</td>
                       <td>{item.item_code}</td>
@@ -405,7 +424,7 @@ function PurchaseItemModal({
   );
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Main LCE Add / Edit Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ------------------- Main LCE Add / Edit Page ------------------- */
 function LCEAddPage() {
   const { lceId } = useParams();
   const navigate = useNavigate();
@@ -880,46 +899,63 @@ function LCEAddPage() {
                     </div>
                   </div>
 
-                  {/* ── Supplier Cost Section ── */}
+                  {/* 1. EX WORKS MATERIAL COST (FOREIGN CURRENCY) */}
                   <div className="lce-field-pair">
                     <label className="lce-label">
-                      {withForeignCurrencyLabel("ex_works_material_cost", "Ex Works Material Cost")}
+                      {withForeignCurrencyLabel("ex_works_material_cost", "EX WORKS MATERIAL COST")}
                     </label>
                     <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["ex_works_material_cost"]} disabled readOnly />
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["ex_works_material_cost"]}
+                        disabled={linkedItems.length > 0}
+                        readOnly={linkedItems.length > 0}
+                        onChange={(e) => handleChange("ex_works_material_cost", e.target.value)}
+                      />
                     </div>
                   </div>
 
+                  {/* 2. PACKING CHARGES (FOREIGN CURRENCY) */}
                   <div className="lce-field-pair">
                     <label className="lce-label">
-                      {withForeignCurrencyLabel("packing_charges", "Packing Charges")}
+                      {withForeignCurrencyLabel("packing_charges", "PACKING CHARGES")}
                     </label>
                     <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
                         value={form["packing_charges"]}
-                        onChange={(e) => handleChange("packing_charges", e.target.value)} />
+                        onChange={(e) => handleChange("packing_charges", e.target.value)}
+                      />
                     </div>
                   </div>
 
-                  <div className="lce-field-pair lce-field-pair--full">
+                  {/* 3. DOCUMENTATION CHARGES (FOREIGN CURRENCY) */}
+                  <div className="lce-field-pair">
                     <label className="lce-label">
-                      {withForeignCurrencyLabel("documentation", "Documentation Charges")}
+                      {withForeignCurrencyLabel("documentation", "DOCUMENTATION CHARGES")}
                     </label>
                     <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
                         value={form["documentation"]}
-                        onChange={(e) => handleChange("documentation", e.target.value)} />
+                        onChange={(e) => handleChange("documentation", e.target.value)}
+                      />
                     </div>
                   </div>
 
-                  {/* Other Charges 1–4 (full-width, complex 3-control row) */}
-                  {OTHER_CHARGE_FIELDS.map(([key, label, typeKey]) => (
-                    <div key={key} className="lce-field-pair lce-field-pair--full">
-                      <label className="lce-label" style={{ flex: "0 0 22%", maxWidth: "22%" }}>
-                        {withForeignCurrencyLabel(key, `Any Other Charges (${label.replace("Other Charges ", "")})`)}
+                  {/* 4–6. ANY OTHER CHARGES (FOREIGN CURRENCY) */}
+                  {OTHER_CHARGE_FIELDS.map(([key, label, typeKey], idx) => (
+                    <div key={key} className="lce-field-pair">
+                      <label className="lce-label">
+                        {withForeignCurrencyLabel(key, `ANY OTHER CHARGES (${idx + 1})`)}
                       </label>
-                      <div className="lce-input" style={{ flex: "1" }}>
+                      <div className="lce-input">
                         <div className="lce-charge-control-row">
                           <select
                             className="form-control"
@@ -940,315 +976,6 @@ function LCEAddPage() {
                             title="Add charge type"
                           >+</button>
                           <input
-                            type="number" step="any" className="form-control"
-                            value={form[key]}
-                            disabled={!form[typeKey]}
-                            onChange={(e) => handleChange(key, e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* ── Total Supplier Price (FC) — highlighted divider ── */}
-                  <div className="lce-field-pair lce-field-pair--full lce-section-divider lce-section-divider--blue">
-                    <label className="lce-label">
-                      {withForeignCurrencyLabel("total_supplier_price", "Total Supplier Price")}
-                    </label>
-                    <div className="lce-input">
-                      <input type="number" className="form-control" value={form["total_supplier_price"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                  {/* ── Advance Payment Section ── */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">
-                      {withForeignCurrencyLabel("advance_payment_value", "Advance Payment Value")}
-                    </label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["advance_payment_value"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Advance Payment Value (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["bank_muscat_charge_advance_payment"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                  {/* ── Balance Payment Section ── */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">
-                      {withForeignCurrencyLabel("balance_payment_value", "Balance Payment Value")}
-                    </label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["balance_payment_value"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Balance Payment Value (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["bank_muscat_charge_balance_payment"] ?? "0"} disabled readOnly />
-                    </div>
-                  </div>
-
-                  {/* ── Total Supplier Price (OMR) / LCE COST — bold black divider ── */}
-                  <div className="lce-field-pair lce-field-pair--full lce-section-divider lce-section-divider--dark">
-                    <label className="lce-label">
-                      <strong>Total Supplier Price (OMR)</strong>
-                    </label>
-                    <div className="lce-input">
-                      <input type="number" className="form-control lce-value--bold"
-                        value={form["total_supplier_price_omr"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                  {/* ── OMR Charges Section ── */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Bank Muscat Charge — Advance Payment (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["bank_muscat_charge_advance_payment"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Bank Muscat Charge — Balance Payment (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["bank_muscat_charge_balance_payment"] ?? "0"} disabled readOnly />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Freight Charge (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["freight_charge"]}
-                        onChange={(e) => handleChange("freight_charge", e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Customs Duty (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["customs_duty_omr"]}
-                        onChange={(e) => handleChange("customs_duty_omr", e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Oman Customs BOE Charge (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["oman_customs_boe_charge_omr"]}
-                        onChange={(e) => handleChange("oman_customs_boe_charge_omr", e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">ROP Customs Inspection Charge (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["rop_customs_inspection_charge"]}
-                        onChange={(e) => handleChange("rop_customs_inspection_charge", e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Unloading Charge @ Muscat Stores 1 (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["unloading_charge_muscat_stores_1"]}
-                        onChange={(e) => handleChange("unloading_charge_muscat_stores_1", e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Unloading Charge @ Muscat Stores 2 (OMR)</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["unloading_charge_muscat_stores_2"]}
-                        onChange={(e) => handleChange("unloading_charge_muscat_stores_2", e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair lce-field-pair--full">
-                    <label className="lce-label">Loading Charge @ Muscat Stores At The Time Of Customer Delivery</label>
-                    <div className="lce-input">
-                      <input type="number" step="any" className="form-control"
-                        value={form["loading_charge_muscat_stores_delivery"]}
-                        onChange={(e) => handleChange("loading_charge_muscat_stores_delivery", e.target.value)} />
-                    </div>
-                  </div>
-
-                  {/* ── Final Totals ── */}
-                  <div className="lce-field-pair lce-section-divider lce-section-divider--dark">
-                    <label className="lce-label"><strong>Total (OMR)</strong></label>
-                    <div className="lce-input">
-                      <input type="number" className="form-control lce-value--bold"
-                        value={form["total"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                  <div className="lce-field-pair lce-section-divider lce-section-divider--dark">
-                    <label className="lce-label"><strong>Cost Factor</strong></label>
-                    <div className="lce-input">
-                      <input type="number" className="form-control lce-value--bold"
-                        value={form["cost_factor"]} disabled readOnly />
-                    </div>
-                  </div>
-
-                </div>{/* /lce-fields-grid */}
-
-
-                  {/* LCE Number */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">LCE Number</label>
-                    <div className="lce-input">
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={lceId ? formatLceId(lceId) : "Auto-generated"}
-                        disabled
-                        readOnly
-                      />
-                    </div>
-                  </div>
-
-                  {/* Foreign Currency */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Foreign Currency</label>
-                    <div className="lce-input">
-                      <select
-                        className="form-control"
-                        value={form["foreign_currency_id"] || ""}
-                        onChange={(e) =>
-                          handleChange("foreign_currency_id", e.target.value)
-                        }
-                      >
-                        <option value="">Select currency</option>
-                        {currencyOptions.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Ex Works Material Cost */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">
-                      {withForeignCurrencyLabel(
-                        "ex_works_material_cost",
-                        "Ex Works Material Cost"
-                      )}
-                    </label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["ex_works_material_cost"]}
-                        disabled
-                        readOnly
-                      />
-                    </div>
-                  </div>
-
-                  {/* Packing Charges */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">
-                      {withForeignCurrencyLabel(
-                        "packing_charges",
-                        "Packing Charges"
-                      )}
-                    </label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["packing_charges"]}
-                        onChange={(e) =>
-                          handleChange("packing_charges", e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Documentation */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">
-                      {withForeignCurrencyLabel("documentation", "Documentation")}
-                    </label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["documentation"]}
-                        onChange={(e) =>
-                          handleChange("documentation", e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Total Supplier Price */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Total Supplier Price</label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        className="form-control"
-                        value={form["total_supplier_price"]}
-                        disabled
-                        readOnly
-                      />
-                    </div>
-                  </div>
-
-                  {/* Other Charges 1 to 4 - each full width for the complex 3-control row */}
-                  {OTHER_CHARGE_FIELDS.map(([key, label, typeKey]) => (
-                    <div key={key} className="lce-field-pair lce-field-pair--full">
-                      <label className="lce-label" style={{ flex: "0 0 22%", maxWidth: "22%" }}>
-                        {withForeignCurrencyLabel(key, label)}
-                      </label>
-                      <div className="lce-input" style={{ flex: "1" }}>
-                        <div className="lce-charge-control-row">
-                          <select
-                            className="form-control"
-                            value={form[typeKey] || ""}
-                            onChange={(e) => handleChange(typeKey, e.target.value)}
-                          >
-                            <option value="">Select charge type</option>
-                            {chargeTypeOptions.map((o) => (
-                              <option
-                                key={`${typeKey}-${o.value}`}
-                                value={o.value}
-                              >
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            className="crud-add-btn lce-btn-add-type"
-                            onClick={() => handleChargeTypeAdd(typeKey)}
-                            title="Add charge type"
-                          >
-                            +
-                          </button>
-                          <input
                             type="number"
                             step="any"
                             className="form-control"
@@ -1261,13 +988,26 @@ function LCEAddPage() {
                     </div>
                   ))}
 
-                  {/* Advance Payment Value */}
+                  {/* 7. TOTAL SUPPLIER PRICE (FOREIGN CURRENCY) */}
+                  <div className="lce-field-pair lce-field-pair--blue">
+                    <label className="lce-label">
+                      {withForeignCurrencyLabel("total_supplier_price", "TOTAL SUPPLIER PRICE")}
+                    </label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={form["total_supplier_price"]}
+                        disabled
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  {/* 8. ADVANCE PAYMENT VALUE (FOREIGN CURRENCY) */}
                   <div className="lce-field-pair">
                     <label className="lce-label">
-                      {withForeignCurrencyLabel(
-                        "advance_payment_value",
-                        "Advance Payment Value"
-                      )}
+                      {withForeignCurrencyLabel("advance_payment_value", "ADVANCE PAYMENT VALUE")}
                     </label>
                     <div className="lce-input">
                       <input
@@ -1275,19 +1015,43 @@ function LCEAddPage() {
                         step="any"
                         className="form-control"
                         value={form["advance_payment_value"]}
+                        onChange={(e) => handleChange("advance_payment_value", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 9. BANK EXCHANGE RATE - ADVANCE PAYMENT */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">BANK EXCHANGE RATE - ADVANCE PAYMENT</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control lce-input--red"
+                        value={form["bank_exchange_rate"]}
+                        onChange={(e) => handleChange("bank_exchange_rate", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 10. ADVANCE PAYMENT VALUE (OMR) */}
+                  <div className="lce-field-pair lce-field-pair--blue">
+                    <label className="lce-label">ADVANCE PAYMENT VALUE (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={form["advance_payment_value_omr"]}
                         disabled
                         readOnly
                       />
                     </div>
                   </div>
 
-                  {/* Balance Payment Value */}
+                  {/* 11. BALANCE PAYMENT VALUE (FOREIGN CURRENCY) */}
                   <div className="lce-field-pair">
                     <label className="lce-label">
-                      {withForeignCurrencyLabel(
-                        "balance_payment_value",
-                        "Balance Payment Value"
-                      )}
+                      {withForeignCurrencyLabel("balance_payment_value", "BALANCE PAYMENT VALUE")}
                     </label>
                     <div className="lce-input">
                       <input
@@ -1301,152 +1065,41 @@ function LCEAddPage() {
                     </div>
                   </div>
 
-                  {/* Total Advance Payment (OMR) */}
+                  {/* 12. BANK EXCHANGE RATE - BALANCE PAYMENT */}
                   <div className="lce-field-pair">
-                    <label className="lce-label">Total Advance Payment (OMR)</label>
+                    <label className="lce-label">BANK EXCHANGE RATE - BALANCE PAYMENT</label>
                     <div className="lce-input">
                       <input
                         type="number"
                         step="any"
+                        className="form-control lce-input--green"
+                        value={form["bank_exchange_rate_balance"]}
+                        onChange={(e) => handleChange("bank_exchange_rate_balance", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 13. BALANCE PAYMENT VALUE (OMR) */}
+                  <div className="lce-field-pair lce-field-pair--blue">
+                    <label className="lce-label">BALANCE PAYMENT VALUE (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
                         className="form-control"
-                        value={form["bank_muscat_charge_advance_payment"]}
+                        value={form["balance_payment_value_omr"]}
                         disabled
                         readOnly
                       />
                     </div>
                   </div>
 
-                  {/* Freight Charge (OMR) */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Freight Charge (OMR)</label>
+                  {/* 14. TOTAL SUPPLIER PRICE (OMR) */}
+                  <div className="lce-field-pair lce-field-pair--dark">
+                    <label className="lce-label">TOTAL SUPPLIER PRICE (OMR)</label>
                     <div className="lce-input">
                       <input
                         type="number"
-                        step="any"
                         className="form-control"
-                        value={form["freight_charge"]}
-                        onChange={(e) =>
-                          handleChange("freight_charge", e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Customs Duty (OMR) */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Customs Duty (OMR)</label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["customs_duty_omr"]}
-                        onChange={(e) =>
-                          handleChange("customs_duty_omr", e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Oman Customs Boe Charge (OMR) */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Oman Customs Boe Charge (OMR)</label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["oman_customs_boe_charge_omr"]}
-                        onChange={(e) =>
-                          handleChange("oman_customs_boe_charge_omr", e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Rop Customs Inspection Charge (OMR) */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Rop Customs Inspection Charge (OMR)</label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["rop_customs_inspection_charge"]}
-                        onChange={(e) =>
-                          handleChange(
-                            "rop_customs_inspection_charge",
-                            e.target.value
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Unloading Charge @ Stores 1 (OMR) */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Unloading Charge @ Stores 1 (OMR)</label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["unloading_charge_muscat_stores_1"]}
-                        onChange={(e) =>
-                          handleChange(
-                            "unloading_charge_muscat_stores_1",
-                            e.target.value
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Unloading Charge @ Stores 2 (OMR) */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Unloading Charge @ Stores 2 (OMR)</label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["unloading_charge_muscat_stores_2"]}
-                        onChange={(e) =>
-                          handleChange(
-                            "unloading_charge_muscat_stores_2",
-                            e.target.value
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Loading Charge @ Delivery */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label">Loading Charge @ Delivery</label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        step="any"
-                        className="form-control"
-                        value={form["loading_charge_muscat_stores_delivery"]}
-                        onChange={(e) =>
-                          handleChange(
-                            "loading_charge_muscat_stores_delivery",
-                            e.target.value
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* LCE COST (OMR) */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label"><strong>LCE COST (OMR)</strong></label>
-                    <div className="lce-input">
-                      <input
-                        type="number"
-                        className="form-control font-weight-bold"
                         value={form["total_supplier_price_omr"]}
                         disabled
                         readOnly
@@ -1454,13 +1107,139 @@ function LCEAddPage() {
                     </div>
                   </div>
 
-                  {/* Total (OMR) */}
+                  {/* 15. BANK MUSCAT CHARGE - ADVANCE PAYMENT */}
                   <div className="lce-field-pair">
-                    <label className="lce-label"><strong>Total (OMR)</strong></label>
+                    <label className="lce-label">BANK MUSCAT CHARGE - ADVANCE PAYMENT</label>
                     <div className="lce-input">
                       <input
                         type="number"
-                        className="form-control font-weight-bold"
+                        step="any"
+                        className="form-control"
+                        value={form["bank_muscat_charge_advance_payment"]}
+                        onChange={(e) => handleChange("bank_muscat_charge_advance_payment", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 16. BANK MUSCAT CHARGE - BALANCE PAYMENT */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">BANK MUSCAT CHARGE - BALANCE PAYMENT</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["bank_muscat_charge_balance_payment"]}
+                        onChange={(e) => handleChange("bank_muscat_charge_balance_payment", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 17. FREIGHT CHARGE */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">FREIGHT CHARGE</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control lce-input--red"
+                        value={form["freight_charge"]}
+                        onChange={(e) => handleChange("freight_charge", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 18. CUSTOMS DUTY (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">CUSTOMS DUTY (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control lce-input--red"
+                        value={form["customs_duty_omr"]}
+                        onChange={(e) => handleChange("customs_duty_omr", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 19. OMAN CUSTOMS BOE CHARGE (OMR) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">OMAN CUSTOMS BOE CHARGE (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["oman_customs_boe_charge_omr"]}
+                        onChange={(e) => handleChange("oman_customs_boe_charge_omr", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 20. ROP CUSTOMS INSPECTION CHARGE */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">ROP CUSTOMS INSPECTION CHARGE</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control lce-input--green"
+                        value={form["rop_customs_inspection_charge"]}
+                        onChange={(e) => handleChange("rop_customs_inspection_charge", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 21. UNLOADING CHARGE @ MUSCAT STORES (1) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">UNLOADING CHARGE @ MUSCAT STORES (1)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["unloading_charge_muscat_stores_1"]}
+                        onChange={(e) => handleChange("unloading_charge_muscat_stores_1", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 22. UNLOADING CHARGE @ MUSCAT STORES (2) */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">UNLOADING CHARGE @ MUSCAT STORES (2)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["unloading_charge_muscat_stores_2"]}
+                        onChange={(e) => handleChange("unloading_charge_muscat_stores_2", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 23. LOADING CHARGE @ MUSCAT STORES AT THE TIME OF CUSTOMER DELIVERY */}
+                  <div className="lce-field-pair">
+                    <label className="lce-label">LOADING CHARGE @ MUSCAT STORES AT THE TIME OF CUSTOMER DELIVERY</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        step="any"
+                        className="form-control"
+                        value={form["loading_charge_muscat_stores_delivery"]}
+                        onChange={(e) => handleChange("loading_charge_muscat_stores_delivery", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* ── Summary Totals ── */}
+                  <div className="lce-field-pair lce-field-pair--dark mt-3">
+                    <label className="lce-label">TOTAL (OMR)</label>
+                    <div className="lce-input">
+                      <input
+                        type="number"
+                        className="form-control"
                         value={form["total"]}
                         disabled
                         readOnly
@@ -1468,13 +1247,12 @@ function LCEAddPage() {
                     </div>
                   </div>
 
-                  {/* Cost Factor */}
-                  <div className="lce-field-pair">
-                    <label className="lce-label"><strong>Cost Factor</strong></label>
+                  <div className="lce-field-pair lce-field-pair--dark">
+                    <label className="lce-label">COST FACTOR</label>
                     <div className="lce-input">
                       <input
                         type="number"
-                        className="form-control font-weight-bold"
+                        className="form-control"
                         value={form["cost_factor"]}
                         disabled
                         readOnly
@@ -1662,7 +1440,7 @@ function LCEAddPage() {
                         >
                           {selectedPurchaseLabel}
                         </span>
-                        <span>â–¼</span>
+                        <span>▼</span>
                       </summary>
                       <div
                         className="costing-selector-menu"
@@ -1733,7 +1511,7 @@ function LCEAddPage() {
                       color: "#16a34a",
                     }}
                   >
-                    {selectedItemIds.length} item(s) selected â€” save to persist
+                    {selectedItemIds.length} item(s) selected &mdash; save to persist
                     LCE link.
                   </p>
                 ) : null}
@@ -1804,7 +1582,7 @@ function LCEAddPage() {
         </>
       )}
 
-      {/* â”€â”€ Selection Modal â”€â”€ */}
+      {/* ------------------- Selection Modal ------------------- */}
       {modalOpen ? (
         <PurchaseItemModal
           items={modalItems}

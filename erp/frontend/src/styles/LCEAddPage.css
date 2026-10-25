@@ -33,12 +33,11 @@
   margin-right: auto;
 }
 
-/* ── Two-column field layout inside the card ── */
+/* ── Single-column field layout inside the card matching list ── */
 .lce-fields-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 1.5rem;
-  row-gap: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 /* Each field pair: label left, input right */
@@ -46,30 +45,81 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  margin-bottom: 0.85rem;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.lce-field-pair:hover {
+  background-color: #f8fafc;
 }
 
 .lce-field-pair .lce-label {
-  flex: 0 0 45%;
-  max-width: 45%;
-  font-size: 0.8rem;
+  flex: 0 0 48%;
+  max-width: 48%;
+  font-size: 0.82rem;
   font-weight: 600;
   color: #334155;
   line-height: 1.3;
   padding-right: 0.25rem;
   white-space: normal;
   word-break: break-word;
+  text-transform: uppercase;
 }
 
 .lce-field-pair .lce-input {
-  flex: 1 1 55%;
+  flex: 1 1 52%;
   min-width: 0;
 }
 
-/* Full-width field (spans both columns) */
+/* Full-width field (spans full width) */
 .lce-field-pair--full {
-  grid-column: 1 / -1;
+  width: 100%;
+}
+
+/* Blue highlight for total supplier price & OMR values */
+.lce-field-pair--blue {
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+.lce-field-pair--blue .lce-label {
+  color: #0284c7 !important;
+  font-weight: 700 !important;
+}
+.lce-field-pair--blue .form-control {
+  color: #0284c7 !important;
+  font-weight: 700 !important;
+  background-color: #ffffff !important;
+  border-color: #7dd3fc !important;
+}
+
+/* Bold dark for Total Supplier Price (OMR) */
+.lce-field-pair--dark {
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+.lce-field-pair--dark .lce-label {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  font-size: 0.86rem !important;
+}
+.lce-field-pair--dark .form-control {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  font-size: 0.95rem !important;
+  background-color: #ffffff !important;
+  border-color: #94a3b8 !important;
+}
+
+/* Custom text color helpers */
+.lce-input--red {
+  color: #dc2626 !important;
+  font-weight: 600 !important;
+}
+.lce-input--green {
+  color: #16a34a !important;
+  font-weight: 600 !important;
 }
 
 /* Card Header */

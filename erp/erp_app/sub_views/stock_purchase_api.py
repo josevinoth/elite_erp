@@ -481,10 +481,12 @@ def _recalculate_lce_estimates(estimate_ids):
         )
         estimate.advance_payment_value_omr = estimate.advance_payment_value * estimate.bank_exchange_rate
         estimate.balance_payment_value = estimate.total_supplier_price - estimate.advance_payment_value
-        estimate.balance_payment_value_omr = estimate.balance_payment_value * estimate.bank_exchange_rate
+        bal_rate = getattr(estimate, "bank_exchange_rate_balance", None) or Decimal("0")
+        estimate.balance_payment_value_omr = estimate.balance_payment_value * bal_rate
         estimate.total_supplier_price_omr = estimate.advance_payment_value_omr + estimate.balance_payment_value_omr
         estimate.total = (
-            estimate.bank_muscat_charge_advance_payment
+            estimate.total_supplier_price_omr
+            + estimate.bank_muscat_charge_advance_payment
             + estimate.bank_muscat_charge_balance_payment
             + estimate.freight_charge
             + estimate.customs_duty_omr
