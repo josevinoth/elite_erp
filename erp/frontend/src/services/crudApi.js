@@ -129,6 +129,11 @@ export async function listVendors() {
   return parseJson(res);
 }
 
+export async function getVendor(id) {
+  const res = await fetch(`/api/vendors/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function createVendor(payload) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/vendors/create/", {

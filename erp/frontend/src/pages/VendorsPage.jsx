@@ -133,49 +133,118 @@ function VendorsPage() {
 
       {status.message ? <p className={`users-status users-status--${status.type}`}>{status.message}</p> : null}
 
-      <form className="vendor-form" onSubmit={handleSave}>
-        <div className="vendor-form__grid">
-          <label className="vendor-form__field">
-            Vendor Name *
-            <input name="vendor_name" className="auth-input" value={form.vendor_name} onChange={onChange} required />
-          </label>
-          <label className="vendor-form__field">
-            Contact Person
-            <input name="contact_person" className="auth-input" value={form.contact_person} onChange={onChange} />
-          </label>
-          <label className="vendor-form__field">
-            Phone Number
-            <input name="phone_number" className="auth-input" value={form.phone_number} onChange={onChange} />
-          </label>
-          <label className="vendor-form__field">
-            Email
-            <input name="email_id" className="auth-input" value={form.email_id} onChange={onChange} />
-          </label>
-        </div>
-
-        <label className="vendor-form__field vendor-form__field--full">
-          Address
-          <textarea
-            rows={3}
-            name="address"
-            className="auth-input vendor-form__textarea"
-            value={form.address}
-            onChange={onChange}
-          />
-        </label>
-
-        <div className="vendor-form__actions">
-          <button type="submit" className="crud-add-btn" disabled={saving}>
-            <BsPlusCircleFill aria-hidden="true" />
-            <span>{saving ? "Saving..." : editingId ? "Update Vendor" : "Add Vendor"}</span>
-          </button>
+      <div className="vendor-card col-4">
+        <div className="vendor-card__head">
+          <h2 className="vendor-card__title">
+            <BsPlusCircleFill className="vendor-card__title-icon" aria-hidden="true" />
+            Add/Edit Vendors
+          </h2>
           {editingId ? (
-            <button type="button" className="modal-btn modal-btn--cancel" onClick={resetForm}>
-              Cancel Edit
-            </button>
+            <span className="vendor-card__badge">
+              <BsPencilSquare aria-hidden="true" /> Editing #{editingId}
+            </span>
           ) : null}
         </div>
-      </form>
+
+        <div className="vendor-card__body">
+          <form className="vendor-form" onSubmit={handleSave}>
+            <div className="vendor-form__field-row">
+              <label htmlFor="vendor_name" className="vendor-form__label">
+                Vendor Name <span className="vendor-form__required">*</span>
+              </label>
+              <div className="vendor-form__control">
+                <input
+                  id="vendor_name"
+                  name="vendor_name"
+                  className="auth-input"
+                  value={form.vendor_name}
+                  onChange={onChange}
+                  required
+                  placeholder="Enter vendor name"
+                />
+              </div>
+            </div>
+
+            <div className="vendor-form__field-row">
+              <label htmlFor="contact_person" className="vendor-form__label">
+                Contact Person
+              </label>
+              <div className="vendor-form__control">
+                <input
+                  id="contact_person"
+                  name="contact_person"
+                  className="auth-input"
+                  value={form.contact_person}
+                  onChange={onChange}
+                  placeholder="Enter contact person"
+                />
+              </div>
+            </div>
+
+            <div className="vendor-form__field-row">
+              <label htmlFor="phone_number" className="vendor-form__label">
+                Phone Number
+              </label>
+              <div className="vendor-form__control">
+                <input
+                  id="phone_number"
+                  name="phone_number"
+                  className="auth-input"
+                  value={form.phone_number}
+                  onChange={onChange}
+                  placeholder="Enter phone number"
+                />
+              </div>
+            </div>
+
+            <div className="vendor-form__field-row">
+              <label htmlFor="email_id" className="vendor-form__label">
+                Email
+              </label>
+              <div className="vendor-form__control">
+                <input
+                  id="email_id"
+                  name="email_id"
+                  type="email"
+                  className="auth-input"
+                  value={form.email_id}
+                  onChange={onChange}
+                  placeholder="Enter email address"
+                />
+              </div>
+            </div>
+
+            <div className="vendor-form__field-row vendor-form__field-row--textarea">
+              <label htmlFor="address" className="vendor-form__label">
+                Address
+              </label>
+              <div className="vendor-form__control">
+                <textarea
+                  id="address"
+                  rows={3}
+                  name="address"
+                  className="auth-input vendor-form__textarea"
+                  value={form.address}
+                  onChange={onChange}
+                  placeholder="Enter address"
+                />
+              </div>
+            </div>
+
+            <div className="vendor-form__actions">
+              <button type="submit" className="crud-add-btn" disabled={saving}>
+                <BsPlusCircleFill aria-hidden="true" />
+                <span>{saving ? "Saving..." : editingId ? "Update Vendor" : "Add Vendor"}</span>
+              </button>
+              {editingId ? (
+                <button type="button" className="modal-btn modal-btn--cancel" onClick={resetForm}>
+                  Cancel Edit
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </div>
+      </div>
 
       {duplicateNameExists ? (
         <p className="users-status users-status--warning">Vendor name already exists.</p>

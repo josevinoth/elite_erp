@@ -670,3 +670,18 @@ updateStockReturnItem(id, {action: "accept"|"reject"})
 - Items without a `retrieval_status` are skipped in retrieval/acceptance/return lists
 - Stock list calculation filters by `retrieval_status` to ensure only completed items affect balance
 - No required schema changes for existing quotation/costing records
+
+---
+
+## UI Guidelines
+
+### LCE Add / Edit Page Layout (`LCEAddPage.jsx`)
+
+The LCE Add / Edit Page follows the centered card layout convention:
+- **Card Layout & Width:** Uses Bootstrap grid `col-4 mx-auto` to center cards and avoid full page width.
+- **Separate Section Cards:**
+  1. **Add/Edit LCE (`Card 1`):** Form fields arranged in a single column with labels aligned left (`col-4`) and inputs aligned right (`col-8`).
+  2. **Payment History (`Card 2`):** Encapsulates settlement entries and payment history records.
+  3. **Linked Purchase Items (`Card 3`):** Header titled *"Linked Purchase Invoice Items & Linked Purchase Items"*, containing the purchase invoice selector and the merged linked purchase items table.
+- **Styling:** Spaced with `mb-3`, form controls use consistent `form-control` classes, and cards are centered using `d-flex justify-content-center` / `col-4 mx-auto`.
+
