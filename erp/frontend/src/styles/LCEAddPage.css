@@ -1,0 +1,244 @@
+/* ── LCE Add / Edit Page Card Layout ── */
+
+.lce-page-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1rem 3rem;
+  width: 100%;
+}
+
+/* ── Card Styling matching Vendor Add card ── */
+.card {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+
+/* ── Grid col-4 width centered ── */
+.card.col-4,
+.col-4.mx-auto {
+  width: 33.333%;
+  min-width: 440px;
+  max-width: 580px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Card Header */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(135deg, #2a3042 0%, #36405a 100%);
+  color: #ffffff;
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.card-header h2,
+.card-header h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Card Body */
+.card-body {
+  padding: 1.25rem 1.25rem 1rem;
+  background: #ffffff;
+}
+
+/* ── Row & Columns ── */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-right: -0.5rem;
+  margin-left: -0.5rem;
+  align-items: center;
+}
+
+.col-4 {
+  flex: 0 0 33.333333%;
+  max-width: 33.333333%;
+  padding-right: 0.5rem;
+  padding-left: 0.5rem;
+  box-sizing: border-box;
+}
+
+.col-8 {
+  flex: 0 0 66.666667%;
+  max-width: 66.666667%;
+  padding-right: 0.5rem;
+  padding-left: 0.5rem;
+  box-sizing: border-box;
+}
+
+.col-form-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.35;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  margin-bottom: 0;
+  text-align: left;
+  user-select: none;
+}
+
+/* ── Form Controls ── */
+.form-control {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.84rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background-color: #f8fafc;
+  color: #1e293b;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.form-control:focus {
+  background-color: #ffffff;
+  border-color: #556ee6 !important;
+  box-shadow: 0 0 0 3px rgba(85, 110, 230, 0.15);
+  outline: none;
+}
+
+.form-control:disabled,
+.form-control[readonly] {
+  background-color: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+/* Helper Spacing & Display Classes */
+.mb-3 {
+  margin-bottom: 1rem !important;
+}
+
+.mx-auto {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.d-flex {
+  display: flex !important;
+}
+
+.justify-content-center {
+  justify-content: center !important;
+}
+
+.justify-content-end {
+  justify-content: flex-end !important;
+}
+
+.justify-content-between {
+  justify-content: space-between !important;
+}
+
+.gap-2 {
+  gap: 0.5rem !important;
+}
+
+.border-top {
+  border-top: 1px solid #f1f5f9 !important;
+}
+
+.pt-3 {
+  padding-top: 1rem !important;
+}
+
+.mt-3 {
+  margin-top: 1rem !important;
+}
+
+/* Charge split input row inside col-8 */
+.lce-charge-control-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.lce-charge-control-row .form-control {
+  flex: 1;
+}
+
+.lce-btn-add-type {
+  padding: 0 0.55rem;
+  height: 36px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+/* Table Card Responsive Wrap */
+.card-table-wrap {
+  width: 100%;
+  max-height: 360px;
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.card-table-wrap table {
+  margin-bottom: 0;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.card-table-wrap th,
+.card-table-wrap td {
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .card.col-4,
+  .col-4.mx-auto {
+    width: 90%;
+    min-width: 0;
+    max-width: 580px;
+  }
+}
+
+@media (max-width: 576px) {
+  .card.col-4,
+  .col-4.mx-auto {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .col-4 {
+    flex: 0 0 100%;
+    max-width: 100%;
+    margin-bottom: 0.25rem;
+  }
+
+  .col-8 {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}

@@ -5,6 +5,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
 import CutOptimiserListPage from "./pages/CutOptimiserListPage";
 import CostingPage from "./pages/CostingPage";
+import LCEAddPage from "./pages/LCEAddPage";
 import HomeLayout from "./pages/HomeLayout";
 import LceListPage from "./pages/LceListPage";
 import LayoutDrawingApprovalPage from "./pages/LayoutDrawingApprovalPage";
@@ -33,7 +34,8 @@ import StocksListPage from "./pages/StocksListPage";
 import TaskPage from "./pages/TaskPage";
 import TimesheetPage from "./pages/TimesheetPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
-import VendorsPage from "./pages/VendorsPage";
+import VendorsListPage from "./pages/VendorsListPage";
+import VendorFormPage from "./pages/VendorFormPage";
 import {logoutUser} from "./services/authApi";
 import {listHeaderNotifications} from "./services/crudApi";
 import {clearSessionUser, getSessionUser} from "./services/sessionUser";
@@ -158,7 +160,9 @@ function App() {
                         <Route path="/projects/cut-optimiser/add" element={secureRoute(<CutSheetOptimiser/>)}/>
                         <Route path="/projects/cut-optimiser/record/:recordId"
                                element={secureRoute(<CutSheetOptimiser/>)}/>
-                        <Route path="/vendors" element={secureRoute(<VendorsPage/>)}/>
+                        <Route path="/vendors" element={secureRoute(<VendorsListPage/>)}/>
+                        <Route path="/vendors/add" element={secureRoute(<VendorFormPage/>)}/>
+                        <Route path="/vendors/edit/:id" element={secureRoute(<VendorFormPage/>)}/>
                         <Route path="/stock-purchase" element={superAdminRoute(<StockPurchasePage/>)}/>
                         <Route path="/stock-purchase/add" element={superAdminRoute(<StockPurchaseAddPage/>)}/>
                         <Route path="/stock-purchase/record/:purchaseId"
@@ -220,13 +224,25 @@ function App() {
                         <Route
                             path="/projects/costing/add"
                             element={
-                                superAdminRoute(<CostingPage/>)
+                                superAdminRoute(<LCEAddPage/>)
                             }
                         />
                         <Route
                             path="/projects/costing/record/:lceId"
                             element={
-                                superAdminRoute(<CostingPage/>)
+                                superAdminRoute(<LCEAddPage/>)
+                            }
+                        />
+                        <Route
+                            path="/lce/add"
+                            element={
+                                superAdminRoute(<LCEAddPage/>)
+                            }
+                        />
+                        <Route
+                            path="/lce/record/:lceId"
+                            element={
+                                superAdminRoute(<LCEAddPage/>)
                             }
                         />
                         <Route path="/projects/cutsheet-optimiser" element={secureRoute(<CutSheetOptimiser/>)}/>
