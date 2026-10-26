@@ -338,3 +338,76 @@
     max-width: 100%;
   }
 }
+
+/* ── Accordion Card Styling ── */
+.lce-accordion-card {
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.lce-accordion-header {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(135deg, #2a3042 0%, #36405a 100%);
+  color: #ffffff;
+  transition: background 0.15s ease;
+}
+
+.lce-accordion-header:hover {
+  background: linear-gradient(135deg, #333b52 0%, #3f4b6a 100%);
+}
+
+.lce-accordion-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.lce-accordion-title h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.lce-accordion-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+/* ── Page Actions at Bottom ── */
+.lce-page-actions {
+  width: 70%;
+  min-width: 720px;
+  max-width: 960px;
+  margin: 1rem auto 2rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+@media (max-width: 1100px) {
+  .lce-page-actions {
+    width: 92%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .lce-page-actions {
+    width: 100%;
+    min-width: 0;
+  }
+}

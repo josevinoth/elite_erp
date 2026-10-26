@@ -62,6 +62,7 @@ const iconMap = {
   itemCosting: BsBoxSeam,
   projectCosting: BsCashCoin,
   lce: BsReceiptCutoff,
+  lca: BsReceiptCutoff,
   orders: BsBoxArrowUpRight,
   cutSheet: BsScissors,
 };

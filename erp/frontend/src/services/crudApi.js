@@ -835,6 +835,72 @@ export async function deleteLceEstimateById(lceId) {
   return parseJson(res);
 }
 
+// -- LCA Actuals (Landing Cost Actuals) --------------------
+export async function listLcaActuals() {
+  const res = await fetch("/api/lca/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listLcaMeta() {
+  const res = await fetch("/api/lca/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createLcaChargeTypeOption(name) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lca/charge-types/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+
+export async function createLcaActuals(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lca/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function getLcaActualsById(lcaId) {
+  const res = await fetch(`/api/lca/record/${lcaId}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getLcaPurchaseItems(purchaseId) {
+  const res = await fetch(`/api/lca/purchase-items/${purchaseId}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function updateLcaActualsById(lcaId, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/lca/record/${lcaId}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteLcaActualsById(lcaId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/lca/record/${lcaId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+
 
 // ── Lab Furniture Items ───────────────────────────────────
 export async function listItemCodeNames() {

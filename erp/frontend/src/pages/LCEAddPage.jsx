@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BsPencilSquare, BsPlusCircleFill } from "react-icons/bs";
+import {
+  BsChevronDown,
+  BsChevronRight,
+  BsPencilSquare,
+  BsPlusCircleFill,
+} from "react-icons/bs";
 import {
   createLceChargeTypeOption,
   createLceEstimate,
@@ -449,6 +454,10 @@ function LCEAddPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
 
+  // Accordion section states (default closed)
+  const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
+  const [linkedItemsOpen, setLinkedItemsOpen] = useState(false);
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -845,8 +854,14 @@ function LCEAddPage() {
       {loading ? (
         <p className="users-status">Loading LCE details...</p>
       ) : (
-        <>
-          {/* â•â•â•â•â•â•â•â•â• CARD 1: Add/Edit LCE â•â•â•â•â•â•â•â•â• */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+          style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}
+        >
+          {/* ========= CARD 1: Add/Edit LCE ========= */}
           <Card className="lce-card mb-3">
             <CardHeader>
               <h2>Add/Edit LCE</h2>
@@ -857,13 +872,7 @@ function LCEAddPage() {
               ) : null}
             </CardHeader>
             <CardBody>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSave();
-                }}
-              >
-                <div className="lce-fields-grid">
+              <div className="lce-fields-grid">
 
                   {/* ── Header: LCE ID + Currency ── */}
                   <div className="lce-field-pair">
@@ -1261,54 +1270,51 @@ function LCEAddPage() {
                   </div>
 
                 </div>{/* /lce-fields-grid */}
-
-                {/* Card 1 Actions */}
-                <div className="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
-                  <button
-                    type="submit"
-                    className="crud-add-btn"
-                    disabled={saving || loading}
-                  >
-                    <BsPlusCircleFill aria-hidden="true" />
-                    <span>{saving ? "Saving..." : "Save LCE Details"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="modal-btn modal-btn--cancel"
-                    onClick={() => navigate("/projects/costing")}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
             </CardBody>
           </Card>
 
-
-
-          {/* â•â•â•â•â•â•â•â•â• CARD 2: Payment History â•â•â•â•â•â•â•â•â• */}
-          <Card className="lce-card mb-3">
-            <CardHeader>
-              <h3>Payment History</h3>
-              <button
-                type="button"
-                className="crud-add-btn"
-                onClick={addSettlementRow}
-              >
-                + Add Settlement
-              </button>
+          {/* ========== ACCORDION 1: Payment History (Default Closed) ========== */}
+          <Card className="lce-card mb-3 lce-accordion-card">
+            <CardHeader
+              className="lce-accordion-header"
+              onClick={() => setPaymentHistoryOpen((prev) => !prev)}
+            >
+              <div className="lce-accordion-title">
+                <span className="lce-accordion-icon">
+                  {paymentHistoryOpen ? <BsChevronDown /> : <BsChevronRight />}
+                </span>
+                <h3>Payment History</h3>
+                {settlementRowsWithValue.length > 0 && (
+                  <span className="vendor-card__badge" style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}>
+                    {settlementRowsWithValue.length} record{settlementRowsWithValue.length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+              <div onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="crud-add-btn"
+                  onClick={() => {
+                    setPaymentHistoryOpen(true);
+                    addSettlementRow();
+                  }}
+                >
+                  + Add Settlement
+                </button>
+              </div>
             </CardHeader>
-            <CardBody>
-              <p
-                style={{
-                  marginTop: 0,
-                  marginBottom: "0.75rem",
-                  fontSize: "0.8rem",
-                  color: "#64748b",
-                }}
-              >
-                Final Value (OMR) = Factor x Amount.
-              </p>
+            {paymentHistoryOpen && (
+              <CardBody>
+                <p
+                  style={{
+                    marginTop: 0,
+                    marginBottom: "0.75rem",
+                    fontSize: "0.8rem",
+                    color: "#64748b",
+                  }}
+                >
+                  Final Value (OMR) = Factor x Amount.
+                </p>
               <div className="card-table-wrap">
                 <table className="users-table">
                   <thead>
@@ -1397,13 +1403,28 @@ function LCEAddPage() {
                 </table>
               </div>
             </CardBody>
-          </Card>
+          )}
+        </Card>
 
-          {/* â•â•â•â•â•â•â•â•â• CARD 3: Linked Purchase Items â•â•â•â•â•â•â•â•â• */}
-          <Card className="lce-card mb-3">
-            <CardHeader>
+        {/* ========== ACCORDION 2: Linked Purchase Invoice Items & Linked Purchase Items (Default Closed) ========== */}
+        <Card className="lce-card mb-3 lce-accordion-card">
+          <CardHeader
+            className="lce-accordion-header"
+            onClick={() => setLinkedItemsOpen((prev) => !prev)}
+          >
+            <div className="lce-accordion-title">
+              <span className="lce-accordion-icon">
+                {linkedItemsOpen ? <BsChevronDown /> : <BsChevronRight />}
+              </span>
               <h3>Linked Purchase Invoice Items & Linked Purchase Items</h3>
-            </CardHeader>
+              {linkedItems.length > 0 && (
+                <span className="vendor-card__badge" style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}>
+                  {linkedItems.length} item{linkedItems.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          {linkedItemsOpen && (
             <CardBody>
               <div className="mb-3">
                 <label
@@ -1578,9 +1599,29 @@ function LCEAddPage() {
                 )}
               </div>
             </CardBody>
-          </Card>
-        </>
-      )}
+          )}
+        </Card>
+
+        {/* ========== Bottom Page Actions ========== */}
+        <div className="lce-page-actions">
+          <button
+            type="submit"
+            className="crud-add-btn"
+            disabled={saving || loading}
+          >
+            <BsPlusCircleFill aria-hidden="true" />
+            <span>{saving ? "Saving..." : "Save LCE Details"}</span>
+          </button>
+          <button
+            type="button"
+            className="modal-btn modal-btn--cancel"
+            onClick={() => navigate("/projects/costing")}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    )}
 
       {/* ------------------- Selection Modal ------------------- */}
       {modalOpen ? (

@@ -50,6 +50,13 @@ class StockPurchaseItem(models.Model):
         on_delete=models.SET_NULL,
         related_name="linked_items",
     )
+    lca_actuals = models.ForeignKey(
+        "erp_app.LandingCostActuals",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="linked_items",
+    )
     grn_number = models.CharField(max_length=7, unique=True, blank=True)
     item_category = models.ForeignKey(
         ItemCategory,
@@ -65,6 +72,7 @@ class StockPurchaseItem(models.Model):
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     lce_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    lca_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_purchase_items")
     item_type = models.ForeignKey("erp_app.ItemType_info", on_delete=models.PROTECT, default=1,related_name="stock_purchase_items",)
     created_at = models.DateTimeField(auto_now_add=True)

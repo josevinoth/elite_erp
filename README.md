@@ -685,3 +685,44 @@ The LCE Add / Edit Page follows the centered card layout convention:
   3. **Linked Purchase Items (`Card 3`):** Header titled *"Linked Purchase Invoice Items & Linked Purchase Items"*, containing the purchase invoice selector and the merged linked purchase items table.
 - **Styling:** Spaced with `mb-3`, form controls use consistent `form-control` classes, and cards are centered using `d-flex justify-content-center` / `col-4 mx-auto`.
 
+---
+
+## Landing Cost Actuals (LCA) Module
+
+The **Landing Cost Actuals (LCA)** module is cloned from the LCE (Landing Cost Estimate) module to track actual landing costs for imported goods and materials upon arrival.
+
+### Architecture & File Mapping
+
+#### Backend (Django + DRF)
+- **Model (`erp/erp_app/sub_models/lca_model.py`):**
+  - `LandingCostActuals`: Database table `erp_app_lca` mirroring LCE fields (`ex_works_material_cost`, `packing_charges`, `documentation`, `other_charges_1`..`4`, exchange rates, bank charges, freight, duty, BOE, inspection, unloading, delivery, etc.).
+  - `LCABalanceSettlement`: Database table `erp_app_lca_balance_settlement` for tracking actual payment settlements and exchange rates.
+  - `LCAChargeTypeOption`: Database table `erp_app_lca_charge_type_option` for charge type choices.
+  - `StockPurchaseItem` linkage: Added `lca_actuals` (FK) and `lca_cost` (Decimal).
+- **API Views (`erp/erp_app/sub_views/lca_api.py`):**
+  - `LCAAddSerializer`: Model serializer for `LandingCostActuals`.
+  - Dedicated endpoints under `/api/lca/`:
+    - `GET /api/lca/` &mdash; List all LCA actuals records.
+    - `GET /api/lca/meta/` &mdash; Meta information (charge types, currencies, purchases).
+    - `POST /api/lca/charge-types/add/` &mdash; Create new charge type option.
+    - `POST /api/lca/create/` &mdash; Create a new LCA record.
+    - `GET|PATCH|DELETE /api/lca/record/<int:lca_id>/` &mdash; Detail, update, or delete an LCA record.
+    - `GET /api/lca/purchase-items/<int:purchase_id>/` &mdash; Purchase items with LCA linkage.
+
+#### Frontend (React)
+- **Services (`erp/frontend/src/services/crudApi.js`):**
+  - `listLcaActuals()`, `listLcaMeta()`, `createLcaChargeTypeOption()`, `createLcaActuals()`, `getLcaActualsById()`, `getLcaPurchaseItems()`, `updateLcaActualsById()`, `deleteLcaActualsById()`.
+- **Pages:**
+  - `LCAListPage.jsx` (`/projects/lca`): Filterable, searchable, and exportable list of LCA records with Edit and Delete actions.
+  - `LCAAddPage.jsx` (`/projects/lca/add` and `/projects/lca/record/:lcaId`): Unified Add/Edit page handling creation and editing.
+- **UI Layout (`LCAAddPage.jsx` & `LCAAddPage.css`):**
+  - **Centered Card Layout:** Follows the card layout convention (`col-4 mx-auto` / `.lca-card`) with `mb-3` spacing.
+  - **Single Column Fields:** Input fields in a single column with label on the left and form control on the right.
+  - **Card 1 (Add/Edit LCA):** Main actuals parameters, exchange rates, charges, and calculated totals.
+  - **Card 2 (Payment History):** Collapsible accordion (default closed) for multi-currency payment settlements.
+  - **Card 3 (Linked Items):** Collapsible accordion (default closed) titled *"Linked Purchase Invoice Items & Linked Purchase Items"* with purchase selector and item selection modal.
+  - **Page Bottom Actions:** Save LCA Details and Cancel buttons at the bottom of the page.
+- **Navigation:**
+  - Sidebar entry **Landing Cost Actuals** added under Projects in `homeNavigation.js` and `HomeSideNav.jsx`.
+
+
