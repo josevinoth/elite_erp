@@ -56,6 +56,12 @@ from .views import (
     create_lce_charge_type_option_api_view,
     create_lce_cost_detail_api_view,
     create_lce_estimate_api_view,
+    create_lca_charge_type_option_api_view,
+    create_lca_actuals_api_view,
+    lca_actuals_meta_api_view,
+    lca_actuals_record_api_view,
+    lca_purchase_items_api_view,
+    list_lca_actuals_api_view,
     create_project_api_view,
     create_project_lifecycle_status_option_api_view,
     create_project_status_option_api_view,
@@ -437,6 +443,25 @@ urlpatterns = [
         "api/lce-estimates/purchase-items/<int:purchase_id>/",
         lce_purchase_items_api_view,
         name="api-lce-purchase-items",
+    ),
+    # Landing Cost Actuals (LCA)
+    path("api/lca/", list_lca_actuals_api_view, name="api-lca-list"),
+    path("api/lca/meta/", lca_actuals_meta_api_view, name="api-lca-meta"),
+    path(
+        "api/lca/charge-types/add/",
+        create_lca_charge_type_option_api_view,
+        name="api-lca-charge-types-add",
+    ),
+    path("api/lca/create/", create_lca_actuals_api_view, name="api-lca-create"),
+    path(
+        "api/lca/record/<int:lca_id>/",
+        lca_actuals_record_api_view,
+        name="api-lca-record",
+    ),
+    path(
+        "api/lca/purchase-items/<int:purchase_id>/",
+        lca_purchase_items_api_view,
+        name="api-lca-purchase-items",
     ),
     # lab furniture items
     path("api/lab-furniture-items/", list_lab_furniture_items_api_view, name="api-lab-furniture-items-list"),

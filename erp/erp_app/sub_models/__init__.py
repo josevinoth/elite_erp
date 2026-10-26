@@ -12,6 +12,7 @@ from .item_code_name import ItemCodeName
 from .lab_furniture_item import LabFurnitureItem
 from .lce_cost_detail import LCECostDetail
 from .lce_estimate import LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate
+from .lca_model import LandingCostActuals, LCAActuals, LCABalanceSettlement, LCAChargeTypeOption
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .room_data_mod import RoomDataInfo
@@ -60,6 +61,10 @@ __all__ = [
     "LCEEstimate",
     "LCEChargeTypeOption",
     "LCEBalanceSettlement",
+    "LandingCostActuals",
+    "LCAActuals",
+    "LCAChargeTypeOption",
+    "LCABalanceSettlement",
     "Vendor",
     "VendorInfo",
     "Project",

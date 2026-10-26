@@ -6,8 +6,10 @@ import CdcTeamExpencePage from "./pages/CdcTeamExpencePage";
 import CutOptimiserListPage from "./pages/CutOptimiserListPage";
 import CostingPage from "./pages/CostingPage";
 import LCEAddPage from "./pages/LCEAddPage";
+import LCAAddPage from "./pages/LCAAddPage";
 import HomeLayout from "./pages/HomeLayout";
 import LceListPage from "./pages/LceListPage";
+import LCAListPage from "./pages/LCAListPage";
 import LayoutDrawingApprovalPage from "./pages/LayoutDrawingApprovalPage";
 import ItemCostingFormPage from "./pages/ItemCostingFormPage";
 import ItemCostingListPage from "./pages/ItemCostingListPage";
@@ -243,6 +245,36 @@ function App() {
                             path="/lce/record/:lceId"
                             element={
                                 superAdminRoute(<LCEAddPage/>)
+                            }
+                        />
+                        <Route
+                            path="/projects/lca"
+                            element={
+                                superAdminRoute(<LCAListPage/>)
+                            }
+                        />
+                        <Route
+                            path="/projects/lca/add"
+                            element={
+                                superAdminRoute(<LCAAddPage/>)
+                            }
+                        />
+                        <Route
+                            path="/projects/lca/record/:lcaId"
+                            element={
+                                superAdminRoute(<LCAAddPage/>)
+                            }
+                        />
+                        <Route
+                            path="/lca/add"
+                            element={
+                                superAdminRoute(<LCAAddPage/>)
+                            }
+                        />
+                        <Route
+                            path="/lca/record/:lcaId"
+                            element={
+                                superAdminRoute(<LCAAddPage/>)
                             }
                         />
                         <Route path="/projects/cutsheet-optimiser" element={secureRoute(<CutSheetOptimiser/>)}/>
