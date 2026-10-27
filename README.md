@@ -673,17 +673,64 @@ updateStockReturnItem(id, {action: "accept"|"reject"})
 
 ---
 
-## UI Guidelines
+## Landing Cost Estimate (LCE) Module
 
-### LCE Add / Edit Page Layout (`LCEAddPage.jsx`)
+The **Landing Cost Estimate (LCE)** module calculates landing cost factors and landed cost per item code based on historic purchase records to assist project cost estimation and quotation.
 
-The LCE Add / Edit Page follows the centered card layout convention:
-- **Card Layout & Width:** Uses Bootstrap grid `col-4 mx-auto` to center cards and avoid full page width.
-- **Separate Section Cards:**
-  1. **Add/Edit LCE (`Card 1`):** Form fields arranged in a single column with labels aligned left (`col-4`) and inputs aligned right (`col-8`).
-  2. **Payment History (`Card 2`):** Encapsulates settlement entries and payment history records.
-  3. **Linked Purchase Items (`Card 3`):** Header titled *"Linked Purchase Invoice Items & Linked Purchase Items"*, containing the purchase invoice selector and the merged linked purchase items table.
-- **Styling:** Spaced with `mb-3`, form controls use consistent `form-control` classes, and cards are centered using `d-flex justify-content-center` / `col-4 mx-auto`.
+### Key Workflow & Features
+
+1. **Direct Item Code Linkage:**
+   - LCE links directly to Item Master records (`LabFurnitureItem` / `item_code`).
+   - Automatically populates `item_category` and `item_name` from Item Master.
+2. **Multiple Item Selection:**
+   - Users can select multiple item codes either by batch multi-select (with search/filter and "Add Selected Items") or by adding individual item rows via "+ Add Item Row".
+3. **Automated Historic Cost Calculation:**
+   - On item code selection, queries `StockPurchaseItem` for all past purchases of that `item_code`.
+   - Computes `min_cost` (minimum purchase cost/unit) and `max_cost` (maximum purchase cost/unit).
+   - Defaults `actual_cost = max_cost`, while allowing the user to edit `actual_cost` as needed.
+   - Total `ex_works_material_cost` automatically equals the sum of `actual_cost` across all linked item rows.
+4. **Purchase History Modal:**
+   - In each item row, a **"View Purchases"** button opens a modal popup displaying all historic purchases for that item code.
+   - Modal Columns: **Item Category**, **Item Name**, **Item Code**, **Cost**, Purchase Number, Invoice Number, GRN Number, and Date.
+5. **Project Costing & Quotation Assistance:**
+   - Landed cost estimates assist sales and technical teams in budgeting realistic material costs based on historical vendor procurement data.
+
+### Backend Architecture & Endpoints
+
+- **Models (`erp/erp_app/sub_models/lce_estimate.py` & `lce_model.py`):**
+  - `LandingCostEstimate` / `LCEEstimate`:
+    - `item_code`: FK → `LabFurnitureItem`
+    - `item_category`, `item_name`: CharFields auto-fetched from Item Master
+    - `min_cost`, `max_cost`: DecimalFields calculated from historical purchases using `StockPurchaseItem.unit_price` (fallback to `total_price / quantity`)
+    - `actual_cost`: DecimalField (default = `max_cost`, editable)
+    - `lce_cost`: DecimalField calculated as `actual_cost * cost_factor`
+  - `LCEEstimateItem`:
+    - Child model linking multiple item rows to one LCE record with category, name, code, min cost, max cost, editable actual cost, and calculated `lce_cost`.
+  - `LCEBalanceSettlement`: Multi-currency payment settlements tracking advance and balance payments with bank exchange rates.
+- **API Endpoints (`erp/erp_app/sub_views/lce_estimate_api.py` & `lce_api.py`):**
+  - `POST /api/lce/items/` or `/lce/items/`: Accepts `{ item_codes: [] }`, returns item details with `min_cost`, `max_cost` from `unit_price`, and default `actual_cost`.
+  - `GET /api/lce/purchase-history/<item_code>/` or `/lce/purchase-history/<item_code>/`: Returns historic purchases list (`item_category`, `item_name`, `item_code`, `cost` [from `unit_price`], `unit_price`, `lce_cost`, purchase number, invoice, GRN, date).
+  - `GET /api/lce-estimates/`: List all LCE estimates with item details and `lce_cost`.
+  - `POST /api/lce-estimates/create/`: Create estimate with linked `items` payload including `lce_cost`.
+  - `GET|PATCH|DELETE /api/lce-estimates/record/<id>/`: Detail, update, or delete LCE estimate.
+
+### Frontend (`LCEAddPage.jsx`) UI Row Layout
+
+- **Card 1 (Add/Edit LCE):** Financial parameters, exchange rates, duty, freight, and calculated totals. `EX WORKS MATERIAL COST` is auto-computed from linked items when present.
+- **Card 2 (Payment History):** Collapsible accordion for payment settlement rows.
+- **Card 3 (Linked Item Codes & Purchase Cost History):**
+  - Multi-select dropdown bar with search filter to batch add multiple item codes.
+  - **Item Row Layout:**
+    - `Item Category` (auto, readonly)
+    - `Item Name` (auto, readonly)
+    - `Item Code` (dropdown, searchable)
+    - `Min Cost` (auto, readonly, based directly on purchase `unit_price`)
+    - `Max Cost` (auto, readonly, based directly on purchase `unit_price`)
+    - `Actual Cost` (editable, default = max)
+    - `LCE Cost` (auto, readonly = `Actual Cost × Cost Factor`, with info icon showing "Product of Actual Cost and Cost Factor" on hover)
+    - `Actions`: **"View Purchases"** button (opens modal displaying `Item Category`, `Item Name`, `Item Code`, `Cost`, `Purchase No.`, `Invoice No.`, `GRN No.`, and `Date`) + **"Remove"** button
+  - **Summary Footer:** Displays `Total Linked Items`, `Sum Actual Cost (Ex Works)`, and `Sum LCE Cost (OMR)`.
+- **Page Bottom Actions:** Centered "Save LCE Details" and "Cancel" buttons.
 
 ---
 

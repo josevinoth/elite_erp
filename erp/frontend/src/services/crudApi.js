@@ -124,6 +124,22 @@ export async function listItemTypes() {
 }
 
 // ── Vendors ───────────────────────────────────────────────
+export async function listVendorCategories() {
+  const res = await fetch("/api/vendor-categories/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createVendorCategory(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/vendor-categories/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
 export async function listVendors() {
   const res = await fetch("/api/vendors/", { credentials: "include" });
   return parseJson(res);
@@ -831,6 +847,24 @@ export async function deleteLceEstimateById(lceId) {
     method: "DELETE",
     credentials: "include",
     headers,
+  });
+  return parseJson(res);
+}
+
+export async function getLceItemsCostDetails(itemCodes) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce/items/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ item_codes: itemCodes }),
+  });
+  return parseJson(res);
+}
+
+export async function getLcePurchaseHistory(itemCode) {
+  const res = await fetch(`/api/lce/purchase-history/${encodeURIComponent(itemCode)}/`, {
+    credentials: "include",
   });
   return parseJson(res);
 }

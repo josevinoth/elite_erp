@@ -77,6 +77,7 @@ from .views import (
     create_task_status_option_api_view,
     create_timesheet_api_view,
     create_vendor_api_view,
+    create_vendor_category_api_view,
     create_cut_optimiser,
     csrf_token_view,
     cut_optimiser_detail,
@@ -100,6 +101,8 @@ from .views import (
     lce_cost_detail_api_view,
     lce_estimate_meta_api_view,
     lce_estimate_record_api_view,
+    lce_items_api_view,
+    lce_purchase_history_api_view,
     lce_purchase_items_api_view,
     list_item_code_names_api_view,
     list_cdc_team_expense_meta_api_view,
@@ -143,6 +146,7 @@ from .views import (
     list_uoms_api_view,
     list_users_api_view,
     list_vendors_api_view,
+    list_vendor_categories_api_view,
     login_api_view,
     logout_api_view,
     mark_message_notifications_read_api_view,
@@ -193,6 +197,8 @@ urlpatterns = [
     path("api/vendors/", list_vendors_api_view, name="api-vendors-list"),
     path("api/vendors/create/", create_vendor_api_view, name="api-vendors-create"),
     path("api/vendors/<int:vendor_id>/", vendor_detail_api_view, name="api-vendors-detail"),
+    path("api/vendor-categories/", list_vendor_categories_api_view, name="api-vendor-categories-list"),
+    path("api/vendor-categories/create/", create_vendor_category_api_view, name="api-vendor-categories-create"),
     # projects
     path("api/projects/", list_projects_api_view, name="api-projects-list"),
     path(
@@ -443,6 +449,19 @@ urlpatterns = [
         "api/lce-estimates/purchase-items/<int:purchase_id>/",
         lce_purchase_items_api_view,
         name="api-lce-purchase-items",
+    ),
+    # LCE Item Linking & Purchase History
+    path("api/lce/items/", lce_items_api_view, name="api-lce-items"),
+    path("lce/items/", lce_items_api_view, name="lce-items"),
+    path(
+        "api/lce/purchase-history/<path:item_code>/",
+        lce_purchase_history_api_view,
+        name="api-lce-purchase-history",
+    ),
+    path(
+        "lce/purchase-history/<path:item_code>/",
+        lce_purchase_history_api_view,
+        name="lce-purchase-history",
     ),
     # Landing Cost Actuals (LCA)
     path("api/lca/", list_lca_actuals_api_view, name="api-lca-list"),

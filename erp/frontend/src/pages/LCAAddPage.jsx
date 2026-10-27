@@ -100,6 +100,27 @@ const toFixed = (value, digits = 2) =>
 const calculateLinkedItemsTotalPrice = (items = []) =>
   items.reduce((sum, item) => sum + toNumber(item.total_price), 0);
 
+const calculatePriceAfterTaxPerUnit = (item) => {
+  if (item?.price_after_tax_per_unit && !isNaN(Number(item.price_after_tax_per_unit))) {
+    return toFixed(Number(item.price_after_tax_per_unit), 2);
+  }
+  const qty = toNumber(item?.quantity);
+  const totalAfterTax = toNumber(item?.total_after_tax);
+  if (totalAfterTax > 0 && qty > 0) {
+    return toFixed(totalAfterTax / qty, 2);
+  }
+  const unitPrice = toNumber(item?.unit_price);
+  const tax = toNumber(item?.tax);
+  if (unitPrice > 0) {
+    return toFixed(unitPrice * (1 + tax / 100), 2);
+  }
+  const totalPrice = toNumber(item?.total_price);
+  if (totalPrice > 0 && qty > 0) {
+    return toFixed((totalPrice / qty) * (1 + tax / 100), 2);
+  }
+  return "0.00";
+};
+
 const calculateFormulas = (nextForm) => {
   const exWorks = toNumber(nextForm.ex_works_material_cost);
   const packing = toNumber(nextForm.packing_charges);
@@ -271,8 +292,8 @@ function PurchaseItemModal({
                 <th>Item Category</th>
                 <th>Item Name</th>
                 <th>Item Code</th>
-                <th>Qty</th>
                 <th>Total Price ({selectedForeignCurrencyCode})</th>
+                <th>Total Price After Tax / Unit ({selectedForeignCurrencyCode})</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -304,8 +325,8 @@ function PurchaseItemModal({
                     <td>{item.item_category}</td>
                     <td>{item.item_name}</td>
                     <td>{item.item_code}</td>
-                    <td>{item.quantity}</td>
                     <td>{item.total_price}</td>
+                    <td>{calculatePriceAfterTaxPerUnit(item)}</td>
                     <td>
                       {isLinkedOther ? (
                         <span className="vendor-card__badge" style={{ fontSize: "0.7rem", backgroundColor: "#dc2626" }}>
@@ -387,6 +408,13 @@ function LCAAddPage() {
         if (!alive) return;
         setCurrencies(Array.isArray(meta?.currencies) ? meta.currencies : []);
         setChargeTypeOptions(Array.isArray(meta?.charge_types) ? meta.charge_types : []);
+        if (Array.isArray(meta?.stock_purchases) && meta.stock_purchases.length) {
+          const options = meta.stock_purchases.map((sp) => ({
+            value: sp.id,
+            label: sp.label || `${sp.purchase_number || `SPV${String(sp.id).padStart(4, "0")}`}${sp.invoice_number ? ` | Inv: ${sp.invoice_number}` : ""}`,
+          }));
+          setStockPurchaseOptions(options);
+        }
       } catch {
         if (!alive) return;
         setCurrencies([]);
@@ -398,16 +426,21 @@ function LCAAddPage() {
       try {
         const spData = await listStockPurchases();
         if (!alive) return;
-        const vendors = Array.isArray(spData?.vendor_details) ? spData.vendor_details : [];
-        const options = vendors.map((v) => {
-          const inv = v.invoice_number ? ` | Inv: ${v.invoice_number}` : "";
-          const spId = `SPV${String(v.id).padStart(4, "0")}`;
-          return { value: v.id, label: `${spId}${inv}` };
-        });
-        setStockPurchaseOptions(options);
+        const records = Array.isArray(spData?.stock_purchases)
+          ? spData.stock_purchases
+          : Array.isArray(spData?.vendor_details)
+          ? spData.vendor_details
+          : [];
+        if (records.length) {
+          const options = records.map((v) => {
+            const inv = v.invoice_number ? ` | Inv: ${v.invoice_number}` : "";
+            const spId = v.purchase_number || `SPV${String(v.id).padStart(4, "0")}`;
+            return { value: v.id, label: `${spId}${inv}` };
+          });
+          setStockPurchaseOptions(options);
+        }
       } catch {
         if (!alive) return;
-        setStockPurchaseOptions([]);
       }
     };
 
@@ -1456,8 +1489,8 @@ function LCAAddPage() {
                           <th>Item Category</th>
                           <th>Item Name</th>
                           <th>Item Code</th>
-                          <th>Qty</th>
                           <th>Total Price</th>
+                          <th>Total Price After Tax / Unit</th>
                           <th>LCA COST (OMR)/Unit</th>
                         </tr>
                       </thead>
@@ -1479,9 +1512,11 @@ function LCAAddPage() {
                               <td>{item.item_category}</td>
                               <td>{item.item_name}</td>
                               <td>{item.item_code}</td>
-                              <td>{item.quantity}</td>
                               <td>
                                 {item.total_price} {selectedForeignCurrencyCode}
+                              </td>
+                              <td>
+                                {calculatePriceAfterTaxPerUnit(item)} {selectedForeignCurrencyCode}
                               </td>
                               <td>
                                 <strong>{perUnitLcaCost}</strong>

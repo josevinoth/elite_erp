@@ -85,6 +85,20 @@ def _serialize_purchase_item(item):
     cat_name = getattr(item.item_category, "name", "") if item.item_category else ""
     code_val = getattr(item.item_code, "item_code", "") if item.item_code else (str(item.item_code or ""))
     sp_num = f"SPV{item.vendor_detail_id:04d}" if item.vendor_detail_id else ""
+
+    qty = Decimal(str(item.quantity or 0))
+    unit_price = Decimal(str(item.unit_price or 0))
+    tax_val = Decimal(str(getattr(item, "tax", 0) or 0))
+    total_price = Decimal(str(item.total_price or 0))
+
+    total_after_tax = getattr(item, "total_after_tax", None)
+    if total_after_tax is None or Decimal(str(total_after_tax or 0)) == 0:
+        total_after_tax = total_price + (total_price * (tax_val / Decimal("100")))
+    else:
+        total_after_tax = Decimal(str(total_after_tax))
+
+    price_after_tax_per_unit = (total_after_tax / qty) if qty > 0 else (unit_price * (Decimal("1") + tax_val / Decimal("100")))
+
     return {
         "id": item.id,
         "grn_number": raw_grn,
@@ -96,6 +110,9 @@ def _serialize_purchase_item(item):
         "quantity": str(item.quantity),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
+        "tax": str(tax_val),
+        "total_after_tax": str(round(total_after_tax, 2)),
+        "price_after_tax_per_unit": str(round(price_after_tax_per_unit, 2)),
         "lca_cost": str(getattr(item, "lca_cost", 0)),
         "lca_actuals_id": getattr(item, "lca_actuals_id", None),
     }

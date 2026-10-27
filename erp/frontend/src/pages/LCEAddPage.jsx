@@ -3,16 +3,20 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   BsChevronDown,
   BsChevronRight,
+  BsEyeFill,
+  BsInfoCircle,
   BsPencilSquare,
   BsPlusCircleFill,
+  BsTrashFill,
 } from "react-icons/bs";
 import {
   createLceChargeTypeOption,
   createLceEstimate,
   getLceEstimateById,
-  getLcePurchaseItems,
+  getLceItemsCostDetails,
+  getLcePurchaseHistory,
+  listLabFurnitureItems,
   listLceEstimateMeta,
-  listStockPurchases,
   updateLceEstimateById,
 } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
@@ -97,17 +101,24 @@ const toNumber = (value) => {
 const toFixed = (value, digits = 2) =>
   String(Math.round((value + Number.EPSILON) * 10 ** digits) / 10 ** digits);
 
-const calculateLinkedItemsTotalPrice = (items = []) =>
+const calculateItemsTotalPrice = (items = []) =>
   toFixed(
-    items.reduce((sum, item) => sum + toNumber(item?.total_price), 0),
+    items.reduce(
+      (sum, item) =>
+        sum +
+        (toNumber(item?.actual_cost) ||
+          toNumber(item?.max_cost) ||
+          toNumber(item?.min_cost)),
+      0
+    ),
     2
   );
 
-const applyLinkedItemsToForm = (values, items = []) =>
-  applyFormulas({
-    ...values,
-    ex_works_material_cost: calculateLinkedItemsTotalPrice(items),
-  });
+const applyItemsToForm = (values, items = [], settlements = []) =>
+  applyFormulas(values, settlements);
+
+const calculateLinkedItemsTotalPrice = calculateItemsTotalPrice;
+const applyLinkedItemsToForm = applyItemsToForm;
 
 const emptySettlementRow = (rowId, foreignCurrencyId = "") => ({
   rowId,
@@ -219,210 +230,139 @@ function applyFormulas(values, settlementRowsWithValue = []) {
   return next;
 }
 
-function formatPurchaseOption(row) {
-  const id = String(row?.id ?? "");
-  const purchaseNumber = String(
-    row?.purchase_number || row?.purchaseNumber || ""
-  ).trim();
-  const invoiceNumber = String(
-    row?.invoice_number || row?.invoiceNumber || ""
-  ).trim();
-  const base = purchaseNumber
-    ? `Purchase: ${purchaseNumber}`
-    : `Purchase ID: ${id}`;
-  const label = invoiceNumber ? `${base} | Invoice: ${invoiceNumber}` : base;
-  return { value: id, label };
-}
+function PurchaseHistoryModal({ itemCode, itemName, itemCategory, onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [purchases, setPurchases] = useState([]);
+  const [error, setError] = useState("");
 
-/* ------------------- Purchase Item Selection Modal ------------------- */
-function PurchaseItemModal({
-  items,
-  initialSelected,
-  onConfirm,
-  onClose,
-  currentLceId,
-  selectedForeignCurrencyCode,
-}) {
-  const [checked, setChecked] = useState(() => new Set(initialSelected));
-  const [search, setSearch] = useState("");
-
-  const isTaken = (item) =>
-    item.lce_estimate_id &&
-    String(item.lce_estimate_id) !== String(currentLceId || "");
-
-  const filteredItems = items.filter((item) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      String(item.grn_number || "").toLowerCase().includes(q) ||
-      String(item.item_name || "").toLowerCase().includes(q) ||
-      String(item.item_code || "").toLowerCase().includes(q) ||
-      String(item.item_category || "").toLowerCase().includes(q) ||
-      String(item.purchase_number || "").toLowerCase().includes(q) ||
-      String(item.invoice_number || "").toLowerCase().includes(q)
-    );
-  });
-
-  const selectableIds = filteredItems
-    .filter((i) => !isTaken(i))
-    .map((i) => i.id);
-  const allSelected =
-    selectableIds.length > 0 && selectableIds.every((id) => checked.has(id));
-
-  const toggle = (id) => {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  useEffect(() => {
+    let alive = true;
+    const fetchHistory = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await getLcePurchaseHistory(itemCode);
+        if (alive) {
+          setPurchases(Array.isArray(data?.purchases) ? data.purchases : []);
+        }
+      } catch (err) {
+        if (alive) {
+          setError(err.message || "Failed to load purchase history.");
+        }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+    if (itemCode) {
+      fetchHistory();
+    }
+    return () => {
+      alive = false;
+    };
+  }, [itemCode]);
 
   return (
-    <div className="modal-overlay">
-      <div className="costing-modal-card">
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="costing-modal-card"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: "880px", width: "95%" }}
+      >
         <div className="costing-modal-card__header">
-          <h3 className="costing-modal-card__title">Select Purchase Items</h3>
-          <div className="costing-inline-actions">
-            <button
-              type="button"
-              className="crud-add-btn"
-              onClick={() =>
-                setChecked((prev) => {
-                  const n = new Set(prev);
-                  selectableIds.forEach((id) => n.add(id));
-                  return n;
-                })
-              }
-            >
-              Select All
-            </button>
-            <button
-              type="button"
-              className="crud-add-btn crud-add-btn--neutral"
-              onClick={() => setChecked(new Set())}
-            >
-              Clear
-            </button>
+          <div>
+            <h3 className="costing-modal-card__title" style={{ margin: 0 }}>
+              Purchase History &mdash; {itemCode}
+            </h3>
+            <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+              {itemName} {itemCategory ? `| Category: ${itemCategory}` : ""}
+            </span>
           </div>
+          <button
+            type="button"
+            className="costing-modal-card__close"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              fontSize: "1.5rem",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#64748b",
+            }}
+          >
+            &times;
+          </button>
         </div>
 
-        <input
-          type="search"
-          className="auth-input costing-modal-card__search"
-          placeholder="Search by GRN, item name, code, category, purchase or invoice..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-
-        <div className="users-table-wrap users-table-wrap--sticky costing-modal-card__table-wrap">
-          <table className="users-table">
-            <thead>
-              <tr>
-                <th className="users-table__sticky-head costing-modal-card__th costing-modal-card__th--checkbox">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={() => {
-                      setChecked((prev) => {
-                        const n = new Set(prev);
-                        if (allSelected) selectableIds.forEach((id) => n.delete(id));
-                        else selectableIds.forEach((id) => n.add(id));
-                        return n;
-                      });
-                    }}
-                  />
-                </th>
-                <th className="users-table__sticky-head costing-modal-card__th">GRN No.</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Purchase No.</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Invoice No.</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Item Category</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Item Name</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Item Code</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Qty</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Unit Price</th>
-                <th className="users-table__sticky-head costing-modal-card__th">Total Price</th>
-                <th className="users-table__sticky-head costing-modal-card__th">LCE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="costing-modal-card__empty">
-                    No items match your search.
-                  </td>
-                </tr>
-              ) : (
-                filteredItems.map((item) => {
-                  const taken = isTaken(item);
-                  const lceTag = item.lce_estimate_id
-                    ? `LCE_${String(item.lce_estimate_id).padStart(3, "0")}`
-                    : "-";
-                  const rowClassName = `costing-modal-card__row${
-                    taken ? " costing-modal-card__row--taken" : ""
-                  }${checked.has(item.id) && !taken ? " costing-modal-card__row--selected" : ""}`;
-                  return (
-                    <tr
-                      key={item.id}
-                      title={
-                        taken
-                          ? `Already linked to ${lceTag}. Delink it first to reassign.`
-                          : ""
-                      }
-                      className={rowClassName}
-                    >
-                      <td className="costing-modal-card__cell--checkbox">
-                        <input
-                          type="checkbox"
-                          checked={checked.has(item.id)}
-                          disabled={taken}
-                          onChange={() => !taken && toggle(item.id)}
-                        />
-                      </td>
-                      <td>{item.grn_number}</td>
-                      <td>{item.purchase_number || "-"}</td>
-                      <td>{item.invoice_number || "-"}</td>
-                      <td>{item.item_category}</td>
-                      <td>{item.item_name}</td>
-                      <td>{item.item_code}</td>
-                      <td>{item.quantity}</td>
+        <div style={{ padding: "1rem" }}>
+          {loading ? (
+            <div style={{ textAlign: "center", padding: "2rem", color: "#64748b" }}>
+              Loading purchase history...
+            </div>
+          ) : error ? (
+            <div className="costing-status-text costing-status-text--error" style={{ color: "#dc2626" }}>
+              {error}
+            </div>
+          ) : purchases.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "2rem", color: "#64748b" }}>
+              No historic purchases found for item code <strong>{itemCode}</strong>.
+            </div>
+          ) : (
+            <div className="card-table-wrap">
+              <table className="users-table">
+                <thead>
+                  <tr>
+                    <th>Item Category</th>
+                    <th>Item Name</th>
+                    <th>Item Code</th>
+                    <th>Cost</th>
+                    <th>Purchase No.</th>
+                    <th>Invoice No.</th>
+                    <th>GRN No.</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchases.map((p, idx) => (
+                    <tr key={idx}>
+                      <td>{p.item_category || itemCategory || "-"}</td>
+                      <td>{p.item_name || itemName || "-"}</td>
+                      <td><strong>{p.item_code || itemCode}</strong></td>
                       <td>
-                        {item.unit_price} {selectedForeignCurrencyCode}
+                        <strong style={{ color: "#0f766e" }}>{p.cost}</strong>
                       </td>
-                      <td>
-                        {item.total_price} {selectedForeignCurrencyCode}
-                      </td>
-                      <td className={taken ? "costing-modal-card__lce--taken" : ""}>
-                        {lceTag}
-                      </td>
+                      <td>{p.purchase_number || "-"}</td>
+                      <td>{p.invoice_number || "-"}</td>
+                      <td>{p.grn_number || "-"}</td>
+                      <td>{p.date || "-"}</td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        <div className="costing-modal-card__footer">
-          <span className="costing-help-text">
-            {filteredItems.filter((i) => isTaken(i)).length > 0 &&
-              `${filteredItems.filter((i) => isTaken(i)).length} item(s) already linked to another LCE (shown in red, disabled).`}
+        <div
+          className="costing-modal-card__footer"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "0.75rem 1rem",
+            borderTop: "1px solid #e2e8f0",
+          }}
+        >
+          <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+            Total purchases: <strong>{purchases.length}</strong>
           </span>
-          <div className="costing-inline-actions">
-            <button
-              type="button"
-              className="crud-add-btn crud-add-btn--neutral"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="crud-add-btn"
-              onClick={() => onConfirm([...checked])}
-            >
-              Confirm Selection ({checked.size})
-            </button>
-          </div>
+          <button
+            type="button"
+            className="crud-add-btn crud-add-btn--neutral"
+            onClick={onClose}
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -442,21 +382,20 @@ function LCEAddPage() {
   const [status, setStatus] = useState("");
   const [chargeTypeOptions, setChargeTypeOptions] = useState([]);
   const [currencyOptions, setCurrencyOptions] = useState([]);
-  const [stockPurchaseOptions, setStockPurchaseOptions] = useState([]);
+  const [itemMasterOptions, setItemMasterOptions] = useState([]);
 
-  const [linkedItems, setLinkedItems] = useState([]);
-  const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [items, setItems] = useState([]);
+  const [nextItemRowId, setNextItemRowId] = useState(1);
+  const [selectedItemCodeKeys, setSelectedItemCodeKeys] = useState([]);
+  const [historyModalItem, setHistoryModalItem] = useState(null);
+  const [itemSearchText, setItemSearchText] = useState("");
+
   const [balanceSettlements, setBalanceSettlements] = useState([emptySettlementRow(1)]);
   const [nextSettlementRowId, setNextSettlementRowId] = useState(2);
 
-  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState([]);
-  const [modalItems, setModalItems] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalLoading, setModalLoading] = useState(false);
-
   // Accordion section states (default closed)
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
-  const [linkedItemsOpen, setLinkedItemsOpen] = useState(false);
+  const [itemsAccordionOpen, setItemsAccordionOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -503,22 +442,32 @@ function LCEAddPage() {
           }))
         );
 
-        let purchases = Array.isArray(metaData?.stock_purchases)
-          ? metaData.stock_purchases
+        let itemOptions = Array.isArray(metaData?.item_master_options)
+          ? metaData.item_master_options
           : [];
-        if (purchases.length === 0) {
-          const stockListData = await listStockPurchases();
-          purchases = Array.isArray(stockListData?.stock_purchases)
-            ? stockListData.stock_purchases
-            : [];
+        if (itemOptions.length === 0) {
+          try {
+            const itemsRes = await listLabFurnitureItems();
+            const rawList = Array.isArray(itemsRes) ? itemsRes : (itemsRes?.items || []);
+            itemOptions = rawList.map((row) => ({
+              id: row.id,
+              item_code: row.item_code,
+              item_name: row.item_name,
+              item_category: row.item_category_name || (row.item_category?.name || ""),
+              label: `${row.item_code} - ${row.item_name}`,
+            }));
+          } catch (e) {
+            console.error("Failed to load item options fallback:", e);
+          }
         }
-        setStockPurchaseOptions(
-          purchases
-            .map((row) => ({
-              value: String(row.id),
-              label: row?.label || formatPurchaseOption(row).label,
-            }))
-            .filter((row) => row.value)
+        setItemMasterOptions(
+          itemOptions.map((row) => ({
+            value: String(row.id),
+            item_code: row.item_code,
+            item_name: row.item_name,
+            item_category: row.item_category || "",
+            label: row.label || `${row.item_code} - ${row.item_name}`,
+          }))
         );
       } catch (metaErr) {
         console.error("Failed to load LCE meta:", metaErr);
@@ -544,11 +493,43 @@ function LCEAddPage() {
         EXTRA_FIELDS.forEach((key) => {
           merged[key] = String(estimate[key] ?? merged[key] ?? "");
         });
-        const items = Array.isArray(estimate.purchase_items)
-          ? estimate.purchase_items
-          : [];
-        setLinkedItems(items);
-        setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
+
+        let loadedItems = [];
+        if (Array.isArray(estimate.items) && estimate.items.length > 0) {
+          loadedItems = estimate.items.map((it, idx) => ({
+            rowId: Number(it.id) || idx + 1,
+            item_code_id: String(it.item_code_id || it.id || ""),
+            item_code: it.item_code || "",
+            item_name: it.item_name || "",
+            item_category: it.item_category || "",
+            min_cost: String(it.min_cost ?? "0"),
+            max_cost: String(it.max_cost ?? "0"),
+            actual_cost: String(it.actual_cost ?? it.max_cost ?? "0"),
+            lce_cost: String(it.lce_cost ?? "0"),
+          }));
+        } else if (estimate.item_code_id || estimate.item_code) {
+          loadedItems = [
+            {
+              rowId: 1,
+              item_code_id: String(estimate.item_code_id || ""),
+              item_code: estimate.item_code || "",
+              item_name: estimate.item_name || "",
+              item_category: estimate.item_category || "",
+              min_cost: String(estimate.min_cost ?? "0"),
+              max_cost: String(estimate.max_cost ?? "0"),
+              actual_cost: String(estimate.actual_cost ?? estimate.max_cost ?? "0"),
+              lce_cost: String(estimate.lce_cost ?? "0"),
+            },
+          ];
+        }
+        setItems(loadedItems);
+        setNextItemRowId(
+          (loadedItems.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1
+        );
+        if (loadedItems.length > 0) {
+          setItemsAccordionOpen(true);
+        }
+
         const settlementRows = mapSettlementRows(
           estimate.balance_settlements,
           merged.foreign_currency_id || ""
@@ -556,7 +537,7 @@ function LCEAddPage() {
         setBalanceSettlements(settlementRows);
         setForm(() =>
           applyFormulas(
-            applyLinkedItemsToForm(merged, items),
+            merged,
             settlementRows
           )
         );
@@ -585,15 +566,15 @@ function LCEAddPage() {
     if (!lceId) return;
     setForm((prevForm) =>
       applyFormulas(
-        applyLinkedItemsToForm(prevForm, linkedItems),
+        applyItemsToForm(prevForm, items),
         balanceSettlements
       )
     );
-  }, [lceId, linkedItems, balanceSettlements]);
+  }, [lceId, items, balanceSettlements]);
 
   const handleChange = (key, value) =>
     setForm((prev) =>
-      applyLinkedItemsToForm({ ...prev, [key]: value }, linkedItems)
+      applyItemsToForm({ ...prev, [key]: value }, items, balanceSettlements)
     );
 
   const handleChargeTypeAdd = async (typeKey) => {
@@ -618,25 +599,229 @@ function LCEAddPage() {
     }
   };
 
-  const togglePurchaseId = (purchaseId) => {
-    setSelectedPurchaseIds((prev) => {
-      if (prev.includes(purchaseId)) {
-        return prev.filter((id) => id !== purchaseId);
+  const handleAddItemRow = () => {
+    setItems((prev) => [
+      ...prev,
+      {
+        rowId: nextItemRowId,
+        item_code_id: "",
+        item_code: "",
+        item_name: "",
+        item_category: "",
+        min_cost: "0",
+        max_cost: "0",
+        actual_cost: "0",
+        lce_cost: "0",
+      },
+    ]);
+    setNextItemRowId((prev) => prev + 1);
+  };
+
+  const handleRemoveItemRow = (rowId) => {
+    setItems((prev) => prev.filter((r) => r.rowId !== rowId));
+  };
+
+  const handleMinCostChange = (rowId, value) => {
+    setItems((prev) =>
+      prev.map((row) => {
+        if (row.rowId !== rowId) return row;
+        const newMin = value;
+        const shouldUpdateActual =
+          !row.actual_cost ||
+          row.actual_cost === "0" ||
+          row.actual_cost === row.min_cost;
+        const newActual = shouldUpdateActual ? newMin : row.actual_cost;
+        const costVal =
+          toNumber(newActual) || toNumber(newMin) || toNumber(row.max_cost);
+        return {
+          ...row,
+          min_cost: newMin,
+          actual_cost: newActual,
+          lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
+        };
+      })
+    );
+  };
+
+  const handleMaxCostChange = (rowId, value) => {
+    setItems((prev) =>
+      prev.map((row) => {
+        if (row.rowId !== rowId) return row;
+        const newMax = value;
+        const shouldUpdateActual =
+          !row.actual_cost ||
+          row.actual_cost === "0" ||
+          row.actual_cost === row.max_cost;
+        const newActual = shouldUpdateActual ? newMax : row.actual_cost;
+        const costVal =
+          toNumber(newActual) || toNumber(newMax) || toNumber(row.min_cost);
+        return {
+          ...row,
+          max_cost: newMax,
+          actual_cost: newActual,
+          lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
+        };
+      })
+    );
+  };
+
+  const handleActualCostChange = (rowId, value) => {
+    setItems((prev) =>
+      prev.map((row) => {
+        if (row.rowId !== rowId) return row;
+        const costVal =
+          toNumber(value) || toNumber(row.max_cost) || toNumber(row.min_cost);
+        return {
+          ...row,
+          actual_cost: value,
+          lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
+        };
+      })
+    );
+  };
+
+  const handleItemCodeChange = async (rowId, selectedId) => {
+    const master = itemMasterOptions.find(
+      (o) => String(o.value) === String(selectedId)
+    );
+    if (!master) {
+      setItems((prev) =>
+        prev.map((row) =>
+          row.rowId === rowId
+            ? {
+                ...row,
+                item_code_id: "",
+                item_code: "",
+                item_name: "",
+                item_category: "",
+                min_cost: "0",
+                max_cost: "0",
+                actual_cost: "0",
+                lce_cost: "0",
+              }
+            : row
+        )
+      );
+      return;
+    }
+
+    try {
+      const data = await getLceItemsCostDetails([master.value]);
+      const fetched =
+        Array.isArray(data?.items) && data.items.length ? data.items[0] : null;
+      const minCost = fetched ? String(fetched.min_cost ?? "0") : "0";
+      const maxCost = fetched ? String(fetched.max_cost ?? "0") : "0";
+      const actualCost = fetched ? String(fetched.actual_cost ?? maxCost) : "0";
+      const costVal =
+        toNumber(actualCost) || toNumber(maxCost) || toNumber(minCost);
+
+      setItems((prev) =>
+        prev.map((row) =>
+          row.rowId === rowId
+            ? {
+                ...row,
+                item_code_id: master.value,
+                item_code: master.item_code,
+                item_name: master.item_name,
+                item_category: master.item_category,
+                min_cost: minCost,
+                max_cost: maxCost,
+                actual_cost: actualCost,
+                lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
+              }
+            : row
+        )
+      );
+    } catch (err) {
+      console.error("Failed to fetch item costs:", err);
+      setItems((prev) =>
+        prev.map((row) =>
+          row.rowId === rowId
+            ? {
+                ...row,
+                item_code_id: master.value,
+                item_code: master.item_code,
+                item_name: master.item_name,
+                item_category: master.item_category,
+                min_cost: "0",
+                max_cost: "0",
+                actual_cost: "0",
+                lce_cost: "0",
+              }
+            : row
+        )
+      );
+    }
+  };
+
+  const toggleItemCodeKey = (codeKey) => {
+    setSelectedItemCodeKeys((prev) => {
+      if (prev.includes(codeKey)) {
+        return prev.filter((id) => id !== codeKey);
       }
-      return [...prev, purchaseId];
+      return [...prev, codeKey];
     });
   };
 
-  const selectedPurchaseLabel = useMemo(() => {
-    if (!selectedPurchaseIds.length) return "Select purchase / invoice";
-    if (selectedPurchaseIds.length === 1) {
-      const row = stockPurchaseOptions.find(
-        (o) => o.value === selectedPurchaseIds[0]
+  const selectedItemCodesLabel = useMemo(() => {
+    if (!selectedItemCodeKeys.length) return "Select item code(s)...";
+    if (selectedItemCodeKeys.length === 1) {
+      const row = itemMasterOptions.find(
+        (o) => String(o.value) === String(selectedItemCodeKeys[0])
       );
-      return row?.label || `Selected: 1`;
+      return row?.label || `Selected: 1 item`;
     }
-    return `${selectedPurchaseIds.length} purchase(s) selected`;
-  }, [selectedPurchaseIds, stockPurchaseOptions]);
+    return `${selectedItemCodeKeys.length} items selected`;
+  }, [selectedItemCodeKeys, itemMasterOptions]);
+
+  const handleAddMultiSelectedItems = async () => {
+    if (!selectedItemCodeKeys.length) return;
+    try {
+      const data = await getLceItemsCostDetails(selectedItemCodeKeys);
+      const fetchedItems = Array.isArray(data?.items) ? data.items : [];
+      let curId = nextItemRowId;
+      const newRows = [];
+
+      selectedItemCodeKeys.forEach((keyVal) => {
+        const master = itemMasterOptions.find(
+          (o) => String(o.value) === String(keyVal)
+        );
+        const fetched = fetchedItems.find(
+          (f) =>
+            String(f.id) === String(keyVal) ||
+            String(f.item_code_id) === String(keyVal) ||
+            (master && f.item_code === master.item_code)
+        );
+        const minCost = fetched ? String(fetched.min_cost ?? "0") : "0";
+        const maxCost = fetched ? String(fetched.max_cost ?? "0") : "0";
+        const actualCost = fetched ? String(fetched.actual_cost ?? maxCost) : "0";
+
+        newRows.push({
+          rowId: curId++,
+          item_code_id: master ? master.value : keyVal,
+          item_code: master ? master.item_code : (fetched?.item_code || ""),
+          item_name: master ? master.item_name : (fetched?.item_name || ""),
+          item_category: master
+            ? master.item_category
+            : (fetched?.item_category || ""),
+          min_cost: minCost,
+          max_cost: maxCost,
+          actual_cost: actualCost,
+          lce_cost: toFixed(toNumber(actualCost) * toNumber(form.cost_factor), 2),
+        });
+      });
+
+      setNextItemRowId(curId);
+      setItems((prev) => {
+        const filteredPrev = prev.filter((r) => r.item_code_id || r.item_code);
+        return [...filteredPrev, ...newRows];
+      });
+      setSelectedItemCodeKeys([]);
+      setItemsAccordionOpen(true);
+    } catch (err) {
+      setStatus(err.message || "Failed to load selected items.");
+    }
+  };
 
   const selectedForeignCurrencyCode = useMemo(() => {
     const selected = currencyOptions.find(
@@ -694,46 +879,6 @@ function LCEAddPage() {
     [balanceSettlements, form.foreign_currency_id]
   );
 
-  const handleShowItems = async () => {
-    if (!selectedPurchaseIds.length) return;
-    setModalLoading(true);
-    setStatus("");
-    try {
-      const results = await Promise.all(
-        selectedPurchaseIds.map((id) => getLcePurchaseItems(id).catch(() => null))
-      );
-      const allItems = [];
-      results.forEach((data) => {
-        if (data && Array.isArray(data.items)) {
-          allItems.push(...data.items);
-        }
-      });
-      const uniqueItems = Array.from(
-        new Map(allItems.map((item) => [item.id, item])).values()
-      );
-      setModalItems(uniqueItems);
-      setModalOpen(true);
-    } catch (err) {
-      setStatus(err.message || "Failed to load purchase items.");
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const handleModalConfirm = (ids) => {
-    const modalIds = new Set(modalItems.map((i) => i.id));
-    const keepFromPrevious = selectedItemIds.filter((id) => !modalIds.has(id));
-    const nextIds = [...keepFromPrevious, ...ids];
-    setSelectedItemIds(nextIds);
-
-    const keepRows = linkedItems.filter((row) => !modalIds.has(row.id));
-    const pickedRows = modalItems.filter((row) => ids.includes(row.id));
-    const nextLinkedItems = [...keepRows, ...pickedRows];
-    setLinkedItems(nextLinkedItems);
-    setForm((prev) => applyLinkedItemsToForm(prev, nextLinkedItems));
-    setModalOpen(false);
-  };
-
   const handleSave = async () => {
     setSaving(true);
     setStatus("");
@@ -760,20 +905,34 @@ function LCEAddPage() {
       return;
     }
 
+    const itemsPayload = items
+      .filter((r) => r.item_code_id || r.item_code)
+      .map((r) => {
+        const costVal =
+          toNumber(r.actual_cost) || toNumber(r.max_cost) || toNumber(r.min_cost);
+        return {
+          item_code_id: r.item_code_id,
+          item_code: r.item_code,
+          item_name: r.item_name,
+          item_category: r.item_category,
+          min_cost: r.min_cost,
+          max_cost: r.max_cost,
+          actual_cost: r.actual_cost,
+          lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
+        };
+      });
+
     try {
       const payload = {
         ...Object.fromEntries(
-          EDITABLE_FIELDS.filter(([key]) => key !== "ex_works_material_cost").map(
-            ([key]) => [key, form[key]]
-          )
+          EDITABLE_FIELDS.map(([key]) => [key, form[key]])
         ),
-        ex_works_material_cost: calculateLinkedItemsTotalPrice(linkedItems),
         other_charges_1_type: form.other_charges_1_type || "",
         other_charges_2_type: form.other_charges_2_type || "",
         other_charges_3_type: form.other_charges_3_type || "",
         other_charges_4_type: form.other_charges_4_type || "",
         foreign_currency_id: form.foreign_currency_id || "",
-        item_ids: selectedItemIds,
+        items: itemsPayload,
         balance_settlements: settlementPayload,
         created_by: currentUser?.username || "",
       };
@@ -793,11 +952,36 @@ function LCEAddPage() {
           merged[key] = String(estimate[key]);
         }
       });
-      const items = Array.isArray(estimate.purchase_items)
-        ? estimate.purchase_items
-        : [];
-      setLinkedItems(items);
-      setSelectedItemIds((estimate.linked_item_ids || []).map(Number));
+
+      let loadedItems = [];
+      if (Array.isArray(estimate.items) && estimate.items.length > 0) {
+        loadedItems = estimate.items.map((it, idx) => ({
+          rowId: Number(it.id) || idx + 1,
+          item_code_id: String(it.item_code_id || it.id || ""),
+          item_code: it.item_code || "",
+          item_name: it.item_name || "",
+          item_category: it.item_category || "",
+          min_cost: String(it.min_cost ?? "0"),
+          max_cost: String(it.max_cost ?? "0"),
+          actual_cost: String(it.actual_cost ?? it.max_cost ?? "0"),
+          lce_cost: String(it.lce_cost ?? toFixed(toNumber(it.actual_cost) * toNumber(form.cost_factor), 2)),
+        }));
+      } else if (estimate.item_code_id || estimate.item_code) {
+        loadedItems = [
+          {
+            rowId: 1,
+            item_code_id: String(estimate.item_code_id || ""),
+            item_code: estimate.item_code || "",
+            item_name: estimate.item_name || "",
+            item_category: estimate.item_category || "",
+            min_cost: String(estimate.min_cost ?? "0"),
+            max_cost: String(estimate.max_cost ?? "0"),
+            actual_cost: String(estimate.actual_cost ?? estimate.max_cost ?? "0"),
+            lce_cost: String(estimate.lce_cost ?? toFixed(toNumber(estimate.actual_cost) * toNumber(form.cost_factor), 2)),
+          },
+        ];
+      }
+      setItems(loadedItems);
 
       let settlementRows = balanceSettlements;
       if (
@@ -819,7 +1003,7 @@ function LCEAddPage() {
       }
       setForm(() =>
         applyFormulas(
-          applyLinkedItemsToForm(merged, items),
+          applyItemsToForm(merged, loadedItems),
           settlementRows
         )
       );
@@ -919,8 +1103,8 @@ function LCEAddPage() {
                         step="any"
                         className="form-control"
                         value={form["ex_works_material_cost"]}
-                        disabled={linkedItems.length > 0}
-                        readOnly={linkedItems.length > 0}
+                        disabled={items.length > 0}
+                        readOnly={items.length > 0}
                         onChange={(e) => handleChange("ex_works_material_cost", e.target.value)}
                       />
                     </div>
@@ -1406,26 +1590,39 @@ function LCEAddPage() {
           )}
         </Card>
 
-        {/* ========== ACCORDION 2: Linked Purchase Invoice Items & Linked Purchase Items (Default Closed) ========== */}
+        {/* ========== ACCORDION 2: Linked Item Codes & Purchase Cost History (Default Closed) ========== */}
         <Card className="lce-card mb-3 lce-accordion-card">
           <CardHeader
             className="lce-accordion-header"
-            onClick={() => setLinkedItemsOpen((prev) => !prev)}
+            onClick={() => setItemsAccordionOpen((prev) => !prev)}
           >
             <div className="lce-accordion-title">
               <span className="lce-accordion-icon">
-                {linkedItemsOpen ? <BsChevronDown /> : <BsChevronRight />}
+                {itemsAccordionOpen ? <BsChevronDown /> : <BsChevronRight />}
               </span>
-              <h3>Linked Purchase Invoice Items & Linked Purchase Items</h3>
-              {linkedItems.length > 0 && (
+              <h3>Linked Item Codes & Purchase Cost History</h3>
+              {items.length > 0 && (
                 <span className="vendor-card__badge" style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}>
-                  {linkedItems.length} item{linkedItems.length === 1 ? "" : "s"}
+                  {items.length} item{items.length === 1 ? "" : "s"}
                 </span>
               )}
             </div>
+            <div onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="crud-add-btn"
+                onClick={() => {
+                  setItemsAccordionOpen(true);
+                  handleAddItemRow();
+                }}
+              >
+                + Add Item Row
+              </button>
+            </div>
           </CardHeader>
-          {linkedItemsOpen && (
+          {itemsAccordionOpen && (
             <CardBody>
+              {/* Multi-item selector bar */}
               <div className="mb-3">
                 <label
                   className="col-form-label"
@@ -1435,7 +1632,7 @@ function LCEAddPage() {
                     marginBottom: "0.25rem",
                   }}
                 >
-                  Purchase / Invoice
+                  Select Item Code(s)
                 </label>
                 <div className="d-flex gap-2 align-items-center">
                   <div style={{ flex: 1, position: "relative" }}>
@@ -1459,58 +1656,100 @@ function LCEAddPage() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {selectedPurchaseLabel}
+                          {selectedItemCodesLabel}
                         </span>
                         <span>▼</span>
                       </summary>
                       <div
                         className="costing-selector-menu"
-                        style={{ width: "100%", zIndex: 100 }}
+                        style={{
+                          width: "100%",
+                          zIndex: 100,
+                          maxHeight: "300px",
+                          overflowY: "auto",
+                        }}
                       >
-                        <div className="costing-inline-actions costing-inline-actions--compact">
-                          <button
-                            type="button"
-                            className="crud-add-btn"
-                            onClick={() =>
-                              setSelectedPurchaseIds(
-                                stockPurchaseOptions.map((o) => o.value)
-                              )
-                            }
-                          >
-                            Select All
-                          </button>
-                          <button
-                            type="button"
-                            className="crud-add-btn crud-add-btn--neutral"
-                            onClick={() => setSelectedPurchaseIds([])}
-                          >
-                            Clear
-                          </button>
+                        <div
+                          className="costing-inline-actions costing-inline-actions--compact"
+                          style={{ padding: "0.5rem" }}
+                        >
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="Search item code or name..."
+                            value={itemSearchText}
+                            onChange={(e) => setItemSearchText(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ marginBottom: "0.5rem", fontSize: "0.85rem" }}
+                          />
+                          <div className="d-flex gap-2">
+                            <button
+                              type="button"
+                              className="crud-add-btn"
+                              onClick={() =>
+                                setSelectedItemCodeKeys(
+                                  itemMasterOptions
+                                    .filter(
+                                      (o) =>
+                                        !itemSearchText ||
+                                        o.label
+                                          .toLowerCase()
+                                          .includes(itemSearchText.toLowerCase())
+                                    )
+                                    .map((o) => o.value)
+                                )
+                              }
+                            >
+                              Select All Filtered
+                            </button>
+                            <button
+                              type="button"
+                              className="crud-add-btn crud-add-btn--neutral"
+                              onClick={() => setSelectedItemCodeKeys([])}
+                            >
+                              Clear
+                            </button>
+                          </div>
                         </div>
-                        {stockPurchaseOptions.map((o) => (
-                          <label
-                            key={o.value}
-                            className="costing-selector-option"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedPurchaseIds.includes(o.value)}
-                              onChange={() => togglePurchaseId(o.value)}
-                            />
-                            <span>{o.label}</span>
-                          </label>
-                        ))}
+                        {itemMasterOptions
+                          .filter(
+                            (o) =>
+                              !itemSearchText ||
+                              o.label
+                                .toLowerCase()
+                                .includes(itemSearchText.toLowerCase())
+                          )
+                          .map((o) => (
+                            <label
+                              key={o.value}
+                              className="costing-selector-option"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                                padding: "0.4rem 0.6rem",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedItemCodeKeys.includes(o.value)}
+                                onChange={() => toggleItemCodeKey(o.value)}
+                              />
+                              <span style={{ fontSize: "0.85rem" }}>{o.label}</span>
+                            </label>
+                          ))}
                       </div>
                     </details>
                   </div>
                   <button
                     type="button"
                     className="crud-add-btn"
-                    onClick={handleShowItems}
-                    disabled={!selectedPurchaseIds.length || modalLoading}
+                    onClick={handleAddMultiSelectedItems}
+                    disabled={!selectedItemCodeKeys.length}
                     style={{ height: "36px", whiteSpace: "nowrap" }}
                   >
-                    {modalLoading ? "Loading..." : "Show Items"}
+                    Add Selected Items
                   </button>
                 </div>
                 <small
@@ -1521,25 +1760,13 @@ function LCEAddPage() {
                     color: "#64748b",
                   }}
                 >
-                  Use checkboxes to select multiple purchase numbers.
+                  Select multiple item codes or add rows individually. Auto-fetches category, name, min &amp; max cost from purchases.
                 </small>
-                {selectedItemIds.length > 0 ? (
-                  <p
-                    className="costing-status-text costing-status-text--success"
-                    style={{
-                      marginTop: "0.35rem",
-                      fontSize: "0.82rem",
-                      color: "#16a34a",
-                    }}
-                  >
-                    {selectedItemIds.length} item(s) selected &mdash; save to persist
-                    LCE link.
-                  </p>
-                ) : null}
               </div>
 
+              {/* Items Table */}
               <div className="card-table-wrap">
-                {linkedItems.length === 0 ? (
+                {items.length === 0 ? (
                   <p
                     className="users-status"
                     style={{
@@ -1548,56 +1775,213 @@ function LCEAddPage() {
                       color: "#64748b",
                     }}
                   >
-                    No purchase items linked yet. Use the selector above to select
-                    items.
+                    No item codes linked yet. Use the selector above or click &ldquo;+ Add Item Row&rdquo;.
                   </p>
                 ) : (
                   <table className="users-table">
                     <thead>
                       <tr>
-                        <th>GRN No.</th>
-                        <th>Purchase No.</th>
-                        <th>Invoice No.</th>
-                        <th>Item Category</th>
-                        <th>Item Name</th>
-                        <th>Item Code</th>
-                        <th>Qty</th>
-                        <th>Total Price</th>
-                        <th>LCE COST (OMR)/Unit</th>
+                        <th style={{ minWidth: "140px" }}>Item Category</th>
+                        <th style={{ minWidth: "160px" }}>Item Name</th>
+                        <th style={{ minWidth: "220px" }}>Item Code</th>
+                        <th style={{ minWidth: "100px" }}>Min Cost</th>
+                        <th style={{ minWidth: "100px" }}>Max Cost</th>
+                        <th style={{ minWidth: "120px" }}>Actual Cost</th>
+                        <th style={{ minWidth: "130px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                            <span>LCE Cost</span>
+                            <span
+                              title="Product of Actual Cost and Cost Factor"
+                              style={{
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                color: "#94a3b8",
+                                transition: "color 0.15s ease",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.color = "#38bdf8")}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                            >
+                              <BsInfoCircle size={13} aria-hidden="true" />
+                            </span>
+                          </span>
+                        </th>
+                        <th style={{ minWidth: "180px" }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {linkedItems.map((item) => {
-                        const lceCost = toFixed(
-                          toNumber(item.total_price) *
-                            toNumber(form.cost_factor)
-                        );
-                        const perUnitLceCost =
-                          toNumber(item.quantity) > 0
-                            ? toFixed(toNumber(lceCost) / toNumber(item.quantity))
-                            : "-";
-                        return (
-                          <tr key={item.id}>
-                            <td>{item.grn_number}</td>
-                            <td>{item.purchase_number || "-"}</td>
-                            <td>{item.invoice_number || "-"}</td>
-                            <td>{item.item_category}</td>
-                            <td>{item.item_name}</td>
-                            <td>{item.item_code}</td>
-                            <td>{item.quantity}</td>
-                            <td>
-                              {item.total_price} {selectedForeignCurrencyCode}
-                            </td>
-                            <td>
-                              <strong>{perUnitLceCost}</strong>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {items.map((row) => (
+                        <tr key={row.rowId}>
+                          <td>
+                            <input
+                              type="text"
+                              className="form-control"
+                              value={row.item_category || ""}
+                              readOnly
+                              disabled
+                              placeholder="Auto"
+                              title={row.item_category || "Auto-fetched category"}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              className="form-control"
+                              value={row.item_name || ""}
+                              readOnly
+                              disabled
+                              placeholder="Auto"
+                              title={row.item_name || "Auto-fetched name"}
+                            />
+                          </td>
+                          <td>
+                            <select
+                              className="form-control"
+                              value={row.item_code_id || ""}
+                              onChange={(e) =>
+                                handleItemCodeChange(row.rowId, e.target.value)
+                              }
+                            >
+                              <option value="">Select Item Code</option>
+                              {itemMasterOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="any"
+                              className="form-control"
+                              value={row.min_cost || "0"}
+                              onChange={(e) =>
+                                handleMinCostChange(row.rowId, e.target.value)
+                              }
+                              title="Min Cost (editable)"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="any"
+                              className="form-control"
+                              value={row.max_cost || "0"}
+                              onChange={(e) =>
+                                handleMaxCostChange(row.rowId, e.target.value)
+                              }
+                              title="Max Cost (editable)"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="any"
+                              className="form-control"
+                              value={row.actual_cost}
+                              onChange={(e) =>
+                                handleActualCostChange(row.rowId, e.target.value)
+                              }
+                              title="Actual Cost (editable)"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={toFixed(
+                                (toNumber(row.actual_cost) ||
+                                  toNumber(row.max_cost) ||
+                                  toNumber(row.min_cost)) *
+                                  toNumber(form.cost_factor),
+                                2
+                              )}
+                              readOnly
+                              disabled
+                              style={{ fontWeight: 600, color: "#0f766e" }}
+                              title="Product of Actual Cost and Cost Factor"
+                            />
+                          </td>
+                          <td>
+                            <div className="users-actions" style={{ justifyContent: "center" }}>
+                              <button
+                                type="button"
+                                className="users-action"
+                                style={{ background: "#1e3a5f", color: "#93c5fd" }}
+                                onClick={() =>
+                                  setHistoryModalItem({
+                                    itemCode: row.item_code,
+                                    itemName: row.item_name,
+                                    itemCategory: row.item_category,
+                                  })
+                                }
+                                disabled={!row.item_code}
+                                title="View Purchase History"
+                                aria-label="View Purchase History"
+                              >
+                                <BsEyeFill aria-hidden="true" size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                className="users-action users-action--delete"
+                                onClick={() => handleRemoveItemRow(row.rowId)}
+                                title="Remove item"
+                                aria-label="Remove item"
+                              >
+                                <BsTrashFill aria-hidden="true" size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 )}
               </div>
+              {items.length > 0 && (
+                <div
+                  style={{
+                    marginTop: "0.75rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "0.5rem",
+                    fontSize: "0.85rem",
+                    color: "#475569",
+                    padding: "0.35rem 0.65rem",
+                    backgroundColor: "#f8fafc",
+                    borderRadius: "4px",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <span>
+                    Total Linked Items: <strong>{items.length}</strong>
+                  </span>
+                  <span>
+                    Sum Actual Cost (Ex Works):{" "}
+                    <strong>
+                      {calculateItemsTotalPrice(items)} {selectedForeignCurrencyCode}
+                    </strong>
+                  </span>
+                  <span>
+                    Sum LCE Cost:{" "}
+                    <strong style={{ color: "#0f766e" }}>
+                      {toFixed(
+                        items.reduce(
+                          (sum, it) =>
+                            sum +
+                            toNumber(it.actual_cost) * toNumber(form.cost_factor),
+                          0
+                        ),
+                        2
+                      )}{" "}
+                      OMR
+                    </strong>
+                  </span>
+                </div>
+              )}
             </CardBody>
           )}
         </Card>
@@ -1623,15 +2007,13 @@ function LCEAddPage() {
       </form>
     )}
 
-      {/* ------------------- Selection Modal ------------------- */}
-      {modalOpen ? (
-        <PurchaseItemModal
-          items={modalItems}
-          initialSelected={selectedItemIds}
-          currentLceId={lceId}
-          selectedForeignCurrencyCode={selectedForeignCurrencyCode}
-          onConfirm={handleModalConfirm}
-          onClose={() => setModalOpen(false)}
+      {/* ------------------- Historic Purchases Modal ------------------- */}
+      {historyModalItem ? (
+        <PurchaseHistoryModal
+          itemCode={historyModalItem.itemCode}
+          itemName={historyModalItem.itemName}
+          itemCategory={historyModalItem.itemCategory}
+          onClose={() => setHistoryModalItem(null)}
         />
       ) : null}
     </section>
