@@ -4,6 +4,7 @@
 
 # Core Framework
 Django==4.2.30
+djangorestframework==3.16.1
 
 # Database
 psycopg2==2.9.11
@@ -22,4 +23,3 @@ asgiref==3.11.1
 sqlparse==0.5.5
 tzdata==2025.3
 typing_extensions==4.15.0
-
