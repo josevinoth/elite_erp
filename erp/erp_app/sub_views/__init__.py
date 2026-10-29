@@ -53,6 +53,8 @@ from .lce_estimate_api import (
     create_lce_estimate_api_view,
     lce_estimate_meta_api_view,
     lce_estimate_record_api_view,
+    lce_items_api_view,
+    lce_purchase_history_api_view,
     lce_purchase_items_api_view,
     list_lce_estimates_api_view,
 )
@@ -167,7 +169,12 @@ from .user_management_api import (
     list_users_api_view,
     user_detail_api_view,
 )
-from .vendor_api import vendor_api_view, vendor_detail_api_view
+from .vendor_api import (
+    vendor_api_view,
+    vendor_detail_api_view,
+    list_vendor_categories_api_view,
+    create_vendor_category_api_view,
+)
 
 from .stock_manufacture_api import (
     list_stock_manufacture_items_api_view,
@@ -186,6 +193,7 @@ __all__ = [
     "list_users_api_view", "user_detail_api_view",
     "list_pending_registrations_api_view", "approve_registration_api_view",
     "list_vendors_api_view", "create_vendor_api_view", "vendor_detail_api_view",
+    "list_vendor_categories_api_view", "create_vendor_category_api_view",
     "list_projects_api_view", "list_project_lifecycle_meta_api_view",
     "create_project_api_view", "project_detail_api_view",
     "project_edit_api_view",
@@ -262,6 +270,8 @@ __all__ = [
     "lce_estimate_meta_api_view",
     "list_lce_estimates_api_view",
     "lce_estimate_record_api_view",
+    "lce_items_api_view",
+    "lce_purchase_history_api_view",
     "lce_purchase_items_api_view",
     "LCAAddSerializer",
     "create_lca_actuals_api_view",

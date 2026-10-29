@@ -83,14 +83,6 @@ function LCAListPage() {
         <h1 className="module-page__title module-page__title--projects" style={{ margin: 0 }}>
           Landing Cost Actuals (LCA) List
         </h1>
-        <Link
-          className="crud-add-btn"
-          title="LCA ADD"
-          to="/projects/lca/add"
-          style={{ textDecoration: "none" }}
-        >
-          + Add LCA
-        </Link>
       </div>
       <p className="module-page__description" style={{ marginBottom: "0.9rem" }}>
         Showing saved Landing Cost Actuals (LCA) records. Click Edit to update a record.
@@ -107,6 +99,17 @@ function LCAListPage() {
             title="LCA List"
             onSearchChange={setSearchText}
             showDownloadButton={true}
+            actions={[
+              <Link
+                key="add-lca"
+                className="crud-add-btn"
+                title="Add LCA"
+                to="/projects/lca/add"
+                style={{ textDecoration: "none" }}
+              >
+                + Add LCA
+              </Link>,
+            ]}
           />
           <div className="users-table-wrap" style={{ maxHeight: "65vh", overflowY: "auto" }}>
             <table className="users-table">

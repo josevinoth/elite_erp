@@ -142,6 +142,7 @@ def _serialize_vendor_detail(vendor_detail):
         "invoice_date": str(vendor_detail.invoice_date) if vendor_detail.invoice_date else "",
         "tax": str(vendor_detail.tax),
         "total_value": str(vendor_detail.total_value),
+        "total_after_tax": str(getattr(vendor_detail, "total_after_tax", 0)),
         "purchase_id": vendor_detail.purchase_id,
     }
 
@@ -187,15 +188,13 @@ def _serialize_item(item, item_master_by_code=None):
         "purchase_qty": str(purchase_qty),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
+        "tax": str(getattr(item, "tax", 0)),
+        "total_after_tax": str(getattr(item, "total_after_tax", 0)),
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
         "uom_id": getattr(resolved_uom, "pk", None),
         "uom_name": getattr(resolved_uom, "name", None),
         "uom_symbol": getattr(resolved_uom, "symbol", None),
-        "length": str(getattr(item_master, "length", 0)) if item_master else "0",
-        "width": str(getattr(item_master, "width", 0)) if item_master else "0",
-        "height": str(getattr(item_master, "height", 0)) if item_master else "0",
-        "volume": str(getattr(item_master, "volume", 0)) if item_master else "0",
     }
 
 
@@ -221,6 +220,7 @@ def _serialize(obj):
         "invoice_date": str(obj.invoice_date) if obj.invoice_date else "",
         "tax": str(obj.tax),
         "total_value": str(obj.total_value),
+        "total_after_tax": str(getattr(obj, "total_after_tax", 0)),
         "vendor_id": vendor.pk if vendor else None,
         "vendor_name": vendor.name if vendor else None,
         "items_count": len(items),
@@ -457,6 +457,7 @@ def _resolve_vendor_detail(payload):
         invoice_date=vendor_payload.get("invoice_date") or None,
         tax=_to_decimal(vendor_payload.get("tax"), "0"),
         total_value=_to_decimal(vendor_payload.get("total_value"), "0"),
+        total_after_tax=_to_decimal(vendor_payload.get("total_after_tax"), "0"),
     )
 
 
@@ -553,6 +554,7 @@ def _sync_items(stock_purchase, items_payload):
         item.item_type = _resolve_item_type(row.get("item_type", getattr(item, "item_type_id", None)))
         item.quantity = _to_decimal(row.get("quantity"), "0")
         item.unit_price = _to_decimal(row.get("unit_price"), "0")
+        item.tax = _to_decimal(row.get("tax"), "0")
         item.total_price = item.quantity * item.unit_price
         item.save()
 
@@ -663,6 +665,7 @@ def create_stock_purchase_api_view(request):
         invoice_date=p.get("invoice_date") or None,
         tax=_to_decimal(p.get("tax"), "0"),
         total_value=_to_decimal(p.get("total_value"), "0"),
+        total_after_tax=_to_decimal(p.get("total_after_tax"), "0"),
         notes=p.get("notes", ""),
         status_id=p.get("status_id"),
     )
@@ -678,9 +681,16 @@ def create_stock_purchase_api_view(request):
                 item_code=item_master,
                 quantity=_to_decimal(row.get("quantity"), "0"),
                 unit_price=_to_decimal(row.get("unit_price"), "0"),
+                tax=_to_decimal(row.get("tax"), "0"),
             )
             item.total_price = item.quantity * item.unit_price
             item.save()
+
+        # Sync vendor detail totals from saved items
+        saved_items = list(obj.items.all())
+        obj.total_value = sum((i.total_price for i in saved_items), Decimal("0"))
+        obj.total_after_tax = sum((i.total_after_tax for i in saved_items), Decimal("0"))
+        obj.save(update_fields=["total_value", "total_after_tax", "updated_at"])
     except ValueError as exc:
         obj.delete()
         return JsonResponse({"message": str(exc)}, status=400)
@@ -718,6 +728,8 @@ def stock_purchase_detail_api_view(request, pk):
     obj.invoice_date = p.get("invoice_date", obj.invoice_date)
     obj.tax = _to_decimal(p.get("tax", obj.tax))
     obj.total_value = _to_decimal(p.get("total_value", obj.total_value))
+    if "total_after_tax" in p:
+        obj.total_after_tax = _to_decimal(p.get("total_after_tax", obj.total_after_tax))
     obj.notes = p.get("notes", obj.notes)
     obj.status_id = p.get("status_id", obj.status_id)
     obj.save()
@@ -749,8 +761,15 @@ def stock_purchase_detail_api_view(request, pk):
                 item.item_code = item_master
                 item.quantity = _to_decimal(row.get("quantity"), "0")
                 item.unit_price = _to_decimal(row.get("unit_price"), "0")
+                item.tax = _to_decimal(row.get("tax"), "0")
                 item.total_price = item.quantity * item.unit_price
                 item.save()
+
+            # Recalculate vendor detail totals from saved items
+            saved_items = list(obj.items.all())
+            obj.total_value = sum((i.total_price for i in saved_items), Decimal("0"))
+            obj.total_after_tax = sum((i.total_after_tax for i in saved_items), Decimal("0"))
+            obj.save(update_fields=["total_value", "total_after_tax", "updated_at"])
         except ValueError as exc:
             return JsonResponse({"message": str(exc)}, status=400)
 

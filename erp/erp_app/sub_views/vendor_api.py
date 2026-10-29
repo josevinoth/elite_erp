@@ -5,7 +5,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from ..sub_models.vendor import Vendor
+from ..sub_models.vendor import Vendor, VendorCategory
 from ..vendor_serializer import VendorSerializer
 
 
@@ -55,6 +55,8 @@ def _normalize_vendor_payload(payload):
         data["email_id"] = data.get("email")
     if "phone_number" not in data and "phone" in data:
         data["phone_number"] = data.get("phone")
+    if "category_id" in data and not data.get("category_id"):
+        data["category_id"] = None
     return data
 
 
@@ -66,7 +68,7 @@ def vendor_api_view(request):
         return not_allowed
 
     if request.method == "GET":
-        vendors = Vendor.objects.order_by("-id")
+        vendors = Vendor.objects.select_related("category").order_by("-id")
         serializer = VendorSerializer(vendors, many=True)
         return Response({"vendors": serializer.data, "status": "success"}, status=status.HTTP_200_OK)
 
@@ -144,4 +146,41 @@ def vendor_detail_api_view(request, vendor_id):
         return Response({"status": "error", "message": "Vendor already exists."}, status=400)
 
     return Response({"success": True, "vendor": VendorSerializer(updated).data}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def list_vendor_categories_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    for default_name in ["Oman", "Overseas"]:
+        VendorCategory.objects.get_or_create(name=default_name)
+
+    categories = VendorCategory.objects.order_by("name")
+    return Response({
+        "status": "success",
+        "categories": [{"id": c.id, "name": c.name} for c in categories],
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@csrf_protect
+def create_vendor_category_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    name = str(request.data.get("name") or "").strip()
+    if not name:
+        return Response({"status": "error", "message": "Category name is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if VendorCategory.objects.filter(name__iexact=name).exists():
+        return Response({"status": "error", "message": "Vendor category already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+    category = VendorCategory.objects.create(name=name)
+    return Response({
+        "status": "success",
+        "category": {"id": category.id, "name": category.name},
+    }, status=status.HTTP_201_CREATED)
 
