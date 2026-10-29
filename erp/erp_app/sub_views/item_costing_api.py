@@ -334,14 +334,18 @@ def item_costing_cost_preview_api_view(request):
 
     costs = _compute_costs(item_code, qty)
     purchase_reference = _get_purchase_reference(item_code)
+    from ..utils.project_quotation_costs import resolve_lce_cost_for_item
+    lce_cost = resolve_lce_cost_for_item(item_code)
+
     return JsonResponse(
         {
             "item_code": item_code,
             "qty": max(qty, 0),
+            "lce_cost": str(lce_cost),
             "cost_max": str(costs["ic_cost_max"]),
             "cost_min": str(costs["ic_cost_min"]),
-            "cost": str(costs["ic_cost"]),
-            "total_price": str(costs["ic_total_price"]),
+            "cost": str(lce_cost if lce_cost > Decimal("0") else costs["ic_cost"]),
+            "total_price": str((lce_cost * Decimal(str(max(qty, 0)))).quantize(Decimal("0.01")) if lce_cost > Decimal("0") else costs["ic_total_price"]),
             "purchase_qty": purchase_reference["purchase_qty"],
             "purchase_uom": purchase_reference["purchase_uom"],
             "purchase_uom_id": purchase_reference["purchase_uom_id"],

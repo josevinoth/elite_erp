@@ -124,8 +124,29 @@ export async function listItemTypes() {
 }
 
 // ── Vendors ───────────────────────────────────────────────
+export async function listVendorCategories() {
+  const res = await fetch("/api/vendor-categories/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createVendorCategory(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/vendor-categories/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
 export async function listVendors() {
   const res = await fetch("/api/vendors/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getVendor(id) {
+  const res = await fetch(`/api/vendors/${id}/`, { credentials: "include" });
   return parseJson(res);
 }
 
@@ -218,7 +239,7 @@ export async function listQuotationSummaries(projectId = null) {
   const query = projectId !== null && projectId !== undefined && String(projectId).trim()
     ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
     : "";
-  const res = await fetch(`/api/quotations/${query}`, { credentials: "include" });
+  const res = await fetch(`/api/quotations/list/${query}`, { credentials: "include" });
   return parseJson(res);
 }
 
@@ -238,13 +259,19 @@ export async function listStockPlanningItems(projectId = null) {
   return parseJson(res);
 }
 
-export async function createQuotationSummary(payload) {
+export async function createQuotationSummary(payload, options = {}) {
+  const normalizedPayload = payload && typeof payload === "object" ? payload : {};
+  const body = {
+    project_id: normalizedPayload.project_id,
+    quotation_data: normalizedPayload,
+    confirm_new_revision: Boolean(options.confirmNewRevision),
+  };
   const headers = await csrfHeaders();
-  const res = await fetch("/api/quotations/", {
+  const res = await fetch("/api/quotations/create/", {
     method: "POST",
     credentials: "include",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   return parseJson(res);
 }
@@ -823,6 +850,90 @@ export async function deleteLceEstimateById(lceId) {
   });
   return parseJson(res);
 }
+
+export async function getLceItemsCostDetails(itemCodes) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce/items/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ item_codes: itemCodes }),
+  });
+  return parseJson(res);
+}
+
+export async function getLcePurchaseHistory(itemCode) {
+  const res = await fetch(`/api/lce/purchase-history/${encodeURIComponent(itemCode)}/`, {
+    credentials: "include",
+  });
+  return parseJson(res);
+}
+
+// -- LCA Actuals (Landing Cost Actuals) --------------------
+export async function listLcaActuals() {
+  const res = await fetch("/api/lca/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listLcaMeta() {
+  const res = await fetch("/api/lca/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createLcaChargeTypeOption(name) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lca/charge-types/add/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name }),
+  });
+  return parseJson(res);
+}
+
+export async function createLcaActuals(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lca/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function getLcaActualsById(lcaId) {
+  const res = await fetch(`/api/lca/record/${lcaId}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getLcaPurchaseItems(purchaseId) {
+  const res = await fetch(`/api/lca/purchase-items/${purchaseId}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function updateLcaActualsById(lcaId, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/lca/record/${lcaId}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteLcaActualsById(lcaId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/lca/record/${lcaId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
 
 
 // ── Lab Furniture Items ───────────────────────────────────

@@ -1,6 +1,7 @@
 import json
 from decimal import Decimal, InvalidOperation
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
@@ -8,6 +9,25 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from ..sub_models import ItemCategory, ItemType_info, LabFurnitureItem, LCECostDetail, LCEEstimate, ProjectCostingItemAllocation, RetrievalStatusInfo, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
+
+
+def _safe_related(instance, attr_name):
+    try:
+        return getattr(instance, attr_name)
+    except ObjectDoesNotExist:
+        return None
+
+
+def _vendor_name_from_purchase_item(item):
+    vendor_detail = _safe_related(item, "vendor_detail")
+    vendor = _safe_related(vendor_detail, "vendor") if vendor_detail else None
+    return vendor.name if vendor else ""
+
+
+def _purchase_date_from_purchase_item(item):
+    vendor_detail = _safe_related(item, "vendor_detail")
+    purchase_date = getattr(vendor_detail, "invoice_date", None) if vendor_detail else None
+    return str(purchase_date) if purchase_date else ""
 
 
 def _ensure_authenticated(request):
@@ -113,14 +133,16 @@ def _resolve_item_type(value):
 def _serialize_vendor_detail(vendor_detail):
     if not vendor_detail:
         return None
+    vendor = _safe_related(vendor_detail, "vendor")
     return {
         "id": vendor_detail.id,
         "vendor_id": vendor_detail.vendor_id,
-        "vendor_name": vendor_detail.vendor.name,
+        "vendor_name": vendor.name if vendor else "",
         "invoice_number": vendor_detail.invoice_number,
         "invoice_date": str(vendor_detail.invoice_date) if vendor_detail.invoice_date else "",
         "tax": str(vendor_detail.tax),
         "total_value": str(vendor_detail.total_value),
+        "total_after_tax": str(getattr(vendor_detail, "total_after_tax", 0)),
         "purchase_id": vendor_detail.purchase_id,
     }
 
@@ -130,21 +152,23 @@ def _serialize_item(item, item_master_by_code=None):
     if raw_grn and not raw_grn.upper().startswith("GRN"):
         raw_grn = f"GRN{item.id:04d}"
 
-    item_master = getattr(item, "item_code", None)
+    item_master = _safe_related(item, "item_code")
     if not item_master:
         item_master = _resolve_item_master_from_category_and_name(
-            getattr(item, "item_category", None),
+            _safe_related(item, "item_category"),
             item.item_name,
         )
-    item_category = getattr(item, "item_category", None) or getattr(item_master, "item_category", None)
+    item_category = _safe_related(item, "item_category") or _safe_related(item_master, "item_category")
     resolved_item_master_id = getattr(item, "item_code_id", None) or getattr(item_master, "id", None)
 
     # Pull item_name from Item Master if available, otherwise use item's item_name
-    resolved_item_name = item_master.item_name if item_master else item.item_name
+    resolved_item_name = getattr(item_master, "item_name", None) if item_master else None
+    if not resolved_item_name:
+        resolved_item_name = item.item_name
 
     # Pull uom and item_type from Item Master
-    resolved_uom = getattr(item_master, "uom", None) or getattr(item, "uom", None)
-    resolved_item_type = getattr(item_master, "item_type", None) or getattr(item, "item_type", None)
+    resolved_uom = _safe_related(item_master, "uom") or _safe_related(item, "uom")
+    resolved_item_type = _safe_related(item_master, "item_type") or _safe_related(item, "item_type")
     item_type_name = getattr(resolved_item_type, "it_name", None) or "BUY"
     item_type_id = getattr(resolved_item_type, "pk", None)
     purchase_qty = getattr(item, "purchase_qty", None) or item.quantity
@@ -155,7 +179,7 @@ def _serialize_item(item, item_master_by_code=None):
         "item_category": item_category.name if item_category else "",
         "item_category_id": getattr(item, "item_category_id", None) or getattr(item_master, "item_category_id", None),
         "item_name": resolved_item_name,
-        "item_code": item_master.item_code if item_master else "",
+        "item_code": getattr(item_master, "item_code", "") if item_master else "",
         "item_code_id": resolved_item_master_id,
         "item_master_id": resolved_item_master_id,
         "item_type": item_type_name,
@@ -164,15 +188,13 @@ def _serialize_item(item, item_master_by_code=None):
         "purchase_qty": str(purchase_qty),
         "unit_price": str(item.unit_price),
         "total_price": str(item.total_price),
+        "tax": str(getattr(item, "tax", 0)),
+        "total_after_tax": str(getattr(item, "total_after_tax", 0)),
         "lce_cost": str(item.lce_cost),
         "lce_estimate_id": item.lce_estimate_id,
         "uom_id": getattr(resolved_uom, "pk", None),
         "uom_name": getattr(resolved_uom, "name", None),
         "uom_symbol": getattr(resolved_uom, "symbol", None),
-        "length": str(item_master.length) if item_master else "0",
-        "width": str(item_master.width) if item_master else "0",
-        "height": str(item_master.height) if item_master else "0",
-        "volume": str(item_master.volume) if item_master else "0",
     }
 
 
@@ -181,6 +203,9 @@ def _serialize(obj):
     items = list(items_qs) if items_qs else []
     first_item = items[0] if items else None
     vendor_detail = _serialize_vendor_detail(obj)
+
+    vendor = _safe_related(obj, "vendor")
+    first_item_category = _safe_related(first_item, "item_category") if first_item else None
 
     return {
         "id": obj.pk,
@@ -195,15 +220,16 @@ def _serialize(obj):
         "invoice_date": str(obj.invoice_date) if obj.invoice_date else "",
         "tax": str(obj.tax),
         "total_value": str(obj.total_value),
-        "vendor_id": obj.vendor.pk if obj.vendor else None,
-        "vendor_name": obj.vendor.name if obj.vendor else None,
+        "total_after_tax": str(getattr(obj, "total_after_tax", 0)),
+        "vendor_id": vendor.pk if vendor else None,
+        "vendor_name": vendor.name if vendor else None,
         "items_count": len(items),
         "lce_linked_count": sum(1 for item in items if getattr(item, 'lce_estimate_id', None)),
         "purchase_total": str(sum((getattr(item, 'total_price', 0) for item in items), Decimal("0"))),
         # legacy keys for UI compatibility in list view
         "item_name": first_item.item_name if first_item else "",
-        "category": ((first_item.item_category.name if getattr(first_item, "item_category_id", None) else "") if first_item else ""),
-        "vendor": obj.vendor.name if obj.vendor else "",
+        "category": (first_item_category.name if first_item_category else ""),
+        "vendor": vendor.name if vendor else "",
         "quantity": str(first_item.quantity) if first_item else "0",
         "unit_price": str(first_item.unit_price) if first_item else "0",
         "total_price": str(first_item.total_price) if first_item else "0",
@@ -326,8 +352,8 @@ def purchase_item_grns_api_view(request, item_code):
             {
                 "id": row.id,
                 "grn_number": row.grn_number,
-                "vendor": getattr(getattr(row, "vendor_detail", None), "vendor", None).name if getattr(getattr(row, "vendor_detail", None), "vendor", None) else "",
-                "purchase_date": str(getattr(getattr(row, "vendor_detail", None), "invoice_date", "") or ""),
+                "vendor": _vendor_name_from_purchase_item(row),
+                "purchase_date": _purchase_date_from_purchase_item(row),
                 "purchase_qty": str(purchased_qty),
                 "cost": str(row.unit_price),
                 "consumed_qty": str(consumed_qty),
@@ -368,8 +394,8 @@ def stock_item_summary_api_view(request, item_code):
             {
                 "purchase_item_id": row.id,
                 "grn_number": row.grn_number,
-                "vendor": getattr(getattr(row, "vendor_detail", None), "vendor", None).name if getattr(getattr(row, "vendor_detail", None), "vendor", None) else "",
-                "purchase_date": str(getattr(getattr(row, "vendor_detail", None), "invoice_date", "") or ""),
+                "vendor": _vendor_name_from_purchase_item(row),
+                "purchase_date": _purchase_date_from_purchase_item(row),
                 "purchased_qty": str(purchased_qty),
                 "consumed_qty": str(consumed_qty),
                 "balance_qty": str(balance_qty),
@@ -431,6 +457,7 @@ def _resolve_vendor_detail(payload):
         invoice_date=vendor_payload.get("invoice_date") or None,
         tax=_to_decimal(vendor_payload.get("tax"), "0"),
         total_value=_to_decimal(vendor_payload.get("total_value"), "0"),
+        total_after_tax=_to_decimal(vendor_payload.get("total_after_tax"), "0"),
     )
 
 
@@ -455,10 +482,12 @@ def _recalculate_lce_estimates(estimate_ids):
         )
         estimate.advance_payment_value_omr = estimate.advance_payment_value * estimate.bank_exchange_rate
         estimate.balance_payment_value = estimate.total_supplier_price - estimate.advance_payment_value
-        estimate.balance_payment_value_omr = estimate.balance_payment_value * estimate.bank_exchange_rate
+        bal_rate = getattr(estimate, "bank_exchange_rate_balance", None) or Decimal("0")
+        estimate.balance_payment_value_omr = estimate.balance_payment_value * bal_rate
         estimate.total_supplier_price_omr = estimate.advance_payment_value_omr + estimate.balance_payment_value_omr
         estimate.total = (
-            estimate.bank_muscat_charge_advance_payment
+            estimate.total_supplier_price_omr
+            + estimate.bank_muscat_charge_advance_payment
             + estimate.bank_muscat_charge_balance_payment
             + estimate.freight_charge
             + estimate.customs_duty_omr
@@ -525,6 +554,7 @@ def _sync_items(stock_purchase, items_payload):
         item.item_type = _resolve_item_type(row.get("item_type", getattr(item, "item_type_id", None)))
         item.quantity = _to_decimal(row.get("quantity"), "0")
         item.unit_price = _to_decimal(row.get("unit_price"), "0")
+        item.tax = _to_decimal(row.get("tax"), "0")
         item.total_price = item.quantity * item.unit_price
         item.save()
 
@@ -635,6 +665,7 @@ def create_stock_purchase_api_view(request):
         invoice_date=p.get("invoice_date") or None,
         tax=_to_decimal(p.get("tax"), "0"),
         total_value=_to_decimal(p.get("total_value"), "0"),
+        total_after_tax=_to_decimal(p.get("total_after_tax"), "0"),
         notes=p.get("notes", ""),
         status_id=p.get("status_id"),
     )
@@ -650,9 +681,16 @@ def create_stock_purchase_api_view(request):
                 item_code=item_master,
                 quantity=_to_decimal(row.get("quantity"), "0"),
                 unit_price=_to_decimal(row.get("unit_price"), "0"),
+                tax=_to_decimal(row.get("tax"), "0"),
             )
             item.total_price = item.quantity * item.unit_price
             item.save()
+
+        # Sync vendor detail totals from saved items
+        saved_items = list(obj.items.all())
+        obj.total_value = sum((i.total_price for i in saved_items), Decimal("0"))
+        obj.total_after_tax = sum((i.total_after_tax for i in saved_items), Decimal("0"))
+        obj.save(update_fields=["total_value", "total_after_tax", "updated_at"])
     except ValueError as exc:
         obj.delete()
         return JsonResponse({"message": str(exc)}, status=400)
@@ -690,6 +728,8 @@ def stock_purchase_detail_api_view(request, pk):
     obj.invoice_date = p.get("invoice_date", obj.invoice_date)
     obj.tax = _to_decimal(p.get("tax", obj.tax))
     obj.total_value = _to_decimal(p.get("total_value", obj.total_value))
+    if "total_after_tax" in p:
+        obj.total_after_tax = _to_decimal(p.get("total_after_tax", obj.total_after_tax))
     obj.notes = p.get("notes", obj.notes)
     obj.status_id = p.get("status_id", obj.status_id)
     obj.save()
@@ -721,8 +761,15 @@ def stock_purchase_detail_api_view(request, pk):
                 item.item_code = item_master
                 item.quantity = _to_decimal(row.get("quantity"), "0")
                 item.unit_price = _to_decimal(row.get("unit_price"), "0")
+                item.tax = _to_decimal(row.get("tax"), "0")
                 item.total_price = item.quantity * item.unit_price
                 item.save()
+
+            # Recalculate vendor detail totals from saved items
+            saved_items = list(obj.items.all())
+            obj.total_value = sum((i.total_price for i in saved_items), Decimal("0"))
+            obj.total_after_tax = sum((i.total_after_tax for i in saved_items), Decimal("0"))
+            obj.save(update_fields=["total_value", "total_after_tax", "updated_at"])
         except ValueError as exc:
             return JsonResponse({"message": str(exc)}, status=400)
 
@@ -786,10 +833,10 @@ def stock_purchase_item_trace_api_view(request, item_id):
                 "item": {
                     "id": item.pk,
                     "grn_number": item.grn_number,
-                    "item_code": item.item_code.item_code if getattr(item, "item_code_id", None) else "",
+                    "item_code": getattr(_safe_related(item, "item_code"), "item_code", "") if getattr(item, "item_code_id", None) else "",
                     "item_name": item.item_name,
-                    "purchase_id": item.vendor_detail.purchase_id if item.vendor_detail else None,
-                    "purchase_number": item.vendor_detail.invoice_number if item.vendor_detail else "",
+                    "purchase_id": getattr(_safe_related(item, "vendor_detail"), "purchase_id", None),
+                    "purchase_number": getattr(_safe_related(item, "vendor_detail"), "invoice_number", "") or "",
                 },
                 "modules": modules,
             }

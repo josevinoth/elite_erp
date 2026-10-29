@@ -1,11 +1,59 @@
 import json
 
 from django.contrib.auth.models import Group, User
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from ..sub_models import Team, UserProfile, UserStatusOption
+
+ROLE_USER = "User"
+ROLE_ADMIN = "Admin"
+ROLE_SUPER_ADMIN = "Super Admin"
+ROLE_SUPER_USER = "Super User"
+
+
+def _normalized_role_name(role_name):
+    return str(role_name or "").strip().lower()
+
+
+def _is_super_user_role(role_name):
+    return _normalized_role_name(role_name) in {"super user", "superuser"}
+
+
+def _is_super_admin_group(role_name):
+    return _normalized_role_name(role_name) in {"super admin", "superadmin"}
+
+
+def _canonical_role_label(role_name):
+    normalized = _normalized_role_name(role_name)
+    if normalized in {"user"}:
+        return ROLE_USER
+    if normalized in {"admin"}:
+        return ROLE_ADMIN
+    if normalized in {"staff"}:
+        return ROLE_ADMIN
+    if normalized in {"super user", "superuser", "super admin", "superadmin"}:
+        return ROLE_SUPER_ADMIN
+    return str(role_name or "").strip()
+
+
+def _role_options():
+    group_roles = list(Group.objects.order_by("name").values_list("name", flat=True))
+    required_roles = [ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN]
+    ordered = []
+    seen = set()
+    for role in [*required_roles, *group_roles]:
+        canonical = _canonical_role_label(role)
+        if not canonical:
+            continue
+        canonical_key = _normalized_role_name(canonical)
+        if canonical_key in seen:
+            continue
+        seen.add(canonical_key)
+        ordered.append(canonical)
+    return ordered
 
 
 def _ensure_authenticated(request):
@@ -15,20 +63,34 @@ def _ensure_authenticated(request):
 
 
 def _resolve_user_role(user):
-    first_group = user.groups.order_by("name").first()
+    try:
+        first_group = user.groups.order_by("name").first()
+    except ObjectDoesNotExist:
+        first_group = None
     if first_group:
-        return first_group.name
+        return _canonical_role_label(first_group.name)
     if user.is_superuser:
-        return "Super Admin"
+        return ROLE_SUPER_ADMIN
     if user.is_staff:
-        return "Staff"
-    return "User"
+        return ROLE_ADMIN
+    return ROLE_USER
 
 
 def _serialize_user(user):
     profile = UserProfile.objects.filter(user=user).select_related("status", "team").first()
-    status = profile.status.name if profile and profile.status else ""
-    team = profile.team.name if profile and profile.team else ""
+    status = ""
+    team = ""
+    if profile:
+        try:
+            status_obj = profile.status
+            status = status_obj.name if status_obj else ""
+        except ObjectDoesNotExist:
+            status = ""
+        try:
+            team_obj = profile.team
+            team = team_obj.name if team_obj else ""
+        except ObjectDoesNotExist:
+            team = ""
     return {
         "id": user.id,
         "username": user.username,
@@ -55,7 +117,7 @@ def list_users_api_view(request):
 
     users = User.objects.order_by("-id")
     status_options = list(UserStatusOption.objects.order_by("name").values_list("name", flat=True))
-    role_options = list(Group.objects.order_by("name").values_list("name", flat=True))
+    role_options = _role_options()
     team_options = list(Team.objects.order_by("name").values_list("name", flat=True))
     new_registration_count = UserProfile.objects.filter(
         status__name__iexact="New Registration"
@@ -159,8 +221,13 @@ def user_detail_api_view(request, user_id):
     if role:
         if len(role) > 50:
             return JsonResponse({"message": "Role is too long."}, status=400)
-        role_group, _ = Group.objects.get_or_create(name=role)
+        resolved_group_name = _canonical_role_label(role)
+        role_group, _ = Group.objects.get_or_create(name=resolved_group_name)
         user.groups.set([role_group])
+        normalized_group = _normalized_role_name(resolved_group_name)
+        user.is_superuser = normalized_group == "super admin"
+        user.is_staff = normalized_group in {"admin", "super admin", "staff"}
+        user.save(update_fields=["is_superuser", "is_staff"])
 
     if status_name:
         status_obj, _ = UserStatusOption.objects.get_or_create(name=status_name)

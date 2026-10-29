@@ -4,10 +4,16 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./styles/auth_common.css";
 
-const routerBase =
+const configuredBase =
   import.meta.env.BASE_URL === "/"
-    ? undefined
+    ? ""
     : import.meta.env.BASE_URL.replace(/\/$/, "");
+const currentPath = window.location.pathname;
+const routerBase =
+  configuredBase &&
+  (currentPath === configuredBase || currentPath.startsWith(`${configuredBase}/`))
+    ? configuredBase
+    : undefined;
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

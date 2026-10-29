@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import models
 
 from ..utils import normalize_text
@@ -13,6 +14,7 @@ class StockPurchaseVendorDetail(models.Model):
     invoice_date = models.DateField(null=True, blank=True)
     tax = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_value = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total_after_tax = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     notes = models.TextField(blank=True, null=True)
     status_id = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -50,6 +52,13 @@ class StockPurchaseItem(models.Model):
         on_delete=models.SET_NULL,
         related_name="linked_items",
     )
+    lca_actuals = models.ForeignKey(
+        "erp_app.LandingCostActuals",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="linked_items",
+    )
     grn_number = models.CharField(max_length=7, unique=True, blank=True)
     item_category = models.ForeignKey(
         ItemCategory,
@@ -64,7 +73,10 @@ class StockPurchaseItem(models.Model):
     purchase_qty = models.DecimalField(max_digits=12, decimal_places=0, default=0)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    tax = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    total_after_tax = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     lce_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    lca_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     uom = models.ForeignKey(UOM, on_delete=models.PROTECT, null=True, blank=True, related_name="stock_purchase_items")
     item_type = models.ForeignKey("erp_app.ItemType_info", on_delete=models.PROTECT, default=1,related_name="stock_purchase_items",)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -111,6 +123,8 @@ class StockPurchaseItem(models.Model):
                 self.uom_id = resolved_master.uom_id
         self.item_name = normalize_text(self.item_name)
         self.total_price = (self.quantity or 0) * (self.unit_price or 0)
+        tax_pct = Decimal(str(self.tax or 0))
+        self.total_after_tax = self.total_price + (self.total_price * (tax_pct / Decimal("100")))
         # Keep purchase_qty as the immutable reference quantity used for stock allocation.
         if self.pk is None and self.purchase_qty in (None, "", 0, "0"):
             self.purchase_qty = self.quantity or 0

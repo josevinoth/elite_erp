@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from .safe_fields import SafeSourceCharField
 from .sub_models import Project
 from .sub_models.quotation_status_mod import QuotationStatusInfo
 from .sub_models.project_quotation_summary_mod import ProjectQuotationSummaryInfo
@@ -25,7 +26,9 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
     )
     status = serializers.CharField(required=False, write_only=True)
     quotation_status_id = serializers.CharField(source="status_id", read_only=True)
-    quotation_status_name = serializers.CharField(source="status.status_name", read_only=True)
+    quotation_status_name = SafeSourceCharField(source="status.status_name", read_only=True)
+    revision_number = serializers.IntegerField(required=False, min_value=1, default=1)
+    revision_code = serializers.CharField(read_only=True)
 
     @staticmethod
     def _allow_completed_without_items(instance=None, context=None):
@@ -39,6 +42,8 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "quotation_number",
+            "revision_number",
+            "revision_code",
             "quotation_status",
             "status",
             "quotation_status_id",
@@ -69,6 +74,7 @@ class ProjectQuotationSummarySerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "quotation_number",
+            "revision_code",
             "project_name",
             "total_material_cost",
             "final_material_cost",

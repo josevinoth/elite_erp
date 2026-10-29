@@ -6,6 +6,7 @@ import {
   BsBoxSeam,
   BsBoxArrowUpRight,
   BsBuildingFill,
+  BsCalculatorFill,
   BsClipboardData,
   BsFolder2Open,
   BsHourglassSplit,
@@ -13,6 +14,7 @@ import {
   BsPeopleFill,
   BsPersonPlusFill,
   BsPerson,
+  BsReceiptCutoff,
   BsScissors,
 } from "react-icons/bs";
 import HomeSideNav from "../components/HomeSideNav";
@@ -100,6 +102,22 @@ function HomeLayout({ currentUser }) {
       badge: stockPlanningCount,
     },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill },
+    ...(isSuperAdmin || isAdmin
+      ? [
+          {
+            title: "Landing Cost Estimate (LCE)",
+            stat: "Landing cost estimate records",
+            to: "/projects/costing",
+            icon: BsCalculatorFill,
+          },
+          {
+            title: "Landing Cost Actuals (LCA)",
+            stat: "Landing cost actuals records",
+            to: "/projects/lca",
+            icon: BsReceiptCutoff,
+          },
+        ]
+      : []),
     { title: "Orders", stat: "Project Orders", to: "/stocks", icon: BsBoxArrowUpRight },
     { title: "Stocks", stat: "Purchase and maintenance", to: "/stocks", icon: BsBarChartFill },
     { title: "Stock Manufacture", stat: "In-house manufactured items", to: "/stock-manufacture", icon: BsBoxSeam },

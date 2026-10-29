@@ -22,6 +22,7 @@ import {
   importQuotationItemsExcel,
   listLabFurnitureItemCategories,
   listLabFurnitureItems,
+  listProjects,
   listProjectQuotationItems,
   listQuotationSummaries,
   listRooms,
@@ -31,6 +32,8 @@ import {
 } from "../services/crudApi";
 import AlertMessage from "../components/AlertMessage";
 import ConfirmPopupModal from "../components/ConfirmPopupModal";
+import { Card, CardHeader, CardBody } from "../components/Card";
+import QuotationItemModal from "./QuotationItemModal";
 import { getSessionUser } from "../services/sessionUser";
 import "../styles/ProjectCostingSummary.css";
 import "../styles/ProjectQuotation.css";
@@ -152,18 +155,18 @@ const EMPTY_ITEM_FILTERS = {
   item_name: "",
   item_code: "",
   item_type: "",
-  length: "",
-  width: "",
-  height: "",
-  volume: "",
   purchase_qty: "",
   requested_qty: "",
-  cost_per_qty: "",
-  max_cost: "",
-  min_cost: "",
-  actual_cost: "",
-  total_cost: "",
   stock_status: "",
+};
+
+const EMPTY_QUOTATION_LIST_FILTERS = {
+  quotation_number: "",
+  project_id: "",
+  project_name: "",
+  revision_code: "",
+  total_quotation_cost: "",
+  status: "",
 };
 
 const getStatusClassName = (type) => {
@@ -247,11 +250,17 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const queryQuotationId = searchParams.get("quotationId");
 
   const [quotations, setQuotations] = useState([]);
+  const [projectOptions, setProjectOptions] = useState([]);
+  const [projectSelectionInput, setProjectSelectionInput] = useState("");
+  const [selectedProjectIdForCreate, setSelectedProjectIdForCreate] = useState(() => (
+    embedded && projectId ? String(projectId) : ""
+  ));
   const [selectedQuotationId, setSelectedQuotationId] = useState(() => queryQuotationId || "");
   const [summary, setSummary] = useState(null);
   const [savedSummaryStatus, setSavedSummaryStatus] = useState("");
   const [items, setItems] = useState([]);
   const [itemColumnFilters, setItemColumnFilters] = useState(EMPTY_ITEM_FILTERS);
+  const [quotationColumnFilters, setQuotationColumnFilters] = useState(EMPTY_QUOTATION_LIST_FILTERS);
   const [costTypes, setCostTypes] = useState([]);
   const [materialCostTypeId, setMaterialCostTypeId] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState([]);
@@ -259,10 +268,11 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [validationMessages, setValidationMessages] = useState([]);
+  const [labFurnitureItems, setLabFurnitureItems] = useState([]);
+  const [itemModalOpen, setItemModalOpen] = useState(false);
+  const [itemModalMode, setItemModalMode] = useState("add");
+  const [itemToEdit, setItemToEdit] = useState(null);
 
-  const [draftRow, setDraftRow] = useState(null);
-  const [editingItemId, setEditingItemId] = useState(null);
-  const [editingRow, setEditingRow] = useState(null);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingRow, setSavingRow] = useState(false);
   const [importingItems, setImportingItems] = useState(false);
@@ -284,6 +294,13 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   });
   const [saveNoItemsConfirmationOpen, setSaveNoItemsConfirmationOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [creatingQuotation, setCreatingQuotation] = useState(false);
+  const [revisionCreateConfirmation, setRevisionCreateConfirmation] = useState({
+    open: false,
+    message: "",
+    projectId: "",
+    nextRevisionCode: "",
+  });
 
   const sessionUser = useMemo(() => getSessionUser(), []);
   const isAdminUser = useMemo(() => {
@@ -308,6 +325,59 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     costTypes.forEach((row) => lookup.set(String(row.id), row));
     return lookup;
   }, [costTypes]);
+
+  const combinedItemOptions = useMemo(() => {
+    return (labFurnitureItems || []).map((item) => {
+      const code = item.item_code || "";
+      const name = item.item_name || "";
+      const cat = item.item_category || item.item_category_name || "";
+      let label = code;
+      if (name) label += ` - ${name}`;
+      if (cat) label += ` (${cat})`;
+      return {
+        ...item,
+        id: item.id,
+        item_code: code,
+        item_name: name,
+        item_category_id: item.item_category_id || "",
+        item_category: cat,
+        label,
+      };
+    });
+  }, [labFurnitureItems]);
+
+  const projectOptionLabel = useCallback(
+    (project) => `${project.project_id || "Project"} — ${project.project_name || "Unnamed"}`,
+    []
+  );
+
+  const handleProjectSelectionInput = useCallback((value) => {
+    const nextValue = String(value || "");
+    setProjectSelectionInput(nextValue);
+
+    const normalized = nextValue.trim().toLowerCase();
+    if (!normalized) {
+      setSelectedProjectIdForCreate("");
+      return;
+    }
+
+    const matched = projectOptions.find((project) => {
+      const label = projectOptionLabel(project).toLowerCase();
+      const projectCode = String(project.project_id || "").trim().toLowerCase();
+      return label === normalized || projectCode === normalized;
+    });
+    setSelectedProjectIdForCreate(matched ? String(matched.id) : "");
+  }, [projectOptionLabel, projectOptions]);
+
+  useEffect(() => {
+    if (!selectedProjectIdForCreate) return;
+    const selectedProject = projectOptions.find((row) => String(row.id) === String(selectedProjectIdForCreate));
+    if (!selectedProject) return;
+    const label = projectOptionLabel(selectedProject);
+    if (projectSelectionInput !== label) {
+      setProjectSelectionInput(label);
+    }
+  }, [projectOptionLabel, projectOptions, projectSelectionInput, selectedProjectIdForCreate]);
 
   const isMaterialCostType = useCallback((costTypeId) => {
     const normalized = String(costTypeId || "").trim();
@@ -406,6 +476,35 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
   const summaryPreviewValues = useMemo(() => recalculateSummary(summary), [summary]);
 
+  const filteredQuotations = useMemo(() => {
+    const normalizedFilters = Object.entries(quotationColumnFilters).reduce(
+      (accumulator, [key, value]) => ({
+        ...accumulator,
+        [key]: String(value || "").trim().toLowerCase(),
+      }),
+      {}
+    );
+
+    const hasActiveFilters = Object.values(normalizedFilters).some(Boolean);
+    if (!hasActiveFilters) return quotations;
+
+    return quotations.filter((row) => {
+      const rowValues = {
+        quotation_number: String(row.quotation_number || "Auto"),
+        project_id: String(row.project_code || row.project_id || ""),
+        project_name: String(row.project_name || "-"),
+        revision_code: String(row.revision_code || `R${row.revision_number || 1}`),
+        total_quotation_cost: String(row.total_quotation_cost ?? ""),
+        status: String(getQuotationStatus(row)),
+      };
+
+      return Object.entries(normalizedFilters).every(([key, filterValue]) => {
+        if (!filterValue) return true;
+        return (rowValues[key] || "").toLowerCase().includes(filterValue);
+      });
+    });
+  }, [quotationColumnFilters, quotations]);
+
   const filteredItems = useMemo(() => {
     const normalizedFilters = Object.entries(itemColumnFilters).reduce((accumulator, [key, value]) => ({
       ...accumulator,
@@ -420,17 +519,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         item_name: row.item_name || "",
         item_code: row.item_code || "",
         item_type: row.item_type || "",
-        length: row.length,
-        width: row.width,
-        height: row.height,
-        volume: row.volume,
-        purchase_qty: row.purchase_qty,
-        requested_qty: row.requested_qty,
-        cost_per_qty: row.cost_per_qty ?? row.actual_cost ?? "0",
-        max_cost: row.max_cost ?? "0",
-        min_cost: row.min_cost ?? "0",
-        actual_cost: row.actual_cost ?? "0",
-        total_cost: row.total_cost ?? "0",
+        purchase_qty: row.purchase_qty ?? "",
+        requested_qty: row.requested_qty ?? "",
         stock_status: getStockStatusName(row),
       };
 
@@ -457,11 +547,12 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     setLoading(true);
     try {
       const activeProjectId = embedded && projectId ? projectId : null;
-      const [summaryData, categoryData, itemData, roomData] = await Promise.all([
+      const [summaryData, categoryData, itemData, roomData, projectsData] = await Promise.all([
         listQuotationSummaries(activeProjectId),
         listLabFurnitureItemCategories(),
         listLabFurnitureItems(),
         listRooms(),
+        listProjects(),
       ]);
 
       const summaryRows = Array.isArray(summaryData.quotations) ? summaryData.quotations : [];
@@ -475,7 +566,22 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setMaterialCostTypeId(summaryData.material_cost_type_id || null);
       setCategoryOptions(Array.isArray(categoryData.item_categories) ? categoryData.item_categories : []);
       setRoomOptions(Array.isArray(roomData.rooms) ? roomData.rooms : []);
-      itemMasterRef.current = Array.isArray(itemData.lab_furniture_items) ? itemData.lab_furniture_items : [];
+      const projects = Array.isArray(projectsData.projects) ? projectsData.projects : [];
+      setProjectOptions(projects);
+      setSelectedProjectIdForCreate((prev) => {
+        if (embedded && projectId) return String(projectId);
+        const normalizedPrev = String(prev || "");
+        return projects.some((row) => String(row.id) === normalizedPrev) ? normalizedPrev : "";
+      });
+      if (!(embedded && projectId) && selectedProjectIdForCreate) {
+        const selectedProject = projects.find((row) => String(row.id) === String(selectedProjectIdForCreate));
+        if (!selectedProject) {
+          setProjectSelectionInput("");
+        }
+      }
+      const labItems = Array.isArray(itemData.lab_furniture_items) ? itemData.lab_furniture_items : [];
+      itemMasterRef.current = labItems;
+      setLabFurnitureItems(labItems);
 
       let nextSelectedId = "";
       if (embedded && projectId) {
@@ -518,21 +624,31 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setCostTypes([]);
       setCategoryOptions([]);
       setRoomOptions([]);
+      setProjectOptions([]);
       itemMasterRef.current = [];
+      setLabFurnitureItems([]);
     } finally {
       setLoading(false);
     }
-  }, [embedded, ensureEmbeddedSummary, loadItemsForSummary, projectId, queryQuotationId, selectedQuotationId, showStatus]);
+  }, [
+    embedded,
+    ensureEmbeddedSummary,
+    loadItemsForSummary,
+    projectId,
+    queryQuotationId,
+    selectedProjectIdForCreate,
+    selectedQuotationId,
+    showStatus,
+  ]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    if (!embedded) {
-      setSelectedQuotationId(queryQuotationId || "");
-    }
-  }, [embedded, queryQuotationId]);
+  const closeRevisionCreateConfirmation = useCallback(() => {
+    setRevisionCreateConfirmation({
+      open: false,
+      message: "",
+      projectId: "",
+      nextRevisionCode: "",
+    });
+  }, []);
 
   const refreshSelectedSummary = useCallback(async (quotationId) => {
     const listData = await listQuotationSummaries(embedded && projectId ? projectId : null);
@@ -553,6 +669,69 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setValidationMessages([]);
     }
   }, [embedded, loadItemsForSummary, projectId]);
+
+  const createQuotationForProject = useCallback(async (projectIdValue, confirmNewRevision = false) => {
+    const normalizedProjectId = String(projectIdValue || "").trim();
+    if (!normalizedProjectId) {
+      showStatus("Select a project before adding quotation.", "warning");
+      return;
+    }
+
+    setCreatingQuotation(true);
+    clearStatus();
+    try {
+      const response = await createQuotationSummary(
+        { project_id: normalizedProjectId },
+        { confirmNewRevision }
+      );
+
+      if (response?.requires_confirmation) {
+        setRevisionCreateConfirmation({
+          open: true,
+          message: response.message || "Create a new revision?",
+          projectId: normalizedProjectId,
+          nextRevisionCode: String(response.next_revision_code || ""),
+        });
+        return;
+      }
+
+      closeRevisionCreateConfirmation();
+      const nextSummaryId = String(response?.quotation?.id || "");
+      if (!nextSummaryId) {
+        throw new Error(response?.message || "Failed to open quotation.");
+      }
+
+      setSelectedQuotationId(nextSummaryId);
+      if (!embedded) {
+        setSearchParams({ quotationId: nextSummaryId });
+      }
+      await refreshSelectedSummary(nextSummaryId);
+      showStatus(response.message || "Quotation opened successfully.", response.status || "success");
+    } catch (error) {
+      showStatus(error.message || "Failed to create quotation.", "error");
+      window.alert(error.message || "Failed to create quotation.");
+    } finally {
+      setCreatingQuotation(false);
+    }
+  }, [clearStatus, closeRevisionCreateConfirmation, embedded, refreshSelectedSummary, setSearchParams, showStatus]);
+
+  const handleAddQuotation = useCallback(async () => {
+    await createQuotationForProject(selectedProjectIdForCreate, false);
+  }, [createQuotationForProject, selectedProjectIdForCreate]);
+
+  const confirmCreateRevision = useCallback(async () => {
+    await createQuotationForProject(revisionCreateConfirmation.projectId, true);
+  }, [createQuotationForProject, revisionCreateConfirmation.projectId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!embedded) {
+      setSelectedQuotationId(queryQuotationId || "");
+    }
+  }, [embedded, queryQuotationId]);
 
   const openRoomModal = useCallback(() => {
     setRoomModalOpen(true);
@@ -981,138 +1160,45 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     }
   }, [getMasterById, showStatus]);
 
-  const patchDraftRow = useCallback((patch) => {
-    setDraftRow((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, ...patch };
-      next.total_cost = toMoney(toNumber(next.requested_qty) * toNumber(next.actual_cost));
-      return next;
-    });
-  }, []);
-
-  const patchEditingRow = useCallback((patch) => {
-    setEditingRow((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, ...patch };
-      next.total_cost = toMoney(toNumber(next.requested_qty) * toNumber(next.actual_cost));
-      return next;
-    });
-  }, []);
-
-  const startAdd = useCallback(() => {
+  const openAddItemModal = useCallback(() => {
     if (!ensureEditableQuotation("add items")) return;
-    setEditingItemId(null);
-    setEditingRow(null);
-    setDraftRow(buildDraftItem(materialCostTypeId));
-    clearStatus();
-  }, [clearStatus, ensureEditableQuotation, materialCostTypeId]);
-
-  const cancelAdd = useCallback(() => {
-    setDraftRow(null);
-  }, []);
-
-  const startEdit = useCallback((row) => {
-    if (!ensureEditableQuotation("edit items")) return;
-    setDraftRow(null);
-    setEditingItemId(row.id);
-    setEditingRow({
-      ...row,
-      cost_type_id: String(row.cost_type_id || ""),
-      item_category_id: String(row.item_category_id || ""),
-      item_code_id: String(row.item_code_id || ""),
-      room_name_id: String(row.room_name?.id || row.room_name_id || ""),
-      item_type: row.item_type || "",
-      stock_status_name: getStockStatusName(row),
-      requested_qty: String(row.requested_qty ?? "0"),
-      purchase_qty: String(row.purchase_qty ?? "0"),
-      cost_per_qty: String(row.cost_per_qty ?? "0"),
-      actual_cost: String(row.actual_cost ?? "0"),
-      max_cost: String(row.max_cost ?? "0"),
-      min_cost: String(row.min_cost ?? "0"),
-      total_cost: String(row.total_cost ?? "0"),
-      length: String(row.length ?? "0"),
-      width: String(row.width ?? "0"),
-      height: String(row.height ?? "0"),
-      volume: String(row.volume ?? "0"),
-    });
+    setItemModalMode("add");
+    setItemToEdit(null);
+    setItemModalOpen(true);
     clearStatus();
   }, [clearStatus, ensureEditableQuotation]);
 
-  const cancelEdit = useCallback(() => {
-    setEditingItemId(null);
-    setEditingRow(null);
-  }, []);
+  const openEditItemModal = useCallback((row) => {
+    if (!ensureEditableQuotation("edit items")) return;
+    setItemModalMode("edit");
+    setItemToEdit(row);
+    setItemModalOpen(true);
+    clearStatus();
+  }, [clearStatus, ensureEditableQuotation]);
 
-  const validateItemRow = useCallback((row) => {
-    if (!normalizeText(row.cost_type_id)) return { type: "error", message: "Cost type is required." };
-    if (toNumber(row.requested_qty) <= 0) return { type: "error", message: "Requested Qty must be greater than 0." };
-    if (toNumber(row.purchase_qty) < 0) return { type: "error", message: "Purchase Qty must be 0 or greater." };
-    if (toNumber(row.actual_cost) < 0) return { type: "error", message: "Actual cost must be 0 or greater." };
-
-    if (isMaterialCostType(row.cost_type_id)) {
-      if (!normalizeText(row.item_category_id)) return { type: "error", message: "Item category is required for MATERIAL." };
-      if (!normalizeText(row.item_name)) return { type: "error", message: "Item name is required for MATERIAL." };
-      if (!normalizeText(row.item_code_id)) return { type: "error", message: "Item code is required for MATERIAL." };
-      if (!normalizeText(row.room_name_id)) return { type: "error", message: "Room name is required." };
-
-      const duplicate = items.some(
-        (candidate) => String(candidate.item_code_id || "") === String(row.item_code_id || "")
-          && String(candidate.id || "") !== String(row.id || editingItemId || "")
-      );
-      if (duplicate) {
-        return { type: "error", message: "Duplicate item code is not allowed for this quotation." };
-      }
-
-    }
-
-    return getRowValidationState(row);
-  }, [editingItemId, getRowValidationState, isMaterialCostType, items]);
-
-  const buildItemPayload = useCallback((row, confirmRequestedQtyOverride = false) => ({
-    cost_type_id: row.cost_type_id,
-    item_category_id: isMaterialCostType(row.cost_type_id) ? row.item_category_id || null : null,
-    item_name: isMaterialCostType(row.cost_type_id) ? row.item_name : "",
-    item_code_id: isMaterialCostType(row.cost_type_id) ? row.item_code_id || null : null,
-    room_name_id: row.room_name_id || null,
-    requested_qty: row.requested_qty || "0",
-    actual_cost: row.actual_cost || "0",
-    confirm_requested_qty_override: confirmRequestedQtyOverride,
-  }), [isMaterialCostType]);
-
-  const saveDraftItem = useCallback(async () => {
-    if (!summary?.id || !draftRow || !ensureEditableQuotation("save item changes")) return;
-    const validation = validateItemRow(draftRow);
-    if (validation.type === "error") {
-      showStatus(validation.message, validation.type);
-      return;
-    }
-
-    let confirmRequestedQtyOverride = false;
-    if (validation.type === "warning") {
-      const warningMsg = validation.message || "Continue with this item?";
-      confirmRequestedQtyOverride = window.confirm(
-        `${warningMsg}\n\nDo you want to proceed?`
-      );
-      if (!confirmRequestedQtyOverride) {
-        showStatus("Save cancelled by user.", "warning");
-        return;
-      }
-    }
-
+  const handleSaveModalItem = useCallback(async (payload, editItemId) => {
+    if (!summary?.id || !ensureEditableQuotation("save item")) return;
     setSavingRow(true);
     clearStatus();
     try {
-      const saveWithOverride = async (overrideFlag) => createQuotationItem(
-        summary.id,
-        buildItemPayload(draftRow, overrideFlag)
-      );
+      const saveWithOverride = async (overrideFlag) => {
+        const body = {
+          ...payload,
+          confirm_requested_qty_override: overrideFlag,
+        };
+        return editItemId
+          ? updateQuotationItem(summary.id, editItemId, body)
+          : createQuotationItem(summary.id, body);
+      };
 
       let response;
       try {
-        response = await saveWithOverride(confirmRequestedQtyOverride);
+        response = await saveWithOverride(false);
       } catch (error) {
         if (error.payload?.status === "warning" && error.payload?.requires_confirmation) {
-          const proceed = window.confirm("Requested Qty is higher than Purchase Qty. Do you want to proceed?");
+          const proceed = window.confirm(
+            error.message || "Requested Qty is higher than Purchase Qty. Do you want to proceed?"
+          );
           if (!proceed) {
             showStatus("Save cancelled by user.", "warning");
             return;
@@ -1123,77 +1209,21 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         }
       }
 
-      setDraftRow(null);
-      setValidationMessages(normalizeValidationMessages(response.validation_messages));
+      setValidationMessages(normalizeValidationMessages(response?.validation_messages));
       await refreshSelectedSummary(summary.id);
-      showStatus(response.message || "Quotation item added successfully.", response.status || "success");
+      showStatus(
+        response?.message || (editItemId ? "Quotation item updated successfully." : "Quotation item added successfully."),
+        response?.status || "success"
+      );
     } catch (error) {
-      const text = error.message || "Failed to add quotation item.";
+      const text = error.message || "Failed to save quotation item.";
       showStatus(text, error.payload?.status || "error");
       window.alert(text);
+      throw error;
     } finally {
       setSavingRow(false);
     }
-  }, [buildItemPayload, clearStatus, draftRow, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary, validateItemRow]);
-
-  const saveEditedItem = useCallback(async () => {
-    if (!summary?.id || !editingItemId || !editingRow || !ensureEditableQuotation("save item changes")) return;
-    const validation = validateItemRow(editingRow);
-    if (validation.type === "error") {
-      showStatus(validation.message, validation.type);
-      return;
-    }
-
-    let confirmRequestedQtyOverride = false;
-    if (validation.type === "warning") {
-      const warningMsg = validation.message || "Continue with this item?";
-      confirmRequestedQtyOverride = window.confirm(
-        `${warningMsg}\n\nDo you want to proceed?`
-      );
-      if (!confirmRequestedQtyOverride) {
-        showStatus("Save cancelled by user.", "warning");
-        return;
-      }
-    }
-
-    setSavingRow(true);
-    clearStatus();
-    try {
-      const saveWithOverride = async (overrideFlag) => updateQuotationItem(
-        summary.id,
-        editingItemId,
-        buildItemPayload(editingRow, overrideFlag)
-      );
-
-      let response;
-      try {
-        response = await saveWithOverride(confirmRequestedQtyOverride);
-      } catch (error) {
-        if (error.payload?.status === "warning" && error.payload?.requires_confirmation) {
-          const proceed = window.confirm("Requested Qty is higher than Purchase Qty. Do you want to proceed?");
-          if (!proceed) {
-            showStatus("Save cancelled by user.", "warning");
-            return;
-          }
-          response = await saveWithOverride(true);
-        } else {
-          throw error;
-        }
-      }
-
-      setEditingItemId(null);
-      setEditingRow(null);
-      setValidationMessages(normalizeValidationMessages(response.validation_messages));
-      await refreshSelectedSummary(summary.id);
-      showStatus(response.message || "Quotation item updated successfully.", response.status || "success");
-    } catch (error) {
-      const text = error.message || "Failed to update quotation item.";
-      showStatus(text, error.payload?.status || "error");
-      window.alert(text);
-    } finally {
-      setSavingRow(false);
-    }
-  }, [buildItemPayload, clearStatus, editingItemId, editingRow, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary, validateItemRow]);
+  }, [clearStatus, ensureEditableQuotation, refreshSelectedSummary, showStatus, summary]);
 
   const removeItem = useCallback(async (itemId) => {
     if (!summary?.id || !ensureEditableQuotation("delete items")) return;
@@ -1375,99 +1405,6 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     );
   };
 
-  const renderItemEditorCells = (row, patchFn, disabled) => {
-    const material = isMaterialCostType(row.cost_type_id);
-    const itemNames = material ? getNamesForCategory(row.item_category_id) : [];
-    const itemCodes = material ? getCodesForSelection(row.item_category_id, row.item_name) : [];
-
-    return (
-      <>
-        <td>
-          <select
-            className="project-costing-select"
-            value={row.room_name_id || ""}
-            disabled={disabled}
-            onChange={(event) => patchFn({ room_name_id: event.target.value })}
-          >
-            <option value="">Select room</option>
-            {roomOptions.map((option) => (
-              <option key={option.id} value={String(option.id)}>{option.room_name}</option>
-            ))}
-          </select>
-        </td>
-        <td>
-          <select
-            className="project-costing-select"
-            value={row.cost_type_id}
-            disabled={disabled}
-            onChange={(event) => patchFn({ item_category_id: "", item_name: "", item_code_id: "", item_type: "", room_name_id: "", stock_status_name: "In-Stock", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions, cost_type_id: event.target.value })}
-          >
-            <option value="">Select cost type</option>
-            {costTypes.map((option) => (
-              <option key={option.id} value={String(option.id)}>{option.name}</option>
-            ))}
-          </select>
-        </td>
-        <td>
-          <select
-            className="project-costing-select"
-            value={row.item_category_id}
-            disabled={disabled || !material}
-            onChange={(event) => patchFn({ item_category_id: event.target.value, item_name: "", item_code_id: "", item_type: "", purchase_qty: "0", requested_qty: "0", cost_per_qty: "0", max_cost: "0", min_cost: "0", actual_cost: "0", total_cost: "0", ...emptyDimensions })}
-          >
-            <option value="">Select category</option>
-            {categoryOptions.map((option) => (
-              <option key={option.id} value={String(option.id)}>{option.name}</option>
-            ))}
-          </select>
-        </td>
-        <td>
-          <select
-            className="project-costing-select"
-            value={row.item_code_id || ""}
-            disabled={disabled || !material || !row.item_category_id}
-            onChange={(event) => applyMaterialSelection(event.target.value, patchFn)}
-          >
-            <option value="">Select item name</option>
-            {itemNames.map((item) => (
-              <option key={`${row.item_category_id}-${item.id}`} value={String(item.id)}>{item.item_name}</option>
-            ))}
-          </select>
-        </td>
-        <td>
-          <select
-            className="project-costing-select"
-            value={row.item_code_id}
-            disabled={disabled || !material || !row.item_name}
-            onChange={async (event) => applyMaterialSelection(event.target.value, patchFn)}
-          >
-            <option value="">Select item code</option>
-            {itemCodes.map((option) => (
-              <option key={option.id} value={String(option.id)}>{option.item_code}</option>
-            ))}
-          </select>
-        </td>
-        <td><input className="project-costing-input" value={row.item_type || ""} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.length} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.width} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.height} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.volume} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.purchase_qty} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0.01" step="any" value={row.requested_qty} disabled={disabled} onChange={(event) => patchFn({ requested_qty: event.target.value })} /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.cost_per_qty || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.max_cost || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.min_cost || "0"} readOnly disabled /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" type="number" min="0" step="any" value={row.actual_cost} disabled={disabled} onChange={(event) => patchFn({ actual_cost: event.target.value })} /></td>
-        <td><input className="project-costing-input project-costing-input--numeric" value={row.total_cost || "0"} readOnly disabled /></td>
-        <td>
-          <span className={`project-costing-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
-            {getStockStatusName(row)}
-          </span>
-        </td>
-      </>
-    );
-  };
-
   return (
     <section className="module-page project-costing-page">
       <div className="crud-page__header pq-header project-costing-toolbar">
@@ -1505,30 +1442,145 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       {loading ? <p className="users-status">Loading quotations...</p> : null}
 
       {!loading && !embedded && !selectedQuotationId ? (
-        <div className="users-table-wrap pq-table-wrap-list project-costing-table-wrap">
+        <>
+          <div className="project-costing-card project-costing-actions">
+            <input
+              type="search"
+              list="quotation-project-options"
+              className="auth-input"
+              placeholder="Select project"
+              value={projectSelectionInput}
+              onChange={(event) => handleProjectSelectionInput(event.target.value)}
+              disabled={creatingQuotation}
+            />
+            <datalist id="quotation-project-options">
+              {projectOptions.map((project) => (
+                <option key={project.id} value={projectOptionLabel(project)} />
+              ))}
+            </datalist>
+            <button
+              type="button"
+              className="crud-add-btn"
+              onClick={handleAddQuotation}
+              disabled={!selectedProjectIdForCreate || creatingQuotation}
+            >
+              {creatingQuotation ? "Opening..." : "Add Quotation"}
+            </button>
+          </div>
+
+          <div className="users-table-wrap pq-table-wrap-list project-costing-table-wrap">
           <table className="users-table project-costing-table">
             <thead>
               <tr>
                 <th>Quotation Number</th>
                 <th>Project ID</th>
                 <th>Project Name</th>
+                <th>Revision Code</th>
                 <th>Total Quotation Cost</th>
                 <th>Status</th>
                 <th className="pq-text-center">Actions</th>
               </tr>
+              <tr>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={quotationColumnFilters.quotation_number}
+                    onChange={(event) =>
+                      setQuotationColumnFilters((prev) => ({
+                        ...prev,
+                        quotation_number: event.target.value,
+                      }))
+                    }
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={quotationColumnFilters.project_id}
+                    onChange={(event) =>
+                      setQuotationColumnFilters((prev) => ({
+                        ...prev,
+                        project_id: event.target.value,
+                      }))
+                    }
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={quotationColumnFilters.project_name}
+                    onChange={(event) =>
+                      setQuotationColumnFilters((prev) => ({
+                        ...prev,
+                        project_name: event.target.value,
+                      }))
+                    }
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={quotationColumnFilters.revision_code}
+                    onChange={(event) =>
+                      setQuotationColumnFilters((prev) => ({
+                        ...prev,
+                        revision_code: event.target.value,
+                      }))
+                    }
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={quotationColumnFilters.total_quotation_cost}
+                    onChange={(event) =>
+                      setQuotationColumnFilters((prev) => ({
+                        ...prev,
+                        total_quotation_cost: event.target.value,
+                      }))
+                    }
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={quotationColumnFilters.status}
+                    onChange={(event) =>
+                      setQuotationColumnFilters((prev) => ({
+                        ...prev,
+                        status: event.target.value,
+                      }))
+                    }
+                  />
+                </th>
+                <th />
+              </tr>
             </thead>
             <tbody>
-              {quotations.length === 0 ? (
+              {filteredQuotations.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="pq-empty-cell">
+                  <td colSpan={7} className="pq-empty-cell">
                     No quotations found.
                   </td>
                 </tr>
-              ) : quotations.map((row) => (
+              ) : filteredQuotations.map((row) => (
                 <tr key={row.id}>
                   <td className="pq-cell-link" onClick={() => openSummary(row.id)}>{row.quotation_number || "Auto"}</td>
                   <td>{row.project_code || row.project_id}</td>
                   <td>{row.project_name || "-"}</td>
+                  <td>{row.revision_code || `R${row.revision_number || 1}`}</td>
                   <td className="pq-text-right">{row.total_quotation_cost}</td>
                   <td>{getQuotationStatus(row)}</td>
                   <td className="pq-text-center">
@@ -1551,69 +1603,88 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       ) : null}
 
       {!loading && (embedded || selectedQuotationId) && summary ? (
         <>
-          <div className="project-costing-card">
-            {isQuotationReadOnly ? (
-              <AlertMessage
-                type="warning"
-                message="Status is Completed. Only admin can edit this form."
-              />
-            ) : null}
-
-            {summaryStatus ? (
-              <AlertMessage
-                type={summaryStatus.type === "error" ? "danger" : (summaryStatus.type === "warning" ? "warning" : "info")}
-                message={summaryStatus.message}
-              />
-            ) : null}
-
-            {summaryValidationMessages.length ? (
-              <div className="pq-status-list">
-                {summaryValidationMessages.map((entry) => (
-                  <AlertMessage
-                    key={`summary-${entry.type}-${entry.message}`}
-                    type={entry.type === "error" ? "danger" : (entry.type === "warning" ? "warning" : "info")}
-                    message={entry.message}
-                  />
-                ))}
+          {/* ========= CARD 1: Quotation Summary ========= */}
+          <Card className="lca-card mb-3 pq-card">
+            <CardHeader className="pq-card-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <BsClipboardData aria-hidden="true" />
+                  Quotation Summary
+                </h2>
+                {summary?.id ? (
+                  <span className="vendor-card__badge" style={{ marginLeft: "0.5rem" }}>
+                    <BsPencilSquare aria-hidden="true" /> Quotation #{summary.id} ({summary.quotation_number || "—"})
+                  </span>
+                ) : null}
               </div>
-            ) : null}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="crud-add-btn"
+                  onClick={saveSummary}
+                  disabled={isSummaryBusy || isQuotationReadOnly || statusConfirmation.open || saveNoItemsConfirmationOpen}
+                >
+                  {savingSummary ? "Saving..." : "Save Summary"}
+                </button>
+              </div>
+            </CardHeader>
+            <CardBody className="pq-card-body">
+              {isQuotationReadOnly ? (
+                <AlertMessage
+                  type="warning"
+                  message="Status is Completed. Only admin can edit this form."
+                />
+              ) : null}
 
-            {summarySaveFeedback.message && !isAdminReadonlyWarning(summarySaveFeedback.message) ? (
-              <AlertMessage
-                type={summarySaveFeedback.type === "error" ? "danger" : (summarySaveFeedback.type === "warning" ? "warning" : "info")}
-                message={summarySaveFeedback.message}
-              />
-            ) : null}
+              {summaryStatus ? (
+                <AlertMessage
+                  type={summaryStatus.type === "error" ? "danger" : (summaryStatus.type === "warning" ? "warning" : "info")}
+                  message={summaryStatus.message}
+                />
+              ) : null}
 
-            {renderSummaryGrid()}
-            <div className="project-costing-form-actions">
-              <button
-                type="button"
-                className="crud-add-btn"
-                onClick={saveSummary}
-                disabled={isSummaryBusy || isQuotationReadOnly || statusConfirmation.open || saveNoItemsConfirmationOpen}
-              >
-                {savingSummary ? "Saving..." : "Save Summary"}
-              </button>
-            </div>
-          </div>
+              {summaryValidationMessages.length ? (
+                <div className="pq-status-list">
+                  {summaryValidationMessages.map((entry) => (
+                    <AlertMessage
+                      key={`summary-${entry.type}-${entry.message}`}
+                      type={entry.type === "error" ? "danger" : (entry.type === "warning" ? "warning" : "info")}
+                      message={entry.message}
+                    />
+                  ))}
+                </div>
+              ) : null}
 
-          <div className="project-costing-card">
-            {itemStatus ? (
-              <AlertMessage
-                type={itemStatus.type === "error" ? "danger" : (itemStatus.type === "warning" ? "warning" : "info")}
-                message={itemStatus.message}
-              />
-            ) : null}
+              {summarySaveFeedback.message && !isAdminReadonlyWarning(summarySaveFeedback.message) ? (
+                <AlertMessage
+                  type={summarySaveFeedback.type === "error" ? "danger" : (summarySaveFeedback.type === "warning" ? "warning" : "info")}
+                  message={summarySaveFeedback.message}
+                />
+              ) : null}
 
-            <div className="project-costing-items-header">
-              <strong className="project-costing-items-header__title">Quotation Items</strong>
-              <div className="project-costing-items-header-actions">
+              {renderSummaryGrid()}
+            </CardBody>
+          </Card>
+
+          {/* ========= CARD 2: Quotation Items ========= */}
+          <Card className="lca-card mb-3 pq-card">
+            <CardHeader className="pq-card-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <BsBoxes aria-hidden="true" />
+                  Quotation Items
+                </h2>
+                <span className="vendor-card__badge" style={{ marginLeft: "0.5rem" }}>
+                  {items.length} {items.length === 1 ? "Item" : "Items"}
+                </span>
+              </div>
+              <div className="project-costing-items-header-actions" style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                 <input ref={importFileInputRef} className="project-costing-hidden-file-input" type="file" accept=".xlsx,.xls" onChange={handleImportItemsFile} />
                 <button type="button" className="crud-add-btn" onClick={handleDownloadImportTemplate} disabled={downloadingTemplate || importingItems || savingRow || isQuotationReadOnly || isSummaryBusy}>
                   {downloadingTemplate ? "Downloading..." : "Download Template"}
@@ -1622,192 +1693,146 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                   {importingItems ? "Importing..." : "Import Excel"}
                 </button>
                 <button type="button" className="crud-add-btn" onClick={openRoomModal} disabled={isQuotationReadOnly}>
-                 <BsPlusCircleFill aria-hidden="true" /> Add New Room
+                  <BsPlusCircleFill aria-hidden="true" /> Add New Room
                 </button>
-                {!draftRow ? (
-                  <button type="button" className="crud-add-btn" onClick={startAdd} disabled={isQuotationReadOnly}>
-                    <BsPlusCircleFill aria-hidden="true" /> Add Item
-                  </button>
-                ) : null}
+                <button type="button" className="crud-add-btn" onClick={openAddItemModal} disabled={isQuotationReadOnly}>
+                  <BsPlusCircleFill aria-hidden="true" /> Add Item
+                </button>
               </div>
-            </div>
+            </CardHeader>
+            <CardBody className="pq-card-body">
+              {itemStatus ? (
+                <AlertMessage
+                  type={itemStatus.type === "error" ? "danger" : (itemStatus.type === "warning" ? "warning" : "info")}
+                  message={itemStatus.message}
+                />
+              ) : null}
 
-            {itemValidationMessages.length ? (
-              <div className="pq-status-list">
-                {itemValidationMessages.map((entry) => (
-                  <AlertMessage
-                    key={`item-${entry.type}-${entry.message}`}
-                    type={entry.type === "error" ? "danger" : "warning"}
-                    message={entry.message}
-                  />
-                ))}
-              </div>
-            ) : null}
+              {itemValidationMessages.length ? (
+                <div className="pq-status-list">
+                  {itemValidationMessages.map((entry) => (
+                    <AlertMessage
+                      key={`item-${entry.type}-${entry.message}`}
+                      type={entry.type === "error" ? "danger" : "warning"}
+                      message={entry.message}
+                    />
+                  ))}
+                </div>
+              ) : null}
 
-            {importSummary ? (
-              <div className="project-costing-import-summary">
-                <p className="project-costing-import-summary__title">Import Summary</p>
-                <p className="project-costing-import-summary__line">
-                  Created: {importSummary.created || 0} | Updated: {importSummary.updated || 0} | Failed: {importSummary.failed || 0} | Blank Rows: {importSummary.blank_rows || 0}
-                </p>
-                {importReports.length ? (
-                  <div className="project-costing-import-report-wrap">
-                    <table className="users-table project-costing-import-report-table">
-                      <thead>
-                        <tr>
-                          <th>Row</th>
-                          <th>Item Code</th>
-                          <th>Status</th>
-                          <th>Message</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {importReports.slice(0, 20).map((report) => (
-                          <tr key={`import-${report.row}-${report.item_code_input}-${report.status}`}>
-                            <td>{report.row}</td>
-                            <td>{report.item_code_input || "-"}</td>
-                            <td>{report.status || "-"}</td>
-                            <td>{report.message || "-"}</td>
+              {importSummary ? (
+                <div className="project-costing-import-summary">
+                  <p className="project-costing-import-summary__title">Import Summary</p>
+                  <p className="project-costing-import-summary__line">
+                    Created: {importSummary.created || 0} | Updated: {importSummary.updated || 0} | Failed: {importSummary.failed || 0} | Blank Rows: {importSummary.blank_rows || 0}
+                  </p>
+                  {importReports.length ? (
+                    <div className="project-costing-import-report-wrap">
+                      <table className="users-table project-costing-import-report-table">
+                        <thead>
+                          <tr>
+                            <th>Row</th>
+                            <th>Item Code</th>
+                            <th>Status</th>
+                            <th>Message</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="users-table-wrap users-table-wrap--fit pq-table-wrap-items project-costing-table-wrap project-costing-table-wrap--items">
-              <table className="users-table users-table--quotation project-costing-table project-costing-table--quotation project-costing-items-table">
-                <thead>
-                  <tr>
-                    <th>Room</th>
-                    <th>Cost Type</th>
-                    <th>Item Category</th>
-                    <th>Item Name</th>
-                    <th>Item Code</th>
-                    <th>Item Type</th>
-                    <th className="project-costing-table__right">L</th>
-                    <th className="project-costing-table__right">W</th>
-                    <th className="project-costing-table__right">H</th>
-                    <th className="project-costing-table__right">Vol</th>
-                    <th className="project-costing-table__right">Purchase Qty</th>
-                    <th className="project-costing-table__right">Requested Qty</th>
-                    <th className="project-costing-table__right">Cost/Qty</th>
-                    <th className="project-costing-table__right">Max Cost</th>
-                    <th className="project-costing-table__right">Min Cost</th>
-                    <th className="project-costing-table__right">Actual Cost</th>
-                    <th className="project-costing-table__right">Total Cost</th>
-                    <th>Stock Status</th>
-                    <th className="project-costing-table__center">Actions</th>
-                  </tr>
-                  <tr>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.room_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, room_name: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_type: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_category} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_category: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_name: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.length} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, length: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.width} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, width: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.height} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, height: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.volume} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, volume: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_per_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_per_qty: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.max_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, max_cost: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.min_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, min_cost: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.actual_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, actual_cost: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.total_cost} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, total_cost: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.stock_status} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, stock_status: event.target.value }))} /></th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {draftRow ? (
-                    <tr className="project-costing-row--editing">
-                      {renderItemEditorCells(draftRow, patchDraftRow, savingRow || isQuotationReadOnly)}
-                      <td className="project-costing-table__center">
-                        <div className="project-costing-inline-actions">
-                          <button type="button" className="modal-btn modal-btn--save" onClick={saveDraftItem} disabled={savingRow || isQuotationReadOnly}>
-                            <BsCheckCircleFill aria-hidden="true" />
-                          </button>
-                          <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelAdd} disabled={savingRow || isQuotationReadOnly}>
-                            <BsXCircleFill aria-hidden="true" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                        </thead>
+                        <tbody>
+                          {importReports.slice(0, 20).map((report) => (
+                            <tr key={`import-${report.row}-${report.item_code_input}-${report.status}`}>
+                              <td>{report.row}</td>
+                              <td>{report.item_code_input || "-"}</td>
+                              <td>{report.status || "-"}</td>
+                              <td>{report.message || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   ) : null}
+                </div>
+              ) : null}
 
-                  {filteredItems.length === 0 ? (
+              <div className="users-table-wrap users-table-wrap--fit pq-table-wrap-items project-costing-table-wrap project-costing-table-wrap--items">
+                <table className="users-table users-table--quotation project-costing-table project-costing-table--quotation project-costing-items-table">
+                  <thead>
                     <tr>
-                      <td colSpan={19} className="project-costing-empty">No quotation items found.</td>
+                      <th>Room</th>
+                      <th>Cost Type</th>
+                      <th>Item Category</th>
+                      <th>Item Name</th>
+                      <th>Item Code</th>
+                      <th>Item Type</th>
+                      <th className="project-costing-table__right">Purchase Qty</th>
+                      <th className="project-costing-table__right">Requested Qty</th>
+                      <th>Stock Status</th>
+                      <th className="project-costing-table__center">Actions</th>
                     </tr>
-                  ) : filteredItems.map((row) => {
-                    const rowCostType = row.cost_type?.name || row.cost_type_name || row.cost_type || "-";
-                    const inEditMode = editingItemId === row.id && editingRow;
-                    return (
-                      <tr key={row.id}>
-                        {inEditMode ? (
-                          <>
-                            {renderItemEditorCells(editingRow, patchEditingRow, savingRow || isQuotationReadOnly)}
-                            <td className="project-costing-table__center">
-                              <div className="project-costing-inline-actions">
-                                <button type="button" className="modal-btn modal-btn--save" onClick={saveEditedItem} disabled={savingRow || isQuotationReadOnly}>
-                                  <BsCheckCircleFill aria-hidden="true" />
-                                </button>
-                                <button type="button" className="modal-btn modal-btn--cancel" onClick={cancelEdit} disabled={savingRow || isQuotationReadOnly}>
-                                  <BsXCircleFill aria-hidden="true" />
-                                </button>
-                              </div>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td>{row.room_name?.room_name || "-"}</td>
-                            <td>{rowCostType}</td>
-                            <td>{row.item_category || "-"}</td>
-                            <td>{row.item_name || "-"}</td>
-                            <td>{row.item_code || "-"}</td>
-                            <td>{row.item_type || "-"}</td>
-                            <td className="project-costing-table__right">{row.length}</td>
-                            <td className="project-costing-table__right">{row.width}</td>
-                            <td className="project-costing-table__right">{row.height}</td>
-                            <td className="project-costing-table__right">{row.volume}</td>
-                            <td className="project-costing-table__right">{row.purchase_qty}</td>
-                            <td className="project-costing-table__right">{row.requested_qty}</td>
-                            <td className="project-costing-table__right">{row.cost_per_qty ?? row.actual_cost ?? "0"}</td>
-                            <td className="project-costing-table__right">{row.max_cost ?? "0"}</td>
-                            <td className="project-costing-table__right">{row.min_cost ?? "0"}</td>
-                            <td className="project-costing-table__right">{row.actual_cost ?? "0"}</td>
-                            <td className="project-costing-table__right">{row.total_cost ?? "0"}</td>
-                            <td>
-                              <span className={`project-costing-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
-                                {getStockStatusName(row)}
-                              </span>
-                            </td>
-                            <td className="project-costing-table__center">
-                              <div className="project-costing-inline-actions">
-                                <button type="button" className="users-action users-action--edit" onClick={() => startEdit(row)} disabled={isQuotationReadOnly} title={isQuotationReadOnly ? "Completed quotation is read-only for non-admin users" : "Edit"}>
-                                  <BsPencilSquare aria-hidden="true" />
-                                </button>
-                                <button type="button" className="users-action users-action--delete" onClick={() => removeItem(row.id)} disabled={isQuotationReadOnly} title={isQuotationReadOnly ? "Completed quotation is read-only for non-admin users" : "Delete"}>
-                                  <BsTrashFill aria-hidden="true" />
-                                </button>
-                              </div>
-                            </td>
-                          </>
-                        )}
+                    <tr>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.room_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, room_name: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_type: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_category} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_category: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_name: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
+                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.stock_status} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, stock_status: event.target.value }))} /></th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="project-costing-empty">No quotation items found.</td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-
-          </div>
+                    ) : filteredItems.map((row) => {
+                      const rowCostType = row.cost_type?.name || row.cost_type_name || row.cost_type || "-";
+                      return (
+                        <tr key={row.id}>
+                          <td>{row.room_name?.room_name || "-"}</td>
+                          <td>{rowCostType}</td>
+                          <td>{row.item_category || "-"}</td>
+                          <td>{row.item_name || "-"}</td>
+                          <td>{row.item_code || "-"}</td>
+                          <td>{row.item_type || "-"}</td>
+                          <td className="project-costing-table__right">{row.purchase_qty}</td>
+                          <td className="project-costing-table__right">{row.requested_qty}</td>
+                          <td>
+                            <span className={`project-costing-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
+                              {getStockStatusName(row)}
+                            </span>
+                          </td>
+                          <td className="project-costing-table__center">
+                            <div className="project-costing-inline-actions">
+                              <button
+                                type="button"
+                                className="users-action users-action--edit"
+                                onClick={() => openEditItemModal(row)}
+                                disabled={isQuotationReadOnly}
+                                title={isQuotationReadOnly ? "Completed quotation is read-only for non-admin users" : "Edit"}
+                              >
+                                <BsPencilSquare aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="users-action users-action--delete"
+                                onClick={() => removeItem(row.id)}
+                                disabled={isQuotationReadOnly}
+                                title={isQuotationReadOnly ? "Completed quotation is read-only for non-admin users" : "Delete"}
+                              >
+                                <BsTrashFill aria-hidden="true" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardBody>
+          </Card>
         </>
       ) : null}
 
@@ -1835,6 +1860,21 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
         cancelDisabled={savingSummary}
         onConfirm={confirmSaveNoItems}
         onCancel={cancelSaveNoItemsConfirmation}
+      />
+
+      <ConfirmPopupModal
+        open={revisionCreateConfirmation.open}
+        title="Create Quotation Revision"
+        type="warning"
+        message={revisionCreateConfirmation.message || "Create a new quotation revision?"}
+        confirmLabel={creatingQuotation
+          ? "Creating..."
+          : `Create ${revisionCreateConfirmation.nextRevisionCode || "Revision"}`}
+        cancelLabel="Cancel"
+        confirmDisabled={creatingQuotation}
+        cancelDisabled={creatingQuotation}
+        onConfirm={confirmCreateRevision}
+        onCancel={closeRevisionCreateConfirmation}
       />
 
       {roomModalOpen ? (
@@ -1870,6 +1910,23 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
           </div>
         </div>
       ) : null}
+
+      <QuotationItemModal
+        isOpen={itemModalOpen}
+        onClose={() => {
+          setItemModalOpen(false);
+          setItemToEdit(null);
+        }}
+        isEditMode={itemModalMode === "edit"}
+        itemToEdit={itemToEdit}
+        combinedItemOptions={combinedItemOptions}
+        roomOptions={roomOptions}
+        costTypes={costTypes}
+        materialCostTypeId={materialCostTypeId}
+        getItemCostPreview={getItemCostPreview}
+        openRoomModal={openRoomModal}
+        onSaveItem={handleSaveModalItem}
+      />
     </section>
   );
 }

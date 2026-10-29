@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .sub_models.vendor import Vendor
+from .sub_models.vendor import Vendor, VendorCategory
 
 
 class VendorSerializer(serializers.ModelSerializer):
@@ -10,6 +10,13 @@ class VendorSerializer(serializers.ModelSerializer):
     name = serializers.CharField(read_only=True)
     phone = serializers.CharField(read_only=True)
     email = serializers.CharField(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        source="category",
+        queryset=VendorCategory.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    category_name = serializers.CharField(source="category.name", read_only=True, default="")
 
     class Meta:
         model = Vendor
@@ -18,6 +25,8 @@ class VendorSerializer(serializers.ModelSerializer):
             "vendor_code",
             "vendor_name",
             "name",
+            "category_id",
+            "category_name",
             "address",
             "phone_number",
             "phone",

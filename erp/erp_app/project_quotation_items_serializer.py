@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from .safe_fields import SafeSourceCharField
 from .sub_models import ItemCategory, LabFurnitureItem, Project
 from .sub_models.CostType_mod import CostTypeInfo
 from .sub_models.project_quotation_items_mod import ProjectQuotationItemInfo, build_project_quotation_hierarchy
@@ -16,11 +17,11 @@ class ProjectQuotationItemSerializer(serializers.ModelSerializer):
         required=False,
     )
     project_id = serializers.PrimaryKeyRelatedField(source="project", queryset=Project.objects.all(), write_only=True, required=False)
-    project_name = serializers.CharField(source="quotation_number.project_name", read_only=True)
+    project_name = SafeSourceCharField(source="quotation_number.project_name", read_only=True)
 
     cost_type_id = serializers.PrimaryKeyRelatedField(source="cost_type", queryset=CostTypeInfo.objects.order_by("name"))
-    cost_type = serializers.CharField(source="cost_type.name", read_only=True)
-    cost_type_description = serializers.CharField(source="cost_type.description", read_only=True)
+    cost_type = SafeSourceCharField(source="cost_type.name", read_only=True)
+    cost_type_description = SafeSourceCharField(source="cost_type.description", read_only=True)
 
     item_category_id = serializers.PrimaryKeyRelatedField(
         source="item_category",
@@ -28,7 +29,7 @@ class ProjectQuotationItemSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    item_category = serializers.CharField(source="item_category.name", read_only=True)
+    item_category = SafeSourceCharField(source="item_category.name", read_only=True)
 
     item_code_id = serializers.PrimaryKeyRelatedField(
         source="item_code",
@@ -36,7 +37,7 @@ class ProjectQuotationItemSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    item_code = serializers.CharField(source="item_code.item_code", read_only=True)
+    item_code = SafeSourceCharField(source="item_code.item_code", read_only=True)
     item_type = serializers.SerializerMethodField(read_only=True)
     room_name_id = serializers.PrimaryKeyRelatedField(
         source="room_name",
@@ -46,7 +47,7 @@ class ProjectQuotationItemSerializer(serializers.ModelSerializer):
     )
     room_name = RoomDataSerializer(read_only=True)
     stock_status = serializers.SerializerMethodField(read_only=True)
-    stock_status_name = serializers.CharField(source="stock_status.status_name", read_only=True)
+    stock_status_name = SafeSourceCharField(source="stock_status.status_name", read_only=True)
 
     children = serializers.SerializerMethodField(read_only=True)
 
@@ -191,6 +192,12 @@ class ProjectQuotationItemSerializer(serializers.ModelSerializer):
             if getattr(candidate, "item_code_id", None) is None:
                 raise serializers.ValidationError(
                     {"item_code_id": ["Select a valid item from Item Master."]}
+                )
+            from .utils.project_quotation_costs import resolve_lce_cost_for_item
+            lce_cost = resolve_lce_cost_for_item(candidate.item_code)
+            if lce_cost <= 0:
+                raise serializers.ValidationError(
+                    {"item_code_id": [f"LCE cost is not available or 0 for item code '{candidate.item_code.item_code}'. Item cannot be added."]}
                 )
 
         if candidate.item_code_id and candidate.quotation_number_id:

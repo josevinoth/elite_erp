@@ -3,13 +3,13 @@ import json
 
 from django.db import transaction
 from django.contrib.auth.models import User
+from django.core.exceptions import ObjectDoesNotExist
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from ..project_serializer import ProjectSerializer
 from ..sub_models import Project, ProjectStatusOption
 from ..sub_models.approval_status_mod import ApprovalStatus_info
 from ..sub_models.non_moe_product_series_mod import NonMOEProductSeries_info
@@ -58,6 +58,28 @@ def _resolve_fk_option(model_cls, value, error_message):
 
 
 def _serialize(project):
+    project_owner_name = ''
+    project_owner_id = project.project_owner_id
+    if project_owner_id:
+        try:
+            project_owner_name = project.project_owner.username if project.project_owner else ''
+        except ObjectDoesNotExist:
+            project_owner_name = ''
+
+    status_name = ''
+    if project.status_id:
+        try:
+            status_name = project.status.name if project.status else ''
+        except ObjectDoesNotExist:
+            status_name = ''
+
+    updated_by_value = None
+    if project.updated_by_id:
+        try:
+            updated_by_value = project.updated_by.username if project.updated_by else ''
+        except ObjectDoesNotExist:
+            updated_by_value = ''
+
     return {
         'id': project.id,
         'project_id': project.project_id,
@@ -84,11 +106,11 @@ def _serialize(project):
         'standard_lab': project.standard_lab_id,
         'non_standard_lab': project.non_standard_lab_id,
         'non_moe_product_series': project.non_moe_product_series_id,
-        'updated_by': project.updated_by.id if project.updated_by else None,
-        'project_owner': project.project_owner_id,
-        'project_owner_name': project.project_owner.username if project.project_owner else '',
+        'updated_by': updated_by_value,
+        'project_owner': project_owner_id,
+        'project_owner_name': project_owner_name,
         'order_value_omr': '' if project.order_value_omr is None else str(project.order_value_omr),
-        'status': project.status.name if project.status else '',
+        'status': status_name,
         'expected_customer_need_date': str(
             project.expected_customer_need_date) if project.expected_customer_need_date else '',
     }
@@ -476,8 +498,7 @@ def create_project_lifecycle_status_option_api_view(request):
 @permission_classes([IsAuthenticated])
 def list_projects_api_view(request):
     projects = Project.objects.order_by('-id')
-    serializer = ProjectSerializer(projects, many=True)
-    return Response({'projects': serializer.data})
+    return Response({'projects': [_serialize(project) for project in projects]})
 
 
 @api_view(["POST"])

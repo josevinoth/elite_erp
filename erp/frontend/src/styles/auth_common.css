@@ -1940,11 +1940,74 @@ select.auth-input option {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 34, 58, 0.36);
-  display: grid;
-  place-items: center;
-  z-index: 100;
+  background: rgba(15, 34, 58, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
   padding: 1rem;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 0.75rem 0.5rem;
+    align-items: center;
+  }
+}
+
+/* Responsive horizontal modal row: desktop side-by-side, mobile stacked */
+.modal-field-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.modal-field-row--top {
+  align-items: flex-start;
+}
+
+.modal-field-row__label {
+  width: 160px;
+  min-width: 160px;
+  font-weight: 500;
+  color: #334155;
+  text-align: left;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.modal-field-row--top .modal-field-row__label {
+  margin-top: 0.4rem;
+}
+
+.modal-field-row__control {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .modal-field-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+  }
+
+  .modal-field-row--top {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+  }
+
+  .modal-field-row__label {
+    width: 100%;
+    min-width: 0;
+    margin-top: 0 !important;
+  }
+
+  .modal-field-row__control {
+    width: 100%;
+  }
 }
 
 .modal-card {
@@ -2169,6 +2232,47 @@ select.auth-input option {
   }
 }
 
+/* ── Standard Card Component Styles ── */
+.card {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(135deg, #2a3042 0%, #36405a 100%);
+  color: #ffffff;
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.card-header h2,
+.card-header h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.card-body {
+  padding: 1.25rem 1.25rem 1rem;
+  background: #ffffff;
+}
+
 /* ── Purchase Items table: auto-width columns, horizontal scroll ── */
 .users-table--sp-items {
   width: max-content;
@@ -2179,50 +2283,56 @@ select.auth-input option {
 /* Column min-widths: keeps form controls readable */
 
 .users-table--sp-items th:nth-child(1),
-.users-table--sp-items td:nth-child(1) { min-width: 280px; } /* Item Category */
+.users-table--sp-items td:nth-child(1) {
+  min-width: 145px;
+  width: 150px;
+} /* Item Code: brought to front */
 
 .users-table--sp-items th:nth-child(2),
-.users-table--sp-items td:nth-child(2) { min-width: 130px; } /* Item Code */
+.users-table--sp-items td:nth-child(2) {
+  min-width: 200px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+} /* Item Category */
 
 .users-table--sp-items th:nth-child(3),
-.users-table--sp-items td:nth-child(3) { min-width: 300px; } /* Item Name */
+.users-table--sp-items td:nth-child(3) {
+  min-width: 220px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+} /* Item Name */
 
 .users-table--sp-items th:nth-child(4),
-.users-table--sp-items td:nth-child(4) { min-width: 120px; } /* Item Type */
+.users-table--sp-items td:nth-child(4) { min-width: 110px; } /* Item Type */
 
 .users-table--sp-items th:nth-child(5),
-.users-table--sp-items td:nth-child(5) { min-width: 120px; } /* GRN No. */
+.users-table--sp-items td:nth-child(5) { min-width: 110px; } /* GRN No. */
 
 .users-table--sp-items th:nth-child(6),
-.users-table--sp-items td:nth-child(6) { min-width: 140px; } /* UOM */
+.users-table--sp-items td:nth-child(6) { min-width: 125px; } /* UOM */
 
 .users-table--sp-items th:nth-child(7),
-.users-table--sp-items td:nth-child(7) { min-width: 100px; } /* Qty/Size */
+.users-table--sp-items td:nth-child(7) { min-width: 95px; } /* Qty/Size */
 
 .users-table--sp-items th:nth-child(8),
-.users-table--sp-items td:nth-child(8) { min-width: 130px; } /* Unit Price */
+.users-table--sp-items td:nth-child(8) { min-width: 110px; } /* Unit Price */
 
 .users-table--sp-items th:nth-child(9),
-.users-table--sp-items td:nth-child(9) { min-width: 130px; } /* Total Price */
+.users-table--sp-items td:nth-child(9) { min-width: 110px; } /* Total Price */
 
 .users-table--sp-items th:nth-child(10),
-.users-table--sp-items td:nth-child(10) { width: 100px; min-width: 100px; max-width: 100px; } /* Length */
+.users-table--sp-items td:nth-child(10) {
+  min-width: 100px;
+  width: 105px;
+} /* Tax (%): comfortably visible */
 
 .users-table--sp-items th:nth-child(11),
-.users-table--sp-items td:nth-child(11) { width: 100px; min-width: 100px; max-width: 100px; } /* Width */
+.users-table--sp-items td:nth-child(11) { min-width: 125px; } /* Total After Tax */
 
 .users-table--sp-items th:nth-child(12),
-.users-table--sp-items td:nth-child(12) { width: 100px; min-width: 100px; max-width: 100px; } /* Height/Thk */
-
-.users-table--sp-items th:nth-child(13),
-.users-table--sp-items td:nth-child(13) { width: 100px; min-width: 100px; max-width: 100px; } /* Volume */
-
-
-.users-table--sp-items th:nth-child(14),
-.users-table--sp-items td:nth-child(14) { min-width: 80px;  text-align: center; } /* Trace */
-
-.users-table--sp-items th:nth-child(15),
-.users-table--sp-items td:nth-child(15) { min-width: 68px;  text-align: center; } /* Action */
+.users-table--sp-items td:nth-child(12) { min-width: 60px; text-align: center; } /* Action */
 
 /* Ensure inputs inside this table fill their cell fully */
 .users-table--sp-items td select,
@@ -2231,7 +2341,16 @@ select.auth-input option {
   box-sizing: border-box;
 }
 
-.users-table--sp-items th:nth-child(1),
+.users-table--sp-items td:nth-child(2) select,
+.users-table--sp-items td:nth-child(3) select {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  height: auto;
+  min-height: 38px;
+}
+
+.users-table--sp-items th:nth-child(2),
 .users-table--sp-items th:nth-child(3) {
   white-space: normal;
   word-break: break-word;

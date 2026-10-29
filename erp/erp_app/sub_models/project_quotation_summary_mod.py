@@ -17,6 +17,7 @@ class ProjectQuotationSummaryInfo(models.Model):
 
     quotation_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="project_quotation_summaries")
+    revision_number = models.IntegerField(default=1)
     project_name = models.CharField(max_length=200, blank=True)
     status = models.ForeignKey(
         QuotationStatusInfo,
@@ -52,12 +53,16 @@ class ProjectQuotationSummaryInfo(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["project_id", "id"]
+        ordering = ["project_id", "revision_number", "id"]
         verbose_name = "Project Quotation Summary"
         verbose_name_plural = "Project Quotation Summaries"
 
     def __str__(self):
         return self.quotation_number or f"Quotation {self.pk or 'new'}"
+
+    @property
+    def revision_code(self):
+        return f"R{self.revision_number or 1}"
 
     @staticmethod
     def _as_decimal(value, default="0"):
@@ -159,6 +164,20 @@ class ProjectQuotationSummaryInfo(models.Model):
         self._recalculate_derived_fields()
 
     def save(self, *args, **kwargs):
+        if self.pk is None and getattr(self, "project_id", None):
+            latest_for_project = (
+                type(self).objects.filter(project_id=self.project_id)
+                .order_by("-revision_number", "-id")
+                .first()
+            )
+            latest_status_name = normalize_text(
+                getattr(getattr(latest_for_project, "status", None), "status_name", "")
+            )
+            if latest_for_project and latest_status_name == self.STATUS_COMPLETED:
+                self.revision_number = max(1, int(getattr(latest_for_project, "revision_number", 1) or 1) + 1)
+            else:
+                self.revision_number = max(1, int(self.revision_number or 1))
+
         self.full_clean()
         creating = self.pk is None
         super().save(*args, **kwargs)

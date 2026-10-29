@@ -83,18 +83,10 @@ function LceListPage() {
     return (
         <section className="module-page">
             <div className="crud-page__header" style={{marginBottom: "0.8rem"}}>
-                <h1 className="module-page__title module-page__title--projects" style={{margin: 0}}>LCE List</h1>
-                <Link
-                    className="crud-add-btn"
-                    title="LCE ADD"
-                    to="/projects/costing/add"
-                    style={{textDecoration: "none"}}
-                >
-                    LCE ADD
-                </Link>
+                <h1 className="module-page__title module-page__title--projects" style={{margin: 0}}>Landing Cost Estimate (LCE) List</h1>
             </div>
             <p className="module-page__description" style={{marginBottom: "0.9rem"}}>
-                Showing saved LCE records. Click Edit to update a record.
+                Showing saved Landing Cost Estimate (LCE) records. Click Edit to update a record.
             </p>
 
             {loading ? <p className="users-status">Loading LCE records...</p> : null}
@@ -108,6 +100,17 @@ function LceListPage() {
                     title="LCE List"
                     onSearchChange={setSearchText}
                     showDownloadButton={true}
+                    actions={[
+                      <Link
+                        key="add-lce"
+                        className="crud-add-btn"
+                        title="Add LCE"
+                        to="/projects/costing/add"
+                        style={{ textDecoration: "none" }}
+                      >
+                        + Add LCE
+                      </Link>,
+                    ]}
                   />
                   <div className="users-table-wrap" style={{maxHeight: "65vh", overflowY: "auto"}}>
                     <table className="users-table">

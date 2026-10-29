@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from .retrieval_status_serializer import RetrievalStatusSerializer
 from .room_data_serializer import RoomDataSerializer
+from .safe_fields import SafeSourceCharField
 from .sub_models import ItemCategory, LabFurnitureItem
 from .sub_models.CostType_mod import CostTypeInfo
 from .sub_models.project_costing_items_mod import ProjectCostingItemAllocation, ProjectCostingItemInfo
@@ -27,11 +28,11 @@ class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    grn_number = serializers.CharField(source="purchase_item.grn_number", read_only=True)
-    vendor_name = serializers.CharField(source="purchase_item.vendor_detail.vendor.name", read_only=True)
+    grn_number = SafeSourceCharField(source="purchase_item.grn_number", read_only=True)
+    vendor_name = SafeSourceCharField(source="purchase_item.vendor_detail.vendor.name", read_only=True)
     purchase_qty = serializers.SerializerMethodField(read_only=True)
-    unit_price = serializers.CharField(source="purchase_item.unit_price", read_only=True)
-    retrieval_status_name = serializers.CharField(source="retrieval_status.status_name", read_only=True)
+    unit_price = SafeSourceCharField(source="purchase_item.unit_price", read_only=True)
+    retrieval_status_name = SafeSourceCharField(source="retrieval_status.status_name", read_only=True)
     remaining_accepted_qty = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -74,12 +75,12 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     requested_by_name = serializers.SerializerMethodField(read_only=True)
-    costing_ref = serializers.CharField(source="costing_id.costing_id", read_only=True)
-    quotation_number = serializers.CharField(source="costing_id.quotation_number.quotation_number", read_only=True)
-    project_code = serializers.CharField(source="costing_id.project.project_id", read_only=True)
-    project_name = serializers.CharField(source="costing_id.project_name", read_only=True)
-    project_owner_id = serializers.IntegerField(source="costing_id.project.project_owner_id", read_only=True)
-    project_owner_name = serializers.CharField(source="costing_id.project.project_owner.username", read_only=True)
+    costing_ref = SafeSourceCharField(source="costing_id.costing_id", read_only=True)
+    quotation_number = SafeSourceCharField(source="costing_id.quotation_number.quotation_number", read_only=True)
+    project_code = SafeSourceCharField(source="costing_id.project.project_id", read_only=True)
+    project_name = SafeSourceCharField(source="costing_id.project_name", read_only=True)
+    project_owner_id = serializers.SerializerMethodField(read_only=True)
+    project_owner_name = SafeSourceCharField(source="costing_id.project.project_owner.username", read_only=True)
     costing_id = serializers.PrimaryKeyRelatedField(queryset=ProjectCostingSummaryInfo.objects.all())
     item_category_id = serializers.PrimaryKeyRelatedField(
         source="item_category",
@@ -120,9 +121,9 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     item_type = serializers.SerializerMethodField(read_only=True)
-    item_category = serializers.CharField(source="item_category.name", read_only=True)
-    item_code = serializers.CharField(source="item_code.item_code", read_only=True)
-    cost_type = serializers.CharField(source="cost_type.name", read_only=True)
+    item_category = SafeSourceCharField(source="item_category.name", read_only=True)
+    item_code = SafeSourceCharField(source="item_code.item_code", read_only=True)
+    cost_type = SafeSourceCharField(source="cost_type.name", read_only=True)
     room_name = RoomDataSerializer(read_only=True)
     purchase_item_id = serializers.PrimaryKeyRelatedField(
         source="purchase_item",
@@ -225,6 +226,11 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         if not status_obj:
             return None
         return {"id": status_obj.pk, "status_name": status_obj.status_name}
+
+    def get_project_owner_id(self, obj):
+        costing = getattr(obj, "costing_id", None)
+        project = getattr(costing, "project", None) if costing else None
+        return getattr(project, "project_owner_id", None)
 
     def get_requested_by_name(self, obj):
         user = getattr(obj, "requested_by", None)

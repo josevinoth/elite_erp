@@ -86,14 +86,39 @@ class ProjectQuotationSummaryView:
         }
 
     def list_payload(self, project_id=None):
-        summaries = ProjectQuotationSummaryInfo.objects.select_related("project").order_by("project__project_id", "id")
+        summaries = ProjectQuotationSummaryInfo.objects.select_related("project").order_by(
+            "project__project_id",
+            "revision_number",
+            "id",
+        )
         if project_id not in (None, ""):
             summaries = summaries.filter(project_id=project_id)
 
         material_cost_type = CostTypeInfo.objects.filter(name__iexact="MATERIAL").first()
         serialized = [self._serialize_summary(summary) for summary in summaries]
+        grouped = {}
+        for row in serialized:
+            key = str(row.get("project_id") or "")
+            if key not in grouped:
+                grouped[key] = {
+                    "project_id": row.get("project_id"),
+                    "project_code": row.get("project_code") or row.get("project_id"),
+                    "project_name": row.get("project_name") or "",
+                    "quotations": [],
+                }
+            grouped[key]["quotations"].append(row)
+
+        for group in grouped.values():
+            group["quotations"].sort(
+                key=lambda quotation: (
+                    int(quotation.get("revision_number") or 1),
+                    int(quotation.get("id") or 0),
+                )
+            )
+
         return {
             "quotations": serialized,
+            "quotations_by_project": list(grouped.values()),
             "cost_types": self._serialize_cost_types(),
             "material_cost_type_id": material_cost_type.pk if material_cost_type else None,
             "status": "success",
