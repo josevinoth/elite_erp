@@ -12,6 +12,55 @@ def _as_decimal(value, default="0"):
         return Decimal(str(default))
 
 
+def resolve_lce_cost_for_item(item_code):
+    from ..sub_models.lce_estimate import LCEEstimate, LCEEstimateItem
+    from ..sub_models.stock_purchase import StockPurchaseItem
+
+    normalized_code = normalize_text(getattr(item_code, "item_code", item_code)).upper()
+    if not normalized_code:
+        return Decimal("0.00")
+
+    # 1. Check StockPurchaseItem with lce_cost
+    sp_item = (
+        StockPurchaseItem.objects.filter(
+            item_code__item_code_ref__item_code__iexact=normalized_code,
+            lce_cost__gt=0,
+        )
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if sp_item and sp_item.lce_cost > 0:
+        qty = _as_decimal(sp_item.quantity or 1)
+        unit_lce = (_as_decimal(sp_item.lce_cost) / qty) if qty > 0 else _as_decimal(sp_item.lce_cost)
+        return _quantize(unit_lce, "0.01")
+
+    # 2. Check LCEEstimateItem
+    lce_item = (
+        LCEEstimateItem.objects.filter(
+            item_code__item_code_ref__item_code__iexact=normalized_code,
+            lce_cost__gt=0,
+        )
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if lce_item and lce_item.lce_cost > 0:
+        return _quantize(lce_item.lce_cost, "0.01")
+
+    # 3. Check LCEEstimate
+    est = (
+        LCEEstimate.objects.filter(
+            item_code__item_code_ref__item_code__iexact=normalized_code,
+            lce_cost__gt=0,
+        )
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if est and est.lce_cost > 0:
+        return _quantize(est.lce_cost, "0.01")
+
+    return Decimal("0.00")
+
+
 def calculate_costs(item_code, requested_qty, actual_cost=None):
     from ..sub_models.stock_purchase import StockPurchaseItem
 
@@ -23,17 +72,22 @@ def calculate_costs(item_code, requested_qty, actual_cost=None):
         purchase_rows = StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code).only(
             "lce_cost",
             "unit_price",
+            "quantity",
         )
         for row in purchase_rows:
-            if row.lce_cost not in (None, ""):
-                costs.append(_as_decimal(row.lce_cost))
-            elif row.unit_price not in (None, ""):
+            if row.lce_cost not in (None, "") and _as_decimal(row.lce_cost) > 0:
+                q = _as_decimal(row.quantity or 1)
+                costs.append(_as_decimal(row.lce_cost) / q if q > 0 else _as_decimal(row.lce_cost))
+            elif row.unit_price not in (None, "") and _as_decimal(row.unit_price) > 0:
                 costs.append(_as_decimal(row.unit_price))
 
     min_cost = min(costs) if costs else Decimal("0")
     max_cost = max(costs) if costs else Decimal("0")
 
-    effective_actual_cost = max_cost if actual_cost in (None, "") else _as_decimal(actual_cost)
+    lce_cost = resolve_lce_cost_for_item(normalized_code)
+    effective_actual_cost = lce_cost if lce_cost > Decimal("0") else (
+        max_cost if actual_cost in (None, "") else _as_decimal(actual_cost)
+    )
     total_cost = requested_qty_decimal * effective_actual_cost
 
     return {
@@ -42,6 +96,7 @@ def calculate_costs(item_code, requested_qty, actual_cost=None):
         "actual_cost": _quantize(effective_actual_cost, "0.01"),
         "total_cost": _quantize(total_cost, "0.01"),
         "cost_per_qty": _quantize(effective_actual_cost, "0.01"),
+        "lce_cost": _quantize(lce_cost, "0.01"),
     }
 
 

@@ -235,6 +235,12 @@ Prepare project quotations per project with BOM hierarchy validation and cost-ty
   - if items are empty → warning confirmation popup (`No quotation items added...`).
 - Summary alerts are status-related and shown above the Quotation Summary section.
 - Item alerts are item-related and shown above the Quotation Items table.
+- Quotation list page now includes **Project Number** dropdown + **Add Quotation** action.
+- Add flow:
+  1. Select project from dropdown.
+  2. Click `Add Quotation` to open/create quotation for that project.
+  3. If latest quotation is `Completed`, system prompts to create next revision.
+- Revision numbering is stored in `revision_number`; UI/API shows `revision_code` in format `R1`, `R2`, `R3`.
 
 ---
 
@@ -327,6 +333,8 @@ Registered in `erp/erp_app/urls.py` — view files: `erp/erp_app/sub_views/proje
 
 | Method | Route | Description |
 |--------|-------|-------------|
+| `GET` | `/api/quotations/list/` | List quotations with grouped-by-project payload including revision codes |
+| `POST` | `/api/quotations/create/` | Create/open quotation for selected project with completed-revision confirmation flow |
 | `GET` | `/api/project-quotation/<id>/summary/` | Fetch quotation summary payload for one quotation |
 | `PATCH` | `/api/project-quotation/<id>/status/` | Update quotation status with admin/non-admin edit-permission flags |
 | `PATCH` | `/api/project-quotation/<id>/save/` | Save summary fields with optional confirmation for `Completed` status when no items exist |
@@ -662,3 +670,106 @@ updateStockReturnItem(id, {action: "accept"|"reject"})
 - Items without a `retrieval_status` are skipped in retrieval/acceptance/return lists
 - Stock list calculation filters by `retrieval_status` to ensure only completed items affect balance
 - No required schema changes for existing quotation/costing records
+
+---
+
+## Landing Cost Estimate (LCE) Module
+
+The **Landing Cost Estimate (LCE)** module calculates landing cost factors and landed cost per item code based on historic purchase records to assist project cost estimation and quotation.
+
+### Key Workflow & Features
+
+1. **Direct Item Code Linkage:**
+   - LCE links directly to Item Master records (`LabFurnitureItem` / `item_code`).
+   - Automatically populates `item_category` and `item_name` from Item Master.
+2. **Multiple Item Selection:**
+   - Users can select multiple item codes either by batch multi-select (with search/filter and "Add Selected Items") or by adding individual item rows via "+ Add Item Row".
+3. **Automated Historic Cost Calculation:**
+   - On item code selection, queries `StockPurchaseItem` for all past purchases of that `item_code`.
+   - Computes `min_cost` (minimum purchase cost/unit) and `max_cost` (maximum purchase cost/unit).
+   - Defaults `actual_cost = max_cost`, while allowing the user to edit `actual_cost` as needed.
+   - Total `ex_works_material_cost` automatically equals the sum of `actual_cost` across all linked item rows.
+4. **Purchase History Modal:**
+   - In each item row, a **"View Purchases"** button opens a modal popup displaying all historic purchases for that item code.
+   - Modal Columns: **Item Category**, **Item Name**, **Item Code**, **Cost**, Purchase Number, Invoice Number, GRN Number, and Date.
+5. **Project Costing & Quotation Assistance:**
+   - Landed cost estimates assist sales and technical teams in budgeting realistic material costs based on historical vendor procurement data.
+
+### Backend Architecture & Endpoints
+
+- **Models (`erp/erp_app/sub_models/lce_estimate.py` & `lce_model.py`):**
+  - `LandingCostEstimate` / `LCEEstimate`:
+    - `item_code`: FK → `LabFurnitureItem`
+    - `item_category`, `item_name`: CharFields auto-fetched from Item Master
+    - `min_cost`, `max_cost`: DecimalFields calculated from historical purchases using `StockPurchaseItem.unit_price` (fallback to `total_price / quantity`)
+    - `actual_cost`: DecimalField (default = `max_cost`, editable)
+    - `lce_cost`: DecimalField calculated as `actual_cost * cost_factor`
+  - `LCEEstimateItem`:
+    - Child model linking multiple item rows to one LCE record with category, name, code, min cost, max cost, editable actual cost, and calculated `lce_cost`.
+  - `LCEBalanceSettlement`: Multi-currency payment settlements tracking advance and balance payments with bank exchange rates.
+- **API Endpoints (`erp/erp_app/sub_views/lce_estimate_api.py` & `lce_api.py`):**
+  - `POST /api/lce/items/` or `/lce/items/`: Accepts `{ item_codes: [] }`, returns item details with `min_cost`, `max_cost` from `unit_price`, and default `actual_cost`.
+  - `GET /api/lce/purchase-history/<item_code>/` or `/lce/purchase-history/<item_code>/`: Returns historic purchases list (`item_category`, `item_name`, `item_code`, `cost` [from `unit_price`], `unit_price`, `lce_cost`, purchase number, invoice, GRN, date).
+  - `GET /api/lce-estimates/`: List all LCE estimates with item details and `lce_cost`.
+  - `POST /api/lce-estimates/create/`: Create estimate with linked `items` payload including `lce_cost`.
+  - `GET|PATCH|DELETE /api/lce-estimates/record/<id>/`: Detail, update, or delete LCE estimate.
+
+### Frontend (`LCEAddPage.jsx`) UI Row Layout
+
+- **Card 1 (Add/Edit LCE):** Financial parameters, exchange rates, duty, freight, and calculated totals. `EX WORKS MATERIAL COST` is auto-computed from linked items when present.
+- **Card 2 (Payment History):** Collapsible accordion for payment settlement rows.
+- **Card 3 (Linked Item Codes & Purchase Cost History):**
+  - Multi-select dropdown bar with search filter to batch add multiple item codes.
+  - **Item Row Layout:**
+    - `Item Category` (auto, readonly)
+    - `Item Name` (auto, readonly)
+    - `Item Code` (dropdown, searchable)
+    - `Min Cost` (auto, readonly, based directly on purchase `unit_price`)
+    - `Max Cost` (auto, readonly, based directly on purchase `unit_price`)
+    - `Actual Cost` (editable, default = max)
+    - `LCE Cost` (auto, readonly = `Actual Cost × Cost Factor`, with info icon showing "Product of Actual Cost and Cost Factor" on hover)
+    - `Actions`: **"View Purchases"** button (opens modal displaying `Item Category`, `Item Name`, `Item Code`, `Cost`, `Purchase No.`, `Invoice No.`, `GRN No.`, and `Date`) + **"Remove"** button
+  - **Summary Footer:** Displays `Total Linked Items`, `Sum Actual Cost (Ex Works)`, and `Sum LCE Cost (OMR)`.
+- **Page Bottom Actions:** Centered "Save LCE Details" and "Cancel" buttons.
+
+---
+
+## Landing Cost Actuals (LCA) Module
+
+The **Landing Cost Actuals (LCA)** module is cloned from the LCE (Landing Cost Estimate) module to track actual landing costs for imported goods and materials upon arrival.
+
+### Architecture & File Mapping
+
+#### Backend (Django + DRF)
+- **Model (`erp/erp_app/sub_models/lca_model.py`):**
+  - `LandingCostActuals`: Database table `erp_app_lca` mirroring LCE fields (`ex_works_material_cost`, `packing_charges`, `documentation`, `other_charges_1`..`4`, exchange rates, bank charges, freight, duty, BOE, inspection, unloading, delivery, etc.).
+  - `LCABalanceSettlement`: Database table `erp_app_lca_balance_settlement` for tracking actual payment settlements and exchange rates.
+  - `LCAChargeTypeOption`: Database table `erp_app_lca_charge_type_option` for charge type choices.
+  - `StockPurchaseItem` linkage: Added `lca_actuals` (FK) and `lca_cost` (Decimal).
+- **API Views (`erp/erp_app/sub_views/lca_api.py`):**
+  - `LCAAddSerializer`: Model serializer for `LandingCostActuals`.
+  - Dedicated endpoints under `/api/lca/`:
+    - `GET /api/lca/` &mdash; List all LCA actuals records.
+    - `GET /api/lca/meta/` &mdash; Meta information (charge types, currencies, purchases).
+    - `POST /api/lca/charge-types/add/` &mdash; Create new charge type option.
+    - `POST /api/lca/create/` &mdash; Create a new LCA record.
+    - `GET|PATCH|DELETE /api/lca/record/<int:lca_id>/` &mdash; Detail, update, or delete an LCA record.
+    - `GET /api/lca/purchase-items/<int:purchase_id>/` &mdash; Purchase items with LCA linkage.
+
+#### Frontend (React)
+- **Services (`erp/frontend/src/services/crudApi.js`):**
+  - `listLcaActuals()`, `listLcaMeta()`, `createLcaChargeTypeOption()`, `createLcaActuals()`, `getLcaActualsById()`, `getLcaPurchaseItems()`, `updateLcaActualsById()`, `deleteLcaActualsById()`.
+- **Pages:**
+  - `LCAListPage.jsx` (`/projects/lca`): Filterable, searchable, and exportable list of LCA records with Edit and Delete actions.
+  - `LCAAddPage.jsx` (`/projects/lca/add` and `/projects/lca/record/:lcaId`): Unified Add/Edit page handling creation and editing.
+- **UI Layout (`LCAAddPage.jsx` & `LCAAddPage.css`):**
+  - **Centered Card Layout:** Follows the card layout convention (`col-4 mx-auto` / `.lca-card`) with `mb-3` spacing.
+  - **Single Column Fields:** Input fields in a single column with label on the left and form control on the right.
+  - **Card 1 (Add/Edit LCA):** Main actuals parameters, exchange rates, charges, and calculated totals.
+  - **Card 2 (Payment History):** Collapsible accordion (default closed) for multi-currency payment settlements.
+  - **Card 3 (Linked Items):** Collapsible accordion (default closed) titled *"Linked Purchase Invoice Items & Linked Purchase Items"* with purchase selector and item selection modal.
+  - **Page Bottom Actions:** Save LCA Details and Cancel buttons at the bottom of the page.
+- **Navigation:**
+  - Sidebar entry **Landing Cost Actuals** added under Projects in `homeNavigation.js` and `HomeSideNav.jsx`.
+
+

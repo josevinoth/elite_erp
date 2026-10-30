@@ -11,7 +11,15 @@ from .item_costing_mod import ItemCostingInfo
 from .item_code_name import ItemCodeName
 from .lab_furniture_item import LabFurnitureItem
 from .lce_cost_detail import LCECostDetail
-from .lce_estimate import LCEBalanceSettlement, LCEChargeTypeOption, LCEEstimate
+from .lce_estimate import (
+    LandingCostEstimate,
+    LandingCostEstimateItem,
+    LCEBalanceSettlement,
+    LCEChargeTypeOption,
+    LCEEstimate,
+    LCEEstimateItem,
+)
+from .lca_model import LandingCostActuals, LCAActuals, LCABalanceSettlement, LCAChargeTypeOption
 from .project_status_option import ProjectStatusOption
 from .project_lifecycle_status_option import ProjectLifecycleStatusOption
 from .room_data_mod import RoomDataInfo
@@ -36,7 +44,7 @@ from .team import Team
 from .timesheet import TimeSheet
 from .user_profile import UserProfile
 from .user_status_option import UserStatusOption
-from .vendor import Vendor
+from .vendor import Vendor, VendorCategory
 from .vendor_mod import VendorInfo
 from .notification_read import TaskNotificationRead, CommentNotificationRead
 from .cut_optimiser import CutOptimiserRecord, CutSize, UOM
@@ -58,9 +66,17 @@ __all__ = [
     "LabFurnitureItem",
     "LCECostDetail",
     "LCEEstimate",
+    "LCEEstimateItem",
+    "LandingCostEstimate",
+    "LandingCostEstimateItem",
     "LCEChargeTypeOption",
     "LCEBalanceSettlement",
+    "LandingCostActuals",
+    "LCAActuals",
+    "LCAChargeTypeOption",
+    "LCABalanceSettlement",
     "Vendor",
+    "VendorCategory",
     "VendorInfo",
     "Project",
     "ProjectInfo",

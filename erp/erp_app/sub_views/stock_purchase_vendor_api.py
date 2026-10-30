@@ -40,6 +40,7 @@ def _serialize(obj):
         "invoice_date": str(obj.invoice_date) if obj.invoice_date else "",
         "tax": str(obj.tax),
         "total_value": str(obj.total_value),
+        "total_after_tax": str(getattr(obj, "total_after_tax", 0)),
     }
 
 
@@ -88,6 +89,7 @@ def create_stock_purchase_vendor_detail_api_view(request):
         invoice_date=invoice_date,
         tax=_to_decimal(payload.get("tax"), "0"),
         total_value=_to_decimal(payload.get("total_value"), "0"),
+        total_after_tax=_to_decimal(payload.get("total_after_tax"), "0"),
     )
     return JsonResponse({"success": True, "vendor_detail": _serialize(obj)}, status=201)
 
@@ -127,6 +129,8 @@ def stock_purchase_vendor_detail_api_view(request, pk):
     obj.invoice_date = next_invoice_date
     obj.tax = _to_decimal(payload.get("tax", obj.tax), str(obj.tax))
     obj.total_value = _to_decimal(payload.get("total_value", obj.total_value), str(obj.total_value))
+    if "total_after_tax" in payload:
+        obj.total_after_tax = _to_decimal(payload.get("total_after_tax", obj.total_after_tax), str(obj.total_after_tax))
     obj.save()
     return JsonResponse({"success": True, "vendor_detail": _serialize(obj)})
 

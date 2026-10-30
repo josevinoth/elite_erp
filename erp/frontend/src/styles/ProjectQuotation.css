@@ -388,3 +388,72 @@
   }
 }
 
+.pq-table-wrap-list .users-table__filter-input,
+.pq-table-wrap-items .users-table__filter-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.28rem 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background-color: #ffffff;
+  color: #1e293b;
+}
+
+.pq-table-wrap-list .users-table__filter-input:focus,
+.pq-table-wrap-items .users-table__filter-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* ── Card Styling matching LCA Add / Edit page ── */
+.pq-card {
+  width: 100%;
+  max-width: 100%;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pq-card:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+
+.pq-card .card-header,
+.pq-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(135deg, #2a3042 0%, #36405a 100%);
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pq-card .card-header h2,
+.pq-card-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pq-card .card-body,
+.pq-card-body {
+  padding: 1.25rem 1.25rem 1.5rem;
+  background: #ffffff;
+}
+

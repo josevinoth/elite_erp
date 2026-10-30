@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BsBoxArrowUpRight, BsExclamationTriangleFill, BsPlusCircleFill, BsTrashFill } from "react-icons/bs";
+import { BsBoxArrowUpRight, BsExclamationTriangleFill, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircleFill } from "react-icons/bs";
+import { Card, CardHeader, CardBody } from "../components/Card";
+import StockPurchaseItemModal from "./StockPurchaseItemModal";
 import {
     checkStockPurchaseItemDelete,
     createStockPurchase,
     createStockPurchaseVendorDetail,
+    createVendor,
+    createVendorCategory,
     getStockPurchaseById,
     listLabFurnitureItemCategories,
     listLabFurnitureItems,
+    listVendorCategories,
     listVendors,
     listUoms,
     listItemTypes,
@@ -28,12 +33,10 @@ const emptyItem = (id) => ({
     item_type: "BUY",
     quantity: "",
     unit_price: "",
-    total_price: "0.0",
+    total_price: "0.00",
+    tax: "5",
+    total_after_tax: "0.00",
     uom_id: "",
-    length: "0",
-    width: "0",
-    height: "0",
-    volume: "0.0",
 });
 
 const toNumber = (value) => {
@@ -43,10 +46,308 @@ const toNumber = (value) => {
 
 const toCurrency = (value) => (Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2);
 
-const toDimensionValue = (value, fallback = "0") => {
-    if (value === null || value === undefined || value === "") return fallback;
-    return String(value);
+// Compute per-item total after tax: total_price + (total_price * tax%)
+const computeRowTotalAfterTax = (total_price, tax) => {
+    const tp = toNumber(total_price);
+    const t = toNumber(tax);
+    return toCurrency(tp + tp * (t / 100));
 };
+
+// ── Vendor Add Modal ─────────────────────────────────────────────────────────
+
+const EMPTY_VENDOR_FORM = {
+    vendor_name: "",
+    contact_person: "",
+    phone_number: "",
+    email_id: "",
+    address: "",
+    category_id: "",
+};
+
+function VendorAddModal({ onClose, onVendorCreated, vendorCategoryOptions, onAddCategory }) {
+    const [form, setForm] = useState(EMPTY_VENDOR_FORM);
+    const [saving, setSaving] = useState(false);
+    const [modalError, setModalError] = useState("");
+    const [allVendors, setAllVendors] = useState([]);
+    const [addingCategory, setAddingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState("");
+    const [categoryError, setCategoryError] = useState("");
+
+    useEffect(() => {
+        listVendors()
+            .then((data) => setAllVendors(data.vendors || []))
+            .catch(() => setAllVendors([]));
+    }, []);
+
+    const duplicateVendorName = useMemo(() => {
+        const target = String(form.vendor_name || "").trim().toLowerCase();
+        if (!target) return false;
+        return allVendors.some(
+            (v) => String(v.vendor_name || v.name || "").trim().toLowerCase() === target
+        );
+    }, [form.vendor_name, allVendors]);
+
+    const onModalChange = (e) => {
+        const { name, value } = e.target;
+        if (name === "phone_number") {
+            setForm((prev) => ({ ...prev, [name]: value.replace(/\D/g, "") }));
+            return;
+        }
+        setForm((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleModalSave = async (e) => {
+        e.preventDefault();
+        setModalError("");
+        const vn = String(form.vendor_name || "").trim();
+        if (!vn) { setModalError("Vendor name is required."); return; }
+        if (!form.category_id) { setModalError("Vendor category is required."); return; }
+        if (!String(form.contact_person || "").trim()) { setModalError("Contact person is required."); return; }
+        if (!String(form.phone_number || "").trim()) { setModalError("Phone number is required."); return; }
+        if (!String(form.email_id || "").trim()) { setModalError("Email is required."); return; }
+        if (!String(form.email_id || "").includes("@")) { setModalError("Email must contain '@'."); return; }
+        if (!String(form.address || "").trim()) { setModalError("Address is required."); return; }
+        if (duplicateVendorName) { setModalError("Vendor name already exists."); return; }
+        setSaving(true);
+        try {
+            const payload = {
+                vendor_name: vn,
+                contact_person: String(form.contact_person || "").trim(),
+                phone_number: String(form.phone_number || "").trim(),
+                email_id: String(form.email_id || "").trim(),
+                address: String(form.address || "").trim(),
+                category_id: form.category_id || null,
+            };
+            const data = await createVendor(payload);
+            onVendorCreated(data.vendor || {});
+        } catch (err) {
+            setModalError(err?.message || "Failed to create vendor.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleAddCategory = async () => {
+        setCategoryError("");
+        const name = String(newCategoryName || "").trim();
+        if (!name) { setCategoryError("Category name is required."); return; }
+        if (vendorCategoryOptions.some((c) => String(c.name || "").trim().toLowerCase() === name.toLowerCase())) {
+            setCategoryError("Category already exists."); return;
+        }
+        setAddingCategory(true);
+        try {
+            const data = await createVendorCategory({ name });
+            const cat = data.category || {};
+            onAddCategory(cat);
+            setForm((prev) => ({ ...prev, category_id: String(cat.id || "") }));
+            setNewCategoryName("");
+        } catch (err) {
+            setCategoryError(err?.message || "Failed to add category.");
+        } finally {
+            setAddingCategory(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <Card
+                className="modal-card"
+                style={{
+                    maxWidth: 680,
+                    width: "95%",
+                    maxHeight: "90vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    padding: 0,
+                    overflow: "hidden",
+                }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <CardHeader style={{ flexShrink: 0 }}>
+                    <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <BsPlusCircleFill />
+                        Add Vendor
+                    </h3>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#ffffff",
+                            fontSize: "1.3rem",
+                            display: "flex",
+                            alignItems: "center",
+                        }}
+                        aria-label="Close"
+                    >
+                        <BsXCircleFill />
+                    </button>
+                </CardHeader>
+                <CardBody style={{ padding: "1.25rem 1.5rem", overflowY: "auto", flex: "1 1 auto" }}>
+                    {modalError ? (
+                        <p className="users-status users-status--error" style={{ margin: "0 0 1rem", padding: "0.5rem 0.8rem" }}>
+                            {modalError}
+                        </p>
+                    ) : null}
+                    {duplicateVendorName ? (
+                        <p className="users-status users-status--warning" style={{ margin: "0 0 1rem", padding: "0.5rem 0.8rem" }}>
+                            Vendor name already exists.
+                        </p>
+                    ) : null}
+                    <form onSubmit={handleModalSave}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                            {/* Vendor Name */}
+                            <div className="modal-field-row">
+                                <label className="modal-field-row__label">
+                                    Vendor Name <span style={{ color: "#ef4444" }}>*</span>
+                                </label>
+                                <div className="modal-field-row__control">
+                                    <input
+                                        name="vendor_name"
+                                        className="auth-input"
+                                        value={form.vendor_name}
+                                        onChange={onModalChange}
+                                        placeholder="Enter vendor name"
+                                        autoFocus
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Vendor Category */}
+                            <div className="modal-field-row modal-field-row--top">
+                                <label className="modal-field-row__label">
+                                    Vendor Category <span style={{ color: "#ef4444" }}>*</span>
+                                </label>
+                                <div className="modal-field-row__control" style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                                    <select
+                                        name="category_id"
+                                        className="auth-input"
+                                        value={form.category_id}
+                                        onChange={onModalChange}
+                                        required
+                                    >
+                                        <option value="">Select category</option>
+                                        {vendorCategoryOptions.map((cat) => (
+                                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                        ))}
+                                    </select>
+                                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                                        <input
+                                            className="auth-input"
+                                            placeholder="New category name"
+                                            value={newCategoryName}
+                                            onChange={(e) => { setNewCategoryName(e.target.value); setCategoryError(""); }}
+                                            style={{ flex: 1, minWidth: 0 }}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="crud-add-btn"
+                                            style={{ whiteSpace: "nowrap", padding: "0.4rem 0.75rem", fontSize: "0.85rem" }}
+                                            onClick={handleAddCategory}
+                                            disabled={addingCategory}
+                                        >
+                                            {addingCategory ? "Adding..." : "Add Category"}
+                                        </button>
+                                    </div>
+                                    {categoryError ? (
+                                        <p style={{ color: "#ef4444", fontSize: "0.8rem", margin: 0 }}>{categoryError}</p>
+                                    ) : null}
+                                </div>
+                            </div>
+
+                            {/* Contact Person */}
+                            <div className="modal-field-row">
+                                <label className="modal-field-row__label">
+                                    Contact Person <span style={{ color: "#ef4444" }}>*</span>
+                                </label>
+                                <div className="modal-field-row__control">
+                                    <input
+                                        name="contact_person"
+                                        className="auth-input"
+                                        value={form.contact_person}
+                                        onChange={onModalChange}
+                                        placeholder="Contact person name"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Phone Number */}
+                            <div className="modal-field-row">
+                                <label className="modal-field-row__label">
+                                    Phone Number <span style={{ color: "#ef4444" }}>*</span>
+                                </label>
+                                <div className="modal-field-row__control">
+                                    <input
+                                        name="phone_number"
+                                        className="auth-input"
+                                        type="tel"
+                                        inputMode="numeric"
+                                        maxLength={15}
+                                        value={form.phone_number}
+                                        onChange={onModalChange}
+                                        placeholder="Numbers only"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Email */}
+                            <div className="modal-field-row">
+                                <label className="modal-field-row__label">
+                                    Email <span style={{ color: "#ef4444" }}>*</span>
+                                </label>
+                                <div className="modal-field-row__control">
+                                    <input
+                                        name="email_id"
+                                        className="auth-input"
+                                        type="email"
+                                        value={form.email_id}
+                                        onChange={onModalChange}
+                                        placeholder="vendor@example.com"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Address */}
+                            <div className="modal-field-row modal-field-row--top">
+                                <label className="modal-field-row__label">
+                                    Address <span style={{ color: "#ef4444" }}>*</span>
+                                </label>
+                                <div className="modal-field-row__control">
+                                    <textarea
+                                        name="address"
+                                        className="auth-input modal-form__textarea"
+                                        rows={2}
+                                        value={form.address}
+                                        onChange={onModalChange}
+                                        placeholder="Vendor address"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="modal-form__actions" style={{ marginTop: "1.25rem", display: "flex", justifyContent: "flex-end", gap: "0.6rem" }}>
+                            <button type="button" className="modal-btn modal-btn--cancel" onClick={onClose}>
+                                Cancel
+                            </button>
+                            <button type="submit" className="modal-btn modal-btn--save" disabled={saving}>
+                                {saving ? "Saving..." : "Add Vendor"}
+                            </button>
+                        </div>
+                    </form>
+                </CardBody>
+            </Card>
+        </div>
+    );
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 function StockPurchaseAddPage() {
     const navigate = useNavigate();
@@ -58,10 +359,10 @@ function StockPurchaseAddPage() {
         vendor_id: "",
         invoice_number: "",
         invoice_date: "",
-        tax: "0",
         total_value: "0",
     });
     const [vendorOptions, setVendorOptions] = useState([]);
+    const [vendorCategoryOptions, setVendorCategoryOptions] = useState([]);
     const [uomOptions, setUomOptions] = useState([]);
     const [itemTypeOptions, setItemTypeOptions] = useState([]);
     const [categoryOptions, setCategoryOptions] = useState([]);
@@ -74,6 +375,9 @@ function StockPurchaseAddPage() {
     const [status, setStatus] = useState(""); // for UI messages
     const [statusId, setStatusId] = useState("");
     const [statusOptions, setStatusOptions] = useState([]);
+    const [showVendorModal, setShowVendorModal] = useState(false);
+    const [showItemModal, setShowItemModal] = useState(false);
+    const [itemToEdit, setItemToEdit] = useState(null);
     // Fetch status options
     useEffect(() => {
         let alive = true;
@@ -103,16 +407,23 @@ function StockPurchaseAddPage() {
     useEffect(() => {
         let alive = true;
 
-        Promise.all([listVendors(), listLabFurnitureItems(), listLabFurnitureItemCategories(), listUoms(), listItemTypes()])
-            .then(([vendorData, itemData, categoryData, uomData, itemTypeData]) => {
+        Promise.all([
+            listVendors(),
+            listLabFurnitureItems(),
+            listLabFurnitureItemCategories(),
+            listUoms(),
+            listItemTypes(),
+            listVendorCategories(),
+        ])
+            .then(([vendorData, itemData, categoryData, uomData, itemTypeData, vendorCatData]) => {
                 if (!alive) return;
                 setVendorOptions(vendorData.vendors || []);
                 setItemMasterOptions(itemData.lab_furniture_items || []);
                 setCategoryOptions(categoryData.item_categories || []);
                 setUomOptions(Array.isArray(uomData) ? uomData : (uomData.uoms || []));
-                // Handle itemTypeData - could be array or object with data key
                 const itemTypes = Array.isArray(itemTypeData) ? itemTypeData : (itemTypeData?.item_types || []);
                 setItemTypeOptions(itemTypes);
+                setVendorCategoryOptions(vendorCatData.categories || []);
             })
             .catch(() => {
                 if (!alive) return;
@@ -121,6 +432,7 @@ function StockPurchaseAddPage() {
                 setCategoryOptions([]);
                 setUomOptions([]);
                 setItemTypeOptions([]);
+                setVendorCategoryOptions([]);
             });
 
         return () => {
@@ -144,38 +456,39 @@ function StockPurchaseAddPage() {
                 const record = data.stock_purchase || {};
                 const vendorDetail = record.vendor_detail || {};
                 const loadedItems = Array.isArray(record.items)
-                    ? record.items.map((item, index) => ({
-                        rowId: item.id || index + 1,
-                        grn_number: item.grn_number || "",
-                        item_master_id: item.item_master_id ? String(item.item_master_id) : (item.item_code_id ? String(item.item_code_id) : ""),
-                        item_category_id: item.item_category_id ? String(item.item_category_id) : "",
-                        item_category: item.item_category || "",
-                        item_name: item.item_name || "",
-                        item_code: item.item_code || "",
-                        item_code_id: item.item_code_id ? String(item.item_code_id) : (item.item_master_id ? String(item.item_master_id) : ""),
-                        item_type: item.item_type || "BUY",
-                        quantity: item.quantity || "0",
-                        unit_price: item.unit_price || "0",
-                        total_price: item.total_price || "0",
-                        lce_estimate_id: item.lce_estimate_id || null,
-                        uom_id: item.uom_id ? String(item.uom_id) : "",
-                        length: item.length || "0",
-                        width: item.width || "0",
-                        height: item.height || "0",
-                        volume: item.volume || "0.00",
-                    }))
+                    ? record.items.map((item, index) => {
+                        const tp = item.total_price || "0";
+                        const tax = item.tax !== undefined && item.tax !== null && item.tax !== "" ? item.tax : "5";
+                        return {
+                            rowId: item.id || index + 1,
+                            grn_number: item.grn_number || "",
+                            item_master_id: item.item_master_id ? String(item.item_master_id) : (item.item_code_id ? String(item.item_code_id) : ""),
+                            item_category_id: item.item_category_id ? String(item.item_category_id) : "",
+                            item_category: item.item_category || "",
+                            item_name: item.item_name || "",
+                            item_code: item.item_code || "",
+                            item_code_id: item.item_code_id ? String(item.item_code_id) : (item.item_master_id ? String(item.item_master_id) : ""),
+                            item_type: item.item_type || "BUY",
+                            quantity: item.quantity || "0",
+                            unit_price: item.unit_price || "0",
+                            total_price: tp,
+                            tax: tax,
+                            total_after_tax: item.total_after_tax || computeRowTotalAfterTax(tp, tax),
+                            lce_estimate_id: item.lce_estimate_id || null,
+                            uom_id: item.uom_id ? String(item.uom_id) : "",
+                        };
+                    })
                     : [];
 
                 setVendorFormValues({
                     vendor_id: vendorDetail.vendor_id ? String(vendorDetail.vendor_id) : "",
                     invoice_number: vendorDetail.invoice_number || "",
                     invoice_date: vendorDetail.invoice_date || "",
-                    tax: vendorDetail.tax || "0",
                     total_value: vendorDetail.total_value || "",
                 });
                 setSpNumber(record.purchase_number || "");
                 setSavedPurchaseDetailId(vendorDetail.id || null);
-                setPurchaseStatus(vendorDetail.id ? "Purchase details loaded." : "");
+                setPurchaseStatus("");
                 setNotes(record.notes || "");
                 setItems(loadedItems.length ? loadedItems : [emptyItem(1)]);
                 setNextItemId((loadedItems.reduce((max, row) => Math.max(max, Number(row.rowId) || 0), 0) || 0) + 1);
@@ -206,12 +519,26 @@ function StockPurchaseAddPage() {
         return toCurrency(total);
     }, [items]);
 
+    // Sum of all per-item total_after_tax values
     const computedTotalAfterTax = useMemo(() => {
-        const subtotal = toNumber(computedItemsTotalValue);
-        const taxPercent = toNumber(vendorFormValues.tax);
-        const totalAfterTax = subtotal + (subtotal * taxPercent / 100);
-        return toCurrency(totalAfterTax);
-    }, [computedItemsTotalValue, vendorFormValues.tax]);
+        const total = items.reduce((sum, row) => sum + toNumber(row.total_after_tax), 0);
+        return toCurrency(total);
+    }, [items]);
+
+    const getItemCodesForSelection = (categoryId) => {
+        return itemMasterOptions
+            .filter(
+                (item) => !categoryId || String(item.item_category_id || "") === String(categoryId || "")
+            )
+            .map((item) => ({
+                id: String(item.id || ""),
+                code: String(item.item_code || ""),
+                name: String(item.item_name || ""),
+                categoryId: String(item.item_category_id || ""),
+            }))
+            .filter((item) => item.id && item.code)
+            .sort((a, b) => a.code.localeCompare(b.code));
+    };
 
     const getItemNamesForSelection = (categoryId) => {
         return itemMasterOptions
@@ -245,11 +572,7 @@ function StockPurchaseAddPage() {
         return itemMasterOptions.find((item) => String(item.id || "") === normalizedId) || null;
     };
 
-    const dimensionPatchFromMaster = (masterItem) => ({
-        length: toDimensionValue(masterItem?.length, "0"),
-        width: toDimensionValue(masterItem?.width, "0"),
-        height: toDimensionValue(masterItem?.height, "0"),
-        volume: toDimensionValue(masterItem?.volume, "0"),
+    const masterPatchFromMaster = (masterItem) => ({
         item_name: masterItem?.item_name || "",
         item_type: masterItem?.item_type || "BUY",
     });
@@ -262,13 +585,9 @@ function StockPurchaseAddPage() {
                 const masterItem = getItemMasterById(row.item_code_id || row.item_master_id)
                     || getItemMasterByCategoryAndName(row.item_category_id, row.item_name);
                 if (!masterItem) return row;
-                const patch = dimensionPatchFromMaster(masterItem);
+                const patch = masterPatchFromMaster(masterItem);
                 if (
-                    row.length === patch.length
-                    && row.width === patch.width
-                    && row.height === patch.height
-                    && row.volume === patch.volume
-                    && row.item_name === patch.item_name
+                    row.item_name === patch.item_name
                     && row.item_type === patch.item_type
                 ) {
                     return row;
@@ -288,6 +607,36 @@ function StockPurchaseAddPage() {
         );
     }, [itemMasterOptions]);
 
+    const handleItemCodeSelect = (rowId, itemMasterId) => {
+        setItems((prev) =>
+            prev.map((row) => {
+                if (row.rowId !== rowId) return row;
+                if (!itemMasterId) {
+                    return {
+                        ...row,
+                        item_master_id: "",
+                        item_code: "",
+                        item_code_id: "",
+                        item_name: "",
+                    };
+                }
+                const selected = getItemMasterById(itemMasterId);
+                const selectedCategory = selected ? categoryOptions.find((c) => String(c.id) === String(selected.item_category_id || "")) : null;
+                return {
+                    ...row,
+                    item_master_id: selected ? String(selected.id) : "",
+                    item_code: selected ? String(selected.item_code || "") : "",
+                    item_code_id: selected ? String(selected.id || "") : "",
+                    item_name: selected ? String(selected.item_name || "") : "",
+                    item_category_id: selected ? String(selected.item_category_id || "") : row.item_category_id,
+                    item_category: selected ? (selectedCategory?.name || selected.item_category || "") : row.item_category,
+                    item_type: selected ? String(selected.item_type || "BUY") : row.item_type,
+                    uom_id: selected?.uom_id ? String(selected.uom_id) : "",
+                };
+            })
+        );
+    };
+
     const handleCategorySelect = (rowId, categoryId) => {
         const selectedCategory = categoryOptions.find((category) => String(category.id) === String(categoryId || ""));
         setItems((prev) =>
@@ -302,7 +651,6 @@ function StockPurchaseAddPage() {
                     item_code: "",
                     item_code_id: "",
                     uom_id: "",
-                    ...dimensionPatchFromMaster(null),
                 };
             })
         );
@@ -312,19 +660,28 @@ function StockPurchaseAddPage() {
         setItems((prev) =>
             prev.map((row) => {
                 if (row.rowId !== rowId) return row;
+                if (!itemMasterId) {
+                    return {
+                        ...row,
+                        item_master_id: "",
+                        item_name: "",
+                        item_code: "",
+                        item_code_id: "",
+                    };
+                }
                 const selected = getItemMasterById(itemMasterId);
+                const selectedCategory = selected ? categoryOptions.find((c) => String(c.id) === String(selected.item_category_id || "")) : null;
                 return {
                     ...row,
                     item_master_id: selected ? String(selected.id) : "",
                     item_category_id: selected ? String(selected.item_category_id || "") : row.item_category_id,
-                    item_category: selected ? String(selected.item_category || "") : row.item_category,
+                    item_category: selected ? (selectedCategory?.name || selected.item_category || "") : row.item_category,
                     item_name: selected ? String(selected.item_name || "") : "",
                     item_code: selected ? String(selected.item_code || "") : "",
                     item_code_id: selected ? String(selected.id || "") : "",
                     item_type: selected ? String(selected.item_type || "BUY") : row.item_type,
                     // UOM is pulled from Item Master when item code is selected.
                     uom_id: selected?.uom_id ? String(selected.uom_id) : "",
-                    ...dimensionPatchFromMaster(selected),
                 };
             })
         );
@@ -338,15 +695,112 @@ function StockPurchaseAddPage() {
                 if (key === "quantity" || key === "unit_price") {
                     next.total_price = toCurrency(toNumber(next.quantity) * toNumber(next.unit_price));
                 }
+                // Recalculate total_after_tax when total_price or tax changes
+                if (key === "quantity" || key === "unit_price" || key === "tax") {
+                    next.total_after_tax = computeRowTotalAfterTax(next.total_price, next.tax);
+                }
                 return next;
             })
         );
     };
 
+    const persistItemsToBackend = async (newItems) => {
+        if (!savedPurchaseDetailId) return;
+        const cleanedItems = newItems
+            .filter((row) => String(row.item_master_id || row.item_code_id || "").trim())
+            .map((row) => ({
+                id: row.rowId,
+                grn_number: row.grn_number || "",
+                item_category_id: row.item_category_id || null,
+                item_category: row.item_category,
+                item_name: row.item_name,
+                item_code: row.item_code,
+                item_code_id: row.item_code_id || row.item_master_id || null,
+                item_master_id: row.item_master_id || row.item_code_id || null,
+                item_type: row.item_type || "BUY",
+                quantity: row.quantity || "0",
+                unit_price: row.unit_price || "0",
+                total_price: row.total_price || "0",
+                tax: row.tax || "0",
+                total_after_tax: row.total_after_tax || "0",
+                uom_id: row.uom_id || null,
+            }));
+
+        const totalVal = toCurrency(
+            cleanedItems.reduce((acc, r) => acc + (toNumber(r.total_price) || 0), 0)
+        );
+        const totalAfterTax = toCurrency(
+            cleanedItems.reduce((acc, r) => acc + (toNumber(r.total_after_tax) || 0), 0)
+        );
+
+        const payload = {
+            notes,
+            vendor_detail_id: savedPurchaseDetailId,
+            items: cleanedItems,
+            status_id: statusId,
+            total_value: totalVal,
+            total_after_tax: totalAfterTax,
+        };
+
+        try {
+            setSaving(true);
+            const successData = isEditMode
+                ? await updateStockPurchase(purchaseId, payload)
+                : await createStockPurchase(payload);
+
+            const savedSP = successData?.stock_purchase || {};
+            const savedPurchaseId = savedSP?.id;
+            const savedSpNumber = savedSP?.purchase_number || "";
+            if (savedSpNumber) setSpNumber(savedSpNumber);
+
+            if (!isEditMode && savedPurchaseId) {
+                navigate(`/stock-purchase/record/${savedPurchaseId}`, { replace: true });
+            }
+            setStatus("Items saved successfully.");
+        } catch (error) {
+            setStatus(error?.message || "Failed to save items to stock purchase.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSaveItemFromModal = async (savedItem) => {
+        let updatedItems = [];
+        setItems((prev) => {
+            if (savedItem.rowId) {
+                updatedItems = prev.map((row) => (row.rowId === savedItem.rowId ? { ...row, ...savedItem } : row));
+            } else {
+                const isSingleEmptyStub =
+                    prev.length === 1 &&
+                    !prev[0].item_code &&
+                    !prev[0].item_master_id &&
+                    !prev[0].item_code_id &&
+                    !prev[0].item_name;
+
+                const newRow = {
+                    ...savedItem,
+                    rowId: isSingleEmptyStub ? prev[0].rowId : nextItemId,
+                };
+
+                if (isSingleEmptyStub) {
+                    updatedItems = [newRow];
+                } else {
+                    setNextItemId((id) => id + 1);
+                    updatedItems = [...prev, newRow];
+                }
+            }
+            return updatedItems;
+        });
+
+        if (updatedItems.length) {
+            await persistItemsToBackend(updatedItems);
+        }
+    };
+
     const addItemRow = () => {
         if (!savedPurchaseDetailId) return;
-        setItems((prev) => [...prev, emptyItem(nextItemId)]);
-        setNextItemId((prev) => prev + 1);
+        setItemToEdit(null);
+        setShowItemModal(true);
     };
 
     const closeDeleteDialog = () => {
@@ -359,14 +813,21 @@ function StockPurchaseAddPage() {
         });
     };
 
-    const confirmDeleteItemRow = () => {
+    const confirmDeleteItemRow = async () => {
         const rowId = deleteDialog.rowId;
         if (!rowId) {
             closeDeleteDialog();
             return;
         }
-        setItems((prev) => (prev.length > 1 ? prev.filter((r) => r.rowId !== rowId) : prev));
+        let updated = items;
+        if (items.length > 1) {
+            updated = items.filter((r) => r.rowId !== rowId);
+            setItems(updated);
+        }
         closeDeleteDialog();
+        if (updated.length) {
+            await persistItemsToBackend(updated);
+        }
     };
 
     const deleteItemRow = async (rowId) => {
@@ -453,8 +914,8 @@ function StockPurchaseAddPage() {
                 vendor_id: vendorFormValues.vendor_id,
                 invoice_number: vendorFormValues.invoice_number,
                 invoice_date: vendorFormValues.invoice_date,
-                tax: vendorFormValues.tax || "0",
                 total_value: computedItemsTotalValue,
+                total_after_tax: computedTotalAfterTax,
             };
             const data = savedPurchaseDetailId
                 ? await updateStockPurchaseVendorDetail(savedPurchaseDetailId, payload)
@@ -493,6 +954,8 @@ function StockPurchaseAddPage() {
                 quantity: row.quantity || "0",
                 unit_price: row.unit_price || "0",
                 total_price: row.total_price || "0",
+                tax: row.tax || "0",
+                total_after_tax: row.total_after_tax || "0",
                 uom_id: row.uom_id || null,
             }));
 
@@ -534,6 +997,8 @@ function StockPurchaseAddPage() {
                 vendor_detail_id: savedPurchaseDetailId,
                 items: cleanedItems,
                 status_id: statusId,
+                total_value: computedItemsTotalValue,
+                total_after_tax: computedTotalAfterTax,
             };
             const successData = isEditMode
                 ? await updateStockPurchase(purchaseId, payload)
@@ -599,143 +1064,150 @@ function StockPurchaseAddPage() {
                     {isEditMode ? "Stock Purchase Edit" : "Stock Purchase Add"}
                     {spNumber ? <span style={{ marginLeft: "0.75rem", color: "#0ea5e9", fontWeight: 700, fontSize: "1rem" }}>[{spNumber}]</span> : null}
                 </h1>
-                <button
-                    type="button"
-                    className="crud-add-btn"
-                    onClick={() => navigate("/stock-purchase")}
-                    disabled={saving}
-                >
-                    Back to List
-                </button>
             </div>
 
             {loadingRecord ? <p className="users-status">Loading record...</p> : null}
 
             {!loadingRecord ? <form className="modal-form stock-purchase-add-form" onSubmit={handleSubmit}>
                 <div className="stock-purchase-add-form__row--full">
-                    <h3 style={{ margin: "0.2rem 0 0.6rem" }}>Purchase Details</h3>
-                </div>
+                    <Card className="purchase-details-card mb-3">
+                        <CardHeader>
+                            <h3 style={{ margin: 0 }}>Purchase Details</h3>
+                        </CardHeader>
+                        <CardBody>
+                            {renderSectionAlert(purchaseStatus)}
 
-                <div className="stock-purchase-add-form__row--full">
-                    {renderSectionAlert(purchaseStatus)}
-                </div>
+                            <div className="modal-form__row stock-purchase-add-form__purchase-details-row">
+                                <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-vendor-id">Vendor *</label>
+                                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                                        <select
+                                            id="sp-vendor-id"
+                                            name="vendor_id"
+                                            className="auth-input"
+                                            style={{ flex: 1 }}
+                                            value={vendorFormValues.vendor_id}
+                                            onChange={handleVendorChange}
+                                            required
+                                        >
+                                            <option value="">Select vendor</option>
+                                            {vendorOptions.map((vendor) => (
+                                                <option key={vendor.id} value={vendor.id}>{vendor.vendor_name || vendor.name}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            className="crud-add-btn"
+                                            style={{ whiteSpace: "nowrap", padding: "0.35rem 0.7rem", fontSize: "0.85rem" }}
+                                            onClick={() => setShowVendorModal(true)}
+                                            title="Add new vendor"
+                                            aria-label="Add new vendor"
+                                        >
+                                            <BsPlusCircleFill style={{ marginRight: "0.3rem" }} />
+                                            Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-invoice-number">Invoice Number</label>
+                                    <input
+                                        id="sp-invoice-number"
+                                        name="invoice_number"
+                                        type="text"
+                                        className="auth-input"
+                                        value={vendorFormValues.invoice_number}
+                                        onChange={handleVendorChange}
+                                        required
+                                    />
+                                </div>
+                                <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-invoice-date">Invoice Date</label>
+                                    <input
+                                        id="sp-invoice-date"
+                                        name="invoice_date"
+                                        type="date"
+                                        className="auth-input"
+                                        value={vendorFormValues.invoice_date}
+                                        onChange={handleVendorChange}
+                                        required
+                                    />
+                                </div>
+                                <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-total-value">Total Value</label>
+                                    <input
+                                        id="sp-total-value"
+                                        name="total_value"
+                                        type="number"
+                                        step="any"
+                                        className="auth-input auth-input--readonly"
+                                        value={computedItemsTotalValue}
+                                        readOnly
+                                        disabled
+                                        title="Sum of all item Total Price values"
+                                    />
+                                </div>
+                                <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-total-after-tax">Total After Tax</label>
+                                    <input
+                                        id="sp-total-after-tax"
+                                        type="number"
+                                        step="any"
+                                        className="auth-input auth-input--readonly"
+                                        value={computedTotalAfterTax}
+                                        readOnly
+                                        disabled
+                                        title="Sum of all item Total After Tax values"
+                                    />
+                                </div>
+                                <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-status">Status *</label>
+                                    <select
+                                        id="sp-status"
+                                        name="status_id"
+                                        className="auth-input"
+                                        value={statusId}
+                                        onChange={e => setStatusId(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">Select status</option>
+                                        {statusOptions.map((opt) => (
+                                            <option key={opt.id} value={opt.id}>{opt.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
 
-                <div className="modal-form__row stock-purchase-add-form__row--full stock-purchase-add-form__purchase-details-row">
-                    <div className="modal-form__row">
-                        <label className="modal-form__label" htmlFor="sp-vendor-id">Vendor *</label>
-                        <select
-                            id="sp-vendor-id"
-                            name="vendor_id"
-                            className="auth-input"
-                            value={vendorFormValues.vendor_id}
-                            onChange={handleVendorChange}
-                            required
-                        >
-                            <option value="">Select vendor</option>
-                            {vendorOptions.map((vendor) => (
-                                <option key={vendor.id} value={vendor.id}>{vendor.vendor_name || vendor.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="modal-form__row">
-                        <label className="modal-form__label" htmlFor="sp-invoice-number">Invoice Number</label>
-                        <input
-                            id="sp-invoice-number"
-                            name="invoice_number"
-                            type="text"
-                            className="auth-input"
-                            value={vendorFormValues.invoice_number}
-                            onChange={handleVendorChange}
-                            required
-                        />
-                    </div>
-                    <div className="modal-form__row">
-                        <label className="modal-form__label" htmlFor="sp-invoice-date">Invoice Date</label>
-                        <input
-                            id="sp-invoice-date"
-                            name="invoice_date"
-                            type="date"
-                            className="auth-input"
-                            value={vendorFormValues.invoice_date}
-                            onChange={handleVendorChange}
-                            required
-                        />
-                    </div>
-                    <div className="modal-form__row">
-                        <label className="modal-form__label" htmlFor="sp-total-value">Total Value</label>
-                        <input
-                            id="sp-total-value"
-                            name="total_value"
-                            type="number"
-                            step="any"
-                            className="auth-input auth-input--readonly"
-                            value={computedItemsTotalValue}
-                            readOnly
-                            disabled
-                        />
-                    </div>
-                    <div className="modal-form__row">
-                        <label className="modal-form__label" htmlFor="sp-tax">Tax (%)</label>
-                        <input
-                            id="sp-tax"
-                            name="tax"
-                            type="number"
-                            step="any"
-                            className="auth-input"
-                            value={vendorFormValues.tax}
-                            onChange={handleVendorChange}
-                        />
-                    </div>
-                    <div className="modal-form__row">
-                        <label className="modal-form__label" htmlFor="sp-total-after-tax">Total After Tax</label>
-                        <input
-                            id="sp-total-after-tax"
-                            type="number"
-                            step="any"
-                            className="auth-input auth-input--readonly"
-                            value={computedTotalAfterTax}
-                            readOnly
-                            disabled
-                        />
-                    </div>
-                    <div className="modal-form__row">
-                        <label className="modal-form__label" htmlFor="sp-status">Status *</label>
-                        <select
-                            id="sp-status"
-                            name="status_id"
-                            className="auth-input"
-                            value={statusId}
-                            onChange={e => setStatusId(e.target.value)}
-                            required
-                        >
-                            <option value="">Select status</option>
-                            {statusOptions.map((opt) => (
-                                <option key={opt.id} value={opt.id}>{opt.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
+                            <div className="modal-form__row" style={{ marginTop: "1rem" }}>
+                                <label className="modal-form__label" htmlFor="sp-notes">Notes</label>
+                                <textarea
+                                    id="sp-notes"
+                                    name="notes"
+                                    className="auth-input modal-form__textarea"
+                                    value={notes}
+                                    onChange={(e) => setNotes(e.target.value)}
+                                />
+                            </div>
 
-                <div className="stock-purchase-add-form__row--full" style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                    <button
-                        type="button"
-                        className="crud-add-btn"
-                        onClick={handleSavePurchaseDetails}
-                        disabled={savingPurchaseDetails}
-                    >
-                        {savingPurchaseDetails ? "Saving Purchase Details..." : "Save Purchase Details"}
-                    </button>
-                </div>
-
-                <div className="modal-form__row stock-purchase-add-form__row--full">
-                    <label className="modal-form__label" htmlFor="sp-notes">Notes</label>
-                    <textarea
-                        id="sp-notes"
-                        name="notes"
-                        className="auth-input modal-form__textarea"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                    />
+                            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.6rem", marginTop: "1rem" }}>
+                                <button
+                                    type="button"
+                                    className="crud-add-btn"
+                                    onClick={handleSavePurchaseDetails}
+                                    disabled={savingPurchaseDetails}
+                                >
+                                    {savingPurchaseDetails ? "Saving Purchase Details..." : "Save Purchase Details"}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="modal-btn modal-btn--cancel"
+                                    onClick={() => navigate("/stock-purchase")}
+                                    disabled={saving || savingPurchaseDetails}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </CardBody>
+                    </Card>
                 </div>
 
                 <div className="stock-purchase-add-form__row--full">
@@ -757,191 +1229,99 @@ function StockPurchaseAddPage() {
                         <table className="users-table users-table--sp-items">
                             <thead>
                             <tr>
-                                <th style={{ width: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Category</th>
-                                <th style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>Item Name</th>
-                                <th style={{ width: "130px" }}>Item Code</th>
-                                <th style={{ width: "120px" }}>Item Type</th>
-                                <th style={{ width: "120px" }}>GRN No.</th>
-                                <th style={{ width: "140px" }}>UOM</th>
-                                <th style={{ width: "100px" }}>Qty/Size</th>
-                                <th style={{ width: "130px" }}>Unit Price</th>
-                                <th style={{ width: "130px" }}>Total Price</th>
-                                <th style={{ width: "100px" }}>Length</th>
-                                <th style={{ width: "100px" }}>Width</th>
-                                <th style={{ width: "100px" }}>Height/Thk</th>
-                                <th style={{ width: "100px" }}>Volume</th>
-                                <th style={{ width: "70px", textAlign: "center" }}>Trace</th>
-                                <th style={{ width: "60px" }}>Action</th>
+                                <th style={{ width: "150px" }}>Item Code</th>
+                                <th style={{ width: "200px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>Item Category</th>
+                                <th style={{ width: "220px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>Item Name</th>
+                                <th style={{ width: "110px" }}>Item Type</th>
+                                <th style={{ width: "110px" }}>GRN No.</th>
+                                <th style={{ width: "125px" }}>UOM</th>
+                                <th style={{ width: "95px" }}>Qty/Size</th>
+                                <th style={{ width: "110px" }}>Unit Price</th>
+                                <th style={{ width: "110px" }}>Total Price</th>
+                                <th style={{ width: "105px" }}>Tax (%)</th>
+                                <th style={{ width: "125px" }}>Total After Tax</th>
+                                <th style={{ width: "60px", textAlign: "center" }}>Action</th>
                             </tr>
                             </thead>
                             <tbody>
                             {items.map((row) => {
-                                // ...existing code...
+                                const uomObj = uomOptions.find((u) => String(u.id) === String(row.uom_id));
+                                const uomDisplay = uomObj ? (uomObj.symbol || uomObj.name) : "—";
+                                const isStubRow = !row.item_code && !row.item_name;
+
                                 return (
                                     <tr key={row.rowId}>
-                                        <td style={{ width: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>
-                                            <select
-                                                className="auth-input"
-                                                value={row.item_category_id}
-                                                onChange={(e) => handleCategorySelect(row.rowId, e.target.value)}
-                                                disabled={!savedPurchaseDetailId}
-                                            >
-                                                <option value="">Select category</option>
-                                                {categoryOptions.map((category) => (
-                                                    <option key={`${row.rowId}-cat-${category.id}`} value={category.id}>{category.name}</option>
-                                                ))}
-                                            </select>
+                                        <td style={{ width: "140px", fontWeight: 600, color: "#1e293b" }}>
+                                            {row.item_code || (isStubRow ? <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not set</span> : "—")}
                                         </td>
-                                        <td style={{ width: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
-                                            <select
-                                                className="auth-input"
-                                                value={row.item_master_id || row.item_code_id || ""}
-                                                onChange={(e) => handleItemNameSelect(row.rowId, e.target.value)}
-                                                disabled={!savedPurchaseDetailId || !row.item_category_id}
-                                            >
-                                                <option value="">Select item name</option>
-                                                {getItemNamesForSelection(row.item_category_id).map((item) => (
-                                                    <option key={`${row.rowId}-name-${item.id}`} value={item.id}>{item.name}</option>
-                                                ))}
-                                            </select>
+                                        <td style={{ width: "180px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>
+                                            {row.item_category || "—"}
                                         </td>
-                                        <td style={{ width: "130px" }}>
-                                            <input className="auth-input auth-input--readonly" value={row.item_code} readOnly disabled />
-                                        </td>
-                                        <td style={{ width: "120px" }}>
-                                            <select
-                                                className="auth-input"
-                                                value={row.item_type}
-                                                onChange={() => {}}
-                                                disabled
-                                                title="Item Type is auto-filled from Item Master"
-                                            >
-                                                <option value="">Select item type</option>
-                                                {itemTypeOptions.map((it) => (
-                                                    <option key={it.id} value={it.it_name}>{it.it_name}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                        <td style={{ width: "120px" }}>
-                                            <input className="auth-input auth-input--readonly" value={row.grn_number || "Auto"} readOnly disabled />
-                                        </td>
-                                        <td style={{ width: "140px" }}>
-                                            <select
-                                                className="auth-input"
-                                                value={row.uom_id}
-                                                onChange={() => {}}
-                                                disabled
-                                            >
-                                                <option value="">— UOM —</option>
-                                                {uomOptions.map((u) => (
-                                                    <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>
-                                                ))}
-                                            </select>
+                                        <td style={{ width: "200px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>
+                                            {row.item_name || "—"}
                                         </td>
                                         <td style={{ width: "100px" }}>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                className="auth-input"
-                                                value={row.quantity}
-                                                onChange={(e) => handleItemValueChange(row.rowId, "quantity", e.target.value)}
-                                                disabled={!savedPurchaseDetailId}
-                                            />
-                                        </td>
-                                        <td style={{ width: "130px" }}>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                className="auth-input"
-                                                value={row.unit_price}
-                                                onChange={(e) => handleItemValueChange(row.rowId, "unit_price", e.target.value)}
-                                                disabled={!savedPurchaseDetailId}
-                                            />
-                                        </td>
-                                        <td style={{ width: "130px" }}>
-                                            <input className="auth-input auth-input--readonly" value={row.total_price} readOnly />
+                                            <span style={{
+                                                display: "inline-block",
+                                                padding: "0.2rem 0.5rem",
+                                                fontSize: "0.78rem",
+                                                borderRadius: "4px",
+                                                background: "#f1f5f9",
+                                                color: "#334155",
+                                                fontWeight: 600,
+                                            }}>
+                                                {row.item_type || "BUY"}
+                                            </span>
                                         </td>
                                         <td style={{ width: "100px" }}>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                min="0"
-                                                className="auth-input auth-input--readonly"
-                                                value={row.length}
-                                                readOnly
-                                                disabled
-                                            />
+                                            {row.grn_number || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Auto</span>}
                                         </td>
-                                        <td style={{ width: "100px" }}>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                min="0"
-                                                className="auth-input auth-input--readonly"
-                                                value={row.width}
-                                                readOnly
-                                                disabled
-                                            />
+                                        <td style={{ width: "110px" }}>
+                                            {uomDisplay}
                                         </td>
-                                        <td style={{ width: "100px" }}>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                min="0"
-                                                className="auth-input auth-input--readonly"
-                                                value={row.height}
-                                                readOnly
-                                                disabled
-                                            />
+                                        <td style={{ width: "90px", textAlign: "right" }}>
+                                            {row.quantity || "0"}
                                         </td>
-                                        <td style={{ width: "100px" }}>
-                                            <input
-                                                className="auth-input auth-input--readonly"
-                                                value={row.volume}
-                                                readOnly
-                                                disabled
-                                            />
+                                        <td style={{ width: "100px", textAlign: "right" }}>
+                                            {row.unit_price ? Number(row.unit_price).toFixed(2) : "0.00"}
                                         </td>
-                                        <td style={{ width: "70px", verticalAlign: "middle", textAlign: "center" }}>
-                                            {row.rowId && row.grn_number ? (
-                                                <a
-                                                    href={`/stock-purchase/item-trace/${row.rowId}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    title="Open traceability view"
-                                                    style={{
-                                                        display: "inline-flex",
-                                                        alignItems: "center",
-                                                        gap: "0.25rem",
-                                                        color: "#16b2a5",
-                                                        fontSize: "0.75rem",
-                                                        fontWeight: 600,
-                                                        textDecoration: "none",
-                                                        padding: "2px 6px",
-                                                        border: "1px solid #16b2a5",
-                                                        borderRadius: "4px",
-                                                        whiteSpace: "nowrap",
+                                        <td style={{ width: "110px", textAlign: "right", fontWeight: 500 }}>
+                                            {row.total_price || "0.00"}
+                                        </td>
+                                        <td style={{ width: "95px", textAlign: "right" }}>
+                                            {row.tax !== undefined && row.tax !== null && row.tax !== "" ? `${row.tax}%` : "5%"}
+                                        </td>
+                                        <td style={{ width: "125px", textAlign: "right", fontWeight: 600, color: "#0f766e" }}>
+                                            {row.total_after_tax || "0.00"}
+                                        </td>
+                                        <td style={{ width: "85px", verticalAlign: "middle", textAlign: "center" }}>
+                                            <div style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center", justifyContent: "center" }}>
+                                                <button
+                                                    type="button"
+                                                    className="users-action users-action--edit"
+                                                    onClick={() => {
+                                                        setItemToEdit(row);
+                                                        setShowItemModal(true);
                                                     }}
+                                                    disabled={!savedPurchaseDetailId || saving}
+                                                    title="Edit Item"
+                                                    aria-label="Edit Item"
+                                                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                                                 >
-                                                    <BsBoxArrowUpRight size={11} aria-hidden="true" />
-                                                    Trace
-                                                </a>
-                                            ) : (
-                                                <span style={{ color: "#5a8a88", fontSize: "0.75rem" }}>—</span>
-                                            )}
-                                        </td>
-                                        <td style={{ width: "60px", verticalAlign: "middle", textAlign: "center" }}>
-                                            <button
-                                                type="button"
-                                                className="users-action users-action--delete"
-                                                onClick={() => deleteItemRow(row.rowId)}
-                                                disabled={!savedPurchaseDetailId || items.length <= 1 || saving || checkingDeleteRowId === row.rowId || !!row.lce_estimate_id}
-                                                title={checkingDeleteRowId === row.rowId ? "Checking linked usage..." : getDeleteItemTitle(row)}
-                                                aria-label="Delete"
-                                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                                            >
-                                                <BsTrashFill aria-hidden="true" />
-                                            </button>
+                                                    <BsPencilSquare aria-hidden="true" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="users-action users-action--delete"
+                                                    onClick={() => deleteItemRow(row.rowId)}
+                                                    disabled={!savedPurchaseDetailId || items.length <= 1 || saving || checkingDeleteRowId === row.rowId || !!row.lce_estimate_id}
+                                                    title={checkingDeleteRowId === row.rowId ? "Checking linked usage..." : getDeleteItemTitle(row)}
+                                                    aria-label="Delete"
+                                                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                                >
+                                                    <BsTrashFill aria-hidden="true" />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -949,15 +1329,6 @@ function StockPurchaseAddPage() {
                             </tbody>
                         </table>
                     </div>
-                </div>
-
-                <div className="modal-form__actions">
-                    <button type="button" className="modal-btn modal-btn--cancel" onClick={() => navigate("/stock-purchase")}>
-                        Cancel
-                    </button>
-                    <button type="submit" className="modal-btn modal-btn--save" disabled={saving}>
-                        {saving ? "Saving..." : "Save"}
-                    </button>
                 </div>
             </form> : null}
 
@@ -988,6 +1359,42 @@ function StockPurchaseAddPage() {
                     </div>
                 </div>
             ) : null}
+
+            {/* Vendor Add Modal */}
+            {showVendorModal ? (
+                <VendorAddModal
+                    onClose={() => setShowVendorModal(false)}
+                    onVendorCreated={(newVendor) => {
+                        setVendorOptions((prev) => [...prev, newVendor]);
+                        setVendorFormValues((prev) => ({ ...prev, vendor_id: String(newVendor.id || "") }));
+                        setShowVendorModal(false);
+                        setPurchaseStatus(`Vendor "${newVendor.vendor_name || newVendor.name}" added and selected.`);
+                    }}
+                    vendorCategoryOptions={vendorCategoryOptions}
+                    onAddCategory={(newCat) => {
+                        setVendorCategoryOptions((prev) => {
+                            if (prev.some((c) => c.id === newCat.id)) return prev;
+                            return [...prev, newCat].sort((a, b) => a.name.localeCompare(b.name));
+                        });
+                    }}
+                />
+            ) : null}
+
+            {/* Purchase Item Add/Edit Modal */}
+            <StockPurchaseItemModal
+                isOpen={showItemModal}
+                onClose={() => {
+                    setShowItemModal(false);
+                    setItemToEdit(null);
+                }}
+                onSaveItem={handleSaveItemFromModal}
+                itemToEdit={itemToEdit}
+                categoryOptions={categoryOptions}
+                itemMasterOptions={itemMasterOptions}
+                itemTypeOptions={itemTypeOptions}
+                uomOptions={uomOptions}
+                existingItems={items}
+            />
         </section>
     );
 }

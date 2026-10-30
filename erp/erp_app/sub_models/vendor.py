@@ -2,9 +2,32 @@ from django.db import models
 from ..utils import normalize_text
 
 
+class VendorCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = normalize_text(self.name)
+        super().save(*args, **kwargs)
+
+
 class Vendor(models.Model):
     vendor_code = models.CharField(max_length=20, unique=True, null=True, blank=True, db_index=True)
     name = models.CharField(max_length=200, unique=True)
+    category = models.ForeignKey(
+        VendorCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vendors",
+    )
     contact_person = models.CharField(max_length=150, blank=True)
     email = models.CharField(max_length=254, blank=True)
     phone = models.CharField(max_length=30, blank=True)

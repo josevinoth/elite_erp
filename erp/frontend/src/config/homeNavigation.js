@@ -58,7 +58,8 @@ export const homeNavItems = [
       },
     ],
   },
-  { label: "LCE", to: "/projects/costing", icon: "lce", superAdminOnly: true },
+  { label: "Landing Cost Estimate (LCE)", to: "/projects/costing", icon: "lce", superAdminOnly: true },
+  { label: "Landing Cost Actuals (LCA)", to: "/projects/lca", icon: "lca", superAdminOnly: true },
   { label: "Vendors", to: "/vendors", icon: "vendors" },
   { label: "Orders", to: "/orders", icon: "orders" },
   {
@@ -82,6 +83,7 @@ export const homeNavItems = [
         label: "Place Stock Order",
         to: "/stock-purchase/place-order",
         icon: "placeStockOrder",
+        superAdminOnly: true,
       },
       {
         label: "Stock Maintenance",
