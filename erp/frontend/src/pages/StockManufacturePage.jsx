@@ -44,7 +44,7 @@ const calcRow = (row) => ({
 });
 
 // ─── shared table header ──────────────────────────────────────────────────────
-function TableHead({ showAction }) {
+function TableHead({ showAction, showAudit }) {
   return (
     <thead>
       <tr>
@@ -61,6 +61,8 @@ function TableHead({ showAction }) {
         <th style={{ width: "100px" }}>Width</th>
         <th style={{ width: "110px" }}>Height / Thk</th>
         <th style={{ width: "100px" }}>Volume</th>
+        {showAudit && <th style={{ width: "120px" }}>Updated By</th>}
+        {showAudit && <th style={{ width: "150px" }}>Updated On</th>}
         {showAction && <th style={{ width: "110px", textAlign: "center" }}>Action</th>}
       </tr>
     </thead>
@@ -390,6 +392,8 @@ function StockManufacturePage() {
       <td style={{ width: "100px" }}>
         <input className="auth-input auth-input--readonly" value={row.volume} readOnly disabled />
       </td>
+      {showAudit && <td style={{ width: "120px" }}>—</td>}
+      {showAudit && <td style={{ width: "150px" }}>—</td>}
     </>
   );
 
@@ -461,13 +465,13 @@ function StockManufacturePage() {
       {/* ── LIST TABLE ──────────────────────────────────────────────────── */}
       <div className="users-table-wrap" style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}>
         <table className="users-table users-table--sp-items">
-          <TableHead showAction />
+          <TableHead showAction showAudit />
           <tbody>
             {loading && (
-              <tr><td colSpan={14} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
+              <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
             )}
             {!loading && listRows.length === 0 && (
-              <tr><td colSpan={14} style={{ textAlign: "center", padding: "1rem", color: "#888" }}>No records found.</td></tr>
+              <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem", color: "#888" }}>No records found.</td></tr>
             )}
             {listRows.map((row) => (
               <tr key={row.id}>
@@ -478,6 +482,7 @@ function StockManufacturePage() {
                       onCategoryChange={handleEditCategory}
                       onItemNameChange={handleEditItemName}
                       onFieldChange={(k, v) => patchEdit({ [k]: v })}
+                      showAudit
                     />
                     <td style={{ width: "110px", verticalAlign: "middle", textAlign: "center" }}>
                       <div style={{ display: "flex", gap: "0.3rem", justifyContent: "center" }}>
@@ -511,6 +516,8 @@ function StockManufacturePage() {
                     <td style={{ width: "100px", textAlign: "right" }}>{row.width}</td>
                     <td style={{ width: "110px", textAlign: "right" }}>{row.height}</td>
                     <td style={{ width: "100px", textAlign: "right" }}>{row.volume}</td>
+                    <td style={{ width: "120px" }}>{row.updated_by || "—"}</td>
+                    <td style={{ width: "150px" }}>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
                     <td style={{ width: "110px", verticalAlign: "middle", textAlign: "center" }}>
                       <div style={{ display: "flex", gap: "0.3rem", justifyContent: "center" }}>
                         <button type="button" className="users-action users-action--edit"

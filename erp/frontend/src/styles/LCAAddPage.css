@@ -1,0 +1,215 @@
+/* ── LCA Add / Edit Page Card Layout ── */
+
+.lca-page-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1rem 3rem;
+  width: 100%;
+}
+
+/* ── Card Styling matching Vendor Add card ── */
+.lca-card {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  width: 70%;
+  min-width: 720px;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.lca-card:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+
+/* ── Single-column field layout inside the card matching list ── */
+.lca-fields-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Each field pair: label left, input right */
+.lca-field-pair {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.lca-field-pair:hover {
+  background-color: #f8fafc;
+}
+
+.lca-field-pair .lca-label {
+  flex: 0 0 48%;
+  max-width: 48%;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.3;
+  padding-right: 0.25rem;
+  white-space: normal;
+  word-break: break-word;
+  text-transform: uppercase;
+}
+
+.lca-field-pair .lca-input {
+  flex: 1 1 52%;
+  min-width: 0;
+}
+
+/* Full-width field */
+.lca-field-pair--full {
+  width: 100%;
+}
+
+/* Blue highlight for total supplier price & OMR values */
+.lca-field-pair--blue {
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+.lca-field-pair--blue .lca-label {
+  color: #0284c7 !important;
+  font-weight: 700 !important;
+}
+.lca-field-pair--blue .form-control {
+  color: #0284c7 !important;
+  font-weight: 700 !important;
+  background-color: #ffffff !important;
+  border-color: #7dd3fc !important;
+}
+
+/* Bold dark for Total Supplier Price (OMR) & Grand Total */
+.lca-field-pair--dark {
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+.lca-field-pair--dark .lca-label {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  font-size: 0.86rem !important;
+}
+.lca-field-pair--dark .form-control {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  font-size: 0.95rem !important;
+  background-color: #ffffff !important;
+  border-color: #94a3b8 !important;
+}
+
+/* Custom text color helpers */
+.lca-input--red {
+  color: #dc2626 !important;
+  font-weight: 600 !important;
+}
+.lca-input--green {
+  color: #16a34a !important;
+  font-weight: 600 !important;
+}
+
+/* Charge split input row */
+.lca-charge-control-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.lca-charge-control-row .form-control {
+  flex: 1;
+}
+
+.lca-btn-add-type {
+  padding: 0 0.55rem;
+  height: 36px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+/* ── Accordion Card Styling ── */
+.lca-accordion-card {
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.lca-accordion-header {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(135deg, #2a3042 0%, #36405a 100%);
+  color: #ffffff;
+  transition: background 0.15s ease;
+}
+
+.lca-accordion-header:hover {
+  background: linear-gradient(135deg, #333b52 0%, #3f4b6a 100%);
+}
+
+.lca-accordion-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.lca-accordion-title h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.lca-accordion-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+/* ── Page Actions at Bottom ── */
+.lca-page-actions {
+  width: 70%;
+  min-width: 720px;
+  max-width: 960px;
+  margin: 1rem auto 2rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+@media (max-width: 1100px) {
+  .lca-card,
+  .lca-page-actions {
+    width: 92%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .lca-card,
+  .lca-page-actions {
+    width: 100%;
+    min-width: 0;
+  }
+}

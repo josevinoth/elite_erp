@@ -59,7 +59,8 @@ function LayoutDrawingApprovalPage() {
                 <th>Project</th>
                 <th>Drawing</th>
                 <th>Approver Status</th>
-                <th>Updated</th>
+                <th>Updated By</th>
+                <th>Updated On</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -69,7 +70,8 @@ function LayoutDrawingApprovalPage() {
                   <td>{`${row.project_code || ""} ${row.project_name ? `- ${row.project_name}` : ""}`.trim()}</td>
                   <td>{row.drawing_name || "-"}</td>
                   <td>{`${row.approver_name || "Unassigned"} (${row.approver_status || "-"})`}</td>
-                  <td>{row.updated_at ? new Date(row.updated_at).toLocaleString() : "-"}</td>
+                  <td>{row.updated_by || row.approver_name || "—"}</td>
+                  <td>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
                   <td>
                     <button
                       type="button"
@@ -82,7 +84,7 @@ function LayoutDrawingApprovalPage() {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5}>No pending layout drawing approvals.</td>
+                  <td colSpan={6}>No pending layout drawing approvals.</td>
                 </tr>
               )}
             </tbody>

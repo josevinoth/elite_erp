@@ -193,6 +193,12 @@ class ProjectQuotationItemSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"item_code_id": ["Select a valid item from Item Master."]}
                 )
+            from .utils.project_quotation_costs import resolve_lce_cost_for_item
+            lce_cost = resolve_lce_cost_for_item(candidate.item_code)
+            if lce_cost <= 0:
+                raise serializers.ValidationError(
+                    {"item_code_id": [f"LCE cost is not available or 0 for item code '{candidate.item_code.item_code}'. Item cannot be added."]}
+                )
 
         if candidate.item_code_id and candidate.quotation_number_id:
             duplicate_queryset = ProjectQuotationItemInfo.objects.filter(

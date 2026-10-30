@@ -53,7 +53,7 @@ def _serializer_error_response(serializer):
                         message = str(nested[0])
                         break
     lowered = message.lower()
-    if "requested qty cannot be greater than purchase qty" in lowered:
+    if "requested qty is greater" in lowered or "requested qty cannot be greater" in lowered:
         response_status = "warning"
     response_payload = {"status": response_status, "message": message, "errors": errors}
     if response_status == "warning":
@@ -131,6 +131,90 @@ def _summary_status_name(summary):
         return direct_status_name
 
     return ProjectQuotationSummaryInfo.STATUS_WORK_IN_PROGRESS
+
+
+def _quotation_create_payload(raw_payload):
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    nested = payload.get("quotation_data")
+    merged = dict(nested) if isinstance(nested, dict) else {}
+    if not merged:
+        merged = dict(payload)
+    project_id = payload.get("project_id", merged.get("project_id"))
+    if project_id not in (None, ""):
+        merged["project_id"] = project_id
+    return merged
+
+
+def _create_or_reuse_quotation_summary(request):
+    create_payload = _quotation_create_payload(request.data)
+    project_id = create_payload.get("project_id")
+    if project_id in (None, ""):
+        return Response(
+            {"status": "error", "message": "project_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    latest_summary = (
+        ProjectQuotationSummaryInfo.objects.select_related("project", "status")
+        .filter(project_id=project_id)
+        .order_by("-revision_number", "-id")
+        .first()
+    )
+    latest_status = _summary_status_name(latest_summary)
+    confirm_new_revision = _as_bool(request.data.get("confirm_new_revision"))
+
+    if latest_summary and latest_status != ProjectQuotationSummaryInfo.STATUS_COMPLETED:
+        payload = ProjectQuotationSummaryView(request).detail_payload(latest_summary)
+        return Response(
+            {
+                "success": True,
+                "created": False,
+                "status": "success",
+                "message": "An active quotation already exists for this project.",
+                **payload,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    if latest_summary and latest_status == ProjectQuotationSummaryInfo.STATUS_COMPLETED and not confirm_new_revision:
+        next_revision = int(getattr(latest_summary, "revision_number", 1) or 1) + 1
+        return Response(
+            {
+                "success": False,
+                "status": "warning",
+                "requires_confirmation": True,
+                "message": (
+                    "Quotation for this project is complete. "
+                    f"Do you want to create a new revision (R{next_revision})?"
+                ),
+                "next_revision_number": next_revision,
+                "next_revision_code": f"R{next_revision}",
+                "latest_quotation_id": latest_summary.pk,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    if latest_summary and latest_status == ProjectQuotationSummaryInfo.STATUS_COMPLETED:
+        create_payload["revision_number"] = int(getattr(latest_summary, "revision_number", 1) or 1) + 1
+
+    serializer = ProjectQuotationSummarySerializer(data=create_payload)
+    if not serializer.is_valid():
+        return _serializer_error_response(serializer)
+
+    summary, error_response = _safe_serializer_save(serializer, "Failed to save quotation summary.")
+    if error_response:
+        return error_response
+    payload = ProjectQuotationSummaryView(request).detail_payload(summary)
+    return Response(
+        {
+            "success": True,
+            "created": True,
+            "status": "success",
+            "message": "Quotation created successfully.",
+            **payload,
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 def _to_decimal_or_none(value):
@@ -217,7 +301,8 @@ def _safe_serializer_save(serializer, fallback_message):
                         message = str(nested_values[0][0])
                         break
         lowered = message.lower()
-        response_status = "warning" if "requested qty cannot be greater than purchase qty" in lowered else "error"
+        is_qty_warning = "requested qty is greater" in lowered or "requested qty cannot be greater" in lowered
+        response_status = "warning" if is_qty_warning else "error"
         payload = {
             "status": response_status,
             "message": message,
@@ -263,15 +348,28 @@ def quotations_api_view(request):
         payload = ProjectQuotationSummaryView(request).list_payload(project_id=project_id)
         return Response(payload, status=status.HTTP_200_OK)
 
-    serializer = ProjectQuotationSummarySerializer(data=request.data)
-    if not serializer.is_valid():
-        return _serializer_error_response(serializer)
+    return _create_or_reuse_quotation_summary(request)
 
-    summary, error_response = _safe_serializer_save(serializer, "Failed to save quotation summary.")
-    if error_response:
-        return error_response
-    payload = ProjectQuotationSummaryView(request).detail_payload(summary)
-    return Response({"success": True, **payload}, status=status.HTTP_201_CREATED)
+
+@api_view(["POST"])
+@csrf_protect
+def quotation_create_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    return _create_or_reuse_quotation_summary(request)
+
+
+@api_view(["GET"])
+def quotations_list_api_view(request):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    project_id = request.GET.get("project_id")
+    payload = ProjectQuotationSummaryView(request).list_payload(project_id=project_id)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(["GET", "PATCH", "DELETE"])

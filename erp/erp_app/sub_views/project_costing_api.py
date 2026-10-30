@@ -1040,6 +1040,7 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
         if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
             return Response({"status": "error", "message": "Accepted items can only be deleted by admin."}, status=403)
         item.delete()
+        ProjectCostingItemSerializer._sync_summary_material_cost(costing_pk)
         payload = ProjectCostingItemView(request).list_payload(summary)
         return Response({"success": True, "message": "Project costing item deleted.", **payload}, status=status.HTTP_200_OK)
 
@@ -1080,6 +1081,7 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
                 return_qty = _parse_return_qty(request.data.get("return_qty"))
                 with transaction.atomic():
                     return_item, _return_allocations = _request_fifo_return(item, return_qty)
+                    ProjectCostingItemSerializer._sync_summary_material_cost(summary.pk)
             except ValueError as exc:
                 return Response({"status": "error", "message": str(exc)}, status=400)
 
@@ -1477,6 +1479,7 @@ def stock_return_item_detail_api_view(request, item_pk):
                 refreshed_allocations = _get_item_allocations(item)
                 _save_item_from_allocations(item, refreshed_allocations, rejection_comment="")
                 breakdown = _build_return_breakdown(item, refreshed_allocations)
+            ProjectCostingItemSerializer._sync_summary_material_cost(item.costing_id_id)
     except ValueError as exc:
         return Response({"status": "error", "message": str(exc)}, status=400)
 

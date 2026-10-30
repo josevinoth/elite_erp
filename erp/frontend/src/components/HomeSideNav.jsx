@@ -9,7 +9,9 @@ import {
   BsBoxes,
   BsBell,
   BsBuildingFill,
+  BsCalculatorFill,
   BsCashCoin,
+  BsCartCheck,
   BsCartCheckFill,
   BsChevronDown,
   BsChevronRight,
@@ -40,6 +42,7 @@ const iconMap = {
   stocksList: BsBarChartFill,
   stockPurchase: BsCartCheckFill,
   placeStockOrder: BsBoxArrowRight,
+  itemsToOrder: BsCartCheck,
   stockMaintenance: BsGear,
   stockManufacture: BsBoxSeam,
   stockRetrieval: BsArrowCounterclockwise,
@@ -61,14 +64,19 @@ const iconMap = {
   stockPlanning: BsBarChartFill,
   itemCosting: BsBoxSeam,
   projectCosting: BsCashCoin,
-  lce: BsReceiptCutoff,
+  lce: BsCalculatorFill,
+  lca: BsReceiptCutoff,
   orders: BsBoxArrowUpRight,
   cutSheet: BsScissors,
 };
 
 function NavIcon({ icon }) {
   const IconComponent = iconMap[icon] || BsKanbanFill;
-  return <IconComponent className={`home-sidenav__icon home-sidenav__icon--${icon}`} aria-hidden="true" />;
+  return (
+    <span className={`home-sidenav__icon-box home-sidenav__icon-box--${icon}`}>
+      <IconComponent className="home-sidenav__icon" aria-hidden="true" />
+    </span>
+  );
 }
 
 function pathMatches(targetPath, currentPathname) {

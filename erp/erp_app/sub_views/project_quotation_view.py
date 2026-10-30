@@ -50,11 +50,14 @@ class ProjectQuotationSummaryView:
             }
         return {
             "status": "success",
-            "message": f"Requested Qty is within Purchase Qty for item code {item_code}.",
+            "message": "",
         }
 
     def _validation_payload(self, items, default_success_message):
-        item_messages = [self._item_validation_state(item) for item in items]
+        item_messages = [
+            msg for msg in (self._item_validation_state(item) for item in items)
+            if msg and msg.get("status") in {"error", "warning"} and msg.get("message")
+        ]
         for candidate in item_messages:
             if candidate["status"] == "error":
                 return {**candidate, "validation_messages": item_messages}
@@ -77,23 +80,58 @@ class ProjectQuotationSummaryView:
                 .order_by("id")
             )
         validation = self._validation_payload(summary_items, "Quotation summary validated successfully.")
+        updated_by_name = ""
+        if getattr(summary, "updated_by", None):
+            updated_by_name = getattr(summary.updated_by, "username", str(summary.updated_by))
+        elif getattr(summary.project, "updated_by", None):
+            updated_by_name = getattr(summary.project.updated_by, "username", str(summary.project.updated_by))
+        elif getattr(summary.project, "project_owner", None):
+            updated_by_name = getattr(summary.project.project_owner, "username", str(summary.project.project_owner))
+
         return {
             **ProjectQuotationSummarySerializer(summary, context=self.get_serializer_context()).data,
             "total_quotation_cost": str(summary.total_cost_to_elite or 0),
             "project_code": getattr(summary.project, "project_id", ""),
+            "updated_by": updated_by_name or "—",
+            "updated_on": summary.updated_at.strftime("%Y-%m-%d %H:%M:%S") if getattr(summary, "updated_at", None) else None,
             "validation_status": validation["status"],
             "validation_message": validation["message"],
         }
 
     def list_payload(self, project_id=None):
-        summaries = ProjectQuotationSummaryInfo.objects.select_related("project").order_by("project__project_id", "id")
+        summaries = ProjectQuotationSummaryInfo.objects.select_related("project").order_by(
+            "project__project_id",
+            "revision_number",
+            "id",
+        )
         if project_id not in (None, ""):
             summaries = summaries.filter(project_id=project_id)
 
         material_cost_type = CostTypeInfo.objects.filter(name__iexact="MATERIAL").first()
         serialized = [self._serialize_summary(summary) for summary in summaries]
+        grouped = {}
+        for row in serialized:
+            key = str(row.get("project_id") or "")
+            if key not in grouped:
+                grouped[key] = {
+                    "project_id": row.get("project_id"),
+                    "project_code": row.get("project_code") or row.get("project_id"),
+                    "project_name": row.get("project_name") or "",
+                    "quotations": [],
+                }
+            grouped[key]["quotations"].append(row)
+
+        for group in grouped.values():
+            group["quotations"].sort(
+                key=lambda quotation: (
+                    int(quotation.get("revision_number") or 1),
+                    int(quotation.get("id") or 0),
+                )
+            )
+
         return {
             "quotations": serialized,
+            "quotations_by_project": list(grouped.values()),
             "cost_types": self._serialize_cost_types(),
             "material_cost_type_id": material_cost_type.pk if material_cost_type else None,
             "status": "success",

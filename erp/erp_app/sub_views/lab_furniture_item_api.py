@@ -44,6 +44,9 @@ def _serialize_item_code_name(obj):
         "item_category_id": getattr(obj, "item_category_id", None),
         "item_category": obj.item_category.name if getattr(obj, "item_category_id", None) else "",
         "label": f"{obj.item_code} - {obj.item_name}",
+        "updated_at": getattr(obj, "updated_at", None).isoformat() if getattr(obj, "updated_at", None) else "",
+        "updated_on": getattr(obj, "updated_at", None).strftime("%Y-%m-%d %H:%M:%S") if getattr(obj, "updated_at", None) else "",
+        "updated_by": getattr(obj, "updated_by", None).username if getattr(obj, "updated_by", None) else "",
     }
 
 

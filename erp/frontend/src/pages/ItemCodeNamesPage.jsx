@@ -91,7 +91,7 @@ function ItemCodeNamesPage() {
       updateFn={updateFn}
       deleteFn={deleteItemCodeName}
       computeValues={computeValues}
-      includeAuditColumns={false}
+      includeAuditColumns={true}
       tableMaxHeight="60vh"
       tableWrapClassName="users-table-wrap--item-master"
       modalCardClassName="modal-card--item-master"

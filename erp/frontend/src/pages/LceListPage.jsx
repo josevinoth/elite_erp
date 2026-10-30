@@ -45,6 +45,8 @@ function LceListPage() {
       { key: "total_supplier_price", label: "Supplier Price" },
       { key: "total_supplier_price_omr", label: "Supplier Price (OMR)" },
       { key: "total", label: "Total" },
+      { key: "updated_by", label: "Updated By" },
+      { key: "updated_on", label: "Updated On" },
     ];
 
     const loadRows = () => {
@@ -83,18 +85,10 @@ function LceListPage() {
     return (
         <section className="module-page">
             <div className="crud-page__header" style={{marginBottom: "0.8rem"}}>
-                <h1 className="module-page__title module-page__title--projects" style={{margin: 0}}>LCE List</h1>
-                <Link
-                    className="crud-add-btn"
-                    title="LCE ADD"
-                    to="/projects/costing/add"
-                    style={{textDecoration: "none"}}
-                >
-                    LCE ADD
-                </Link>
+                <h1 className="module-page__title module-page__title--projects" style={{margin: 0}}>Landing Cost Estimate (LCE) List</h1>
             </div>
             <p className="module-page__description" style={{marginBottom: "0.9rem"}}>
-                Showing saved LCE records. Click Edit to update a record.
+                Showing saved Landing Cost Estimate (LCE) records. Click Edit to update a record.
             </p>
 
             {loading ? <p className="users-status">Loading LCE records...</p> : null}
@@ -108,6 +102,17 @@ function LceListPage() {
                     title="LCE List"
                     onSearchChange={setSearchText}
                     showDownloadButton={true}
+                    actions={[
+                      <Link
+                        key="add-lce"
+                        className="crud-add-btn"
+                        title="Add LCE"
+                        to="/projects/costing/add"
+                        style={{ textDecoration: "none" }}
+                      >
+                        + Add LCE
+                      </Link>,
+                    ]}
                   />
                   <div className="users-table-wrap" style={{maxHeight: "65vh", overflowY: "auto"}}>
                     <table className="users-table">
@@ -118,6 +123,8 @@ function LceListPage() {
                             <th style={{textAlign: "right"}}>Supplier Price</th>
                             <th style={{textAlign: "right"}}>Supplier Price (OMR)</th>
                             <th style={{textAlign: "right"}}>Total</th>
+                            <th>Updated By</th>
+                            <th>Updated On</th>
                             <th/>
                         </tr>
                         <tr>
@@ -126,6 +133,8 @@ function LceListPage() {
                             <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.total_supplier_price ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, total_supplier_price: e.target.value }))} /></th>
                             <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.total_supplier_price_omr ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, total_supplier_price_omr: e.target.value }))} /></th>
                             <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.total ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, total: e.target.value }))} /></th>
+                            <th></th>
+                            <th></th>
                             <th></th>
                         </tr>
                         </thead>
@@ -137,6 +146,8 @@ function LceListPage() {
                                 <td style={{textAlign: "right"}}>{row.total_supplier_price}</td>
                                 <td style={{textAlign: "right"}}>{row.total_supplier_price_omr}</td>
                                 <td style={{textAlign: "right"}}>{row.total}</td>
+                                <td>{row.updated_by || "—"}</td>
+                                <td>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
                                 <td>
                                     <button
                                         type="button"

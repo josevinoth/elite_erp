@@ -4,6 +4,7 @@
 
 # Core Framework
 Django==4.2.30
+djangorestframework==3.16.1
 
 # Database
 psycopg2==2.9.11

@@ -299,7 +299,7 @@ class ProjectQuotationItemInfo(models.Model):
             self.purchase_qty = _resolve_purchase_qty(resolved_master, fallback=self.purchase_qty)
             allow_over_request = bool(getattr(self, "_allow_requested_qty_override", False))
             if self.requested_qty > self.purchase_qty and not allow_over_request:
-                raise ValidationError({"requested_qty": "Requested Qty cannot be greater than Purchase Qty."})
+                raise ValidationError({"requested_qty": "Requested qty is greater that available qty. still you liek to add this for quotation?"})
             _sync_dimensions_from_item_master(self, resolved_master)
 
             actual_override = None if self.actual_cost == 0 else self.actual_cost

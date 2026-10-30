@@ -45,7 +45,7 @@ function StockPurchasePage() {
       editButtonTo={(row) => `/stock-purchase/record/${row.id}`}
       showDefaultEdit
       showDefaultDelete
-      includeAuditColumns={false}
+      includeAuditColumns={true}
     />
   );
 }
