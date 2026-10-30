@@ -288,6 +288,7 @@ function PurchaseItemModal({
                 <th style={{ width: "40px" }}></th>
                 <th>GRN No.</th>
                 <th>Purchase No.</th>
+                <th>Purchase Date</th>
                 <th>Invoice No.</th>
                 <th>Item Category</th>
                 <th>Item Name</th>
@@ -321,6 +322,7 @@ function PurchaseItemModal({
                     </td>
                     <td>{item.grn_number}</td>
                     <td>{item.purchase_number || "-"}</td>
+                    <td>{item.purchase_date || "-"}</td>
                     <td>{item.invoice_number || "-"}</td>
                     <td>{item.item_category}</td>
                     <td>{item.item_name}</td>
@@ -1485,6 +1487,7 @@ function LCAAddPage() {
                         <tr>
                           <th>GRN No.</th>
                           <th>Purchase No.</th>
+                          <th>Purchase Date</th>
                           <th>Invoice No.</th>
                           <th>Item Category</th>
                           <th>Item Name</th>
@@ -1508,6 +1511,7 @@ function LCAAddPage() {
                             <tr key={item.id}>
                               <td>{item.grn_number}</td>
                               <td>{item.purchase_number || "-"}</td>
+                              <td>{item.purchase_date || "-"}</td>
                               <td>{item.invoice_number || "-"}</td>
                               <td>{item.item_category}</td>
                               <td>{item.item_name}</td>

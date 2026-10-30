@@ -89,12 +89,14 @@ function StockPlanningPage() {
                 <th>Width</th>
                 <th>Height</th>
                 <th>Volume</th>
+                <th>Updated By</th>
+                <th>Updated On</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={14} style={{ textAlign: "center", color: "#64748b", padding: "1rem" }}>
+                  <td colSpan={16} style={{ textAlign: "center", color: "#64748b", padding: "1rem" }}>
                     No stock planning items.
                   </td>
                 </tr>
@@ -130,6 +132,8 @@ function StockPlanningPage() {
                   <td style={{ textAlign: "right" }}>{row.width}</td>
                   <td style={{ textAlign: "right" }}>{row.height}</td>
                   <td style={{ textAlign: "right" }}>{row.volume}</td>
+                  <td>{row.updated_by || "—"}</td>
+                  <td>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
                 </tr>
               ))}
             </tbody>

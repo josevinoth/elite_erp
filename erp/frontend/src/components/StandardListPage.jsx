@@ -22,7 +22,7 @@ function StandardListPage({
   showAddButton = false,
   showExportButton = true,
   exportFileName = null,
-  includeAuditColumns = false,
+  includeAuditColumns = true,
   tableMaxHeight = "62vh",
   stickyHeader = true,
   defaultPageSize = 20,

@@ -43,6 +43,8 @@ function LCAListPage() {
     { key: "total_supplier_price", label: "Supplier Price" },
     { key: "total_supplier_price_omr", label: "Supplier Price (OMR)" },
     { key: "total", label: "Total" },
+    { key: "updated_by", label: "Updated By" },
+    { key: "updated_on", label: "Updated On" },
   ];
 
   const loadRows = () => {
@@ -120,6 +122,8 @@ function LCAListPage() {
                   <th style={{ textAlign: "right" }}>Supplier Price</th>
                   <th style={{ textAlign: "right" }}>Supplier Price (OMR)</th>
                   <th style={{ textAlign: "right" }}>Total</th>
+                  <th>Updated By</th>
+                  <th>Updated On</th>
                   <th />
                 </tr>
                 <tr>
@@ -168,6 +172,8 @@ function LCAListPage() {
                       onChange={(e) => setColumnFilters((prev) => ({ ...prev, total: e.target.value }))}
                     />
                   </th>
+                  <th></th>
+                  <th></th>
                   <th />
                 </tr>
               </thead>
@@ -179,6 +185,8 @@ function LCAListPage() {
                     <td style={{ textAlign: "right" }}>{row.total_supplier_price}</td>
                     <td style={{ textAlign: "right" }}>{row.total_supplier_price_omr}</td>
                     <td style={{ textAlign: "right" }}>{row.total}</td>
+                    <td>{row.updated_by || "—"}</td>
+                    <td>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
                     <td>
                       <button
                         type="button"

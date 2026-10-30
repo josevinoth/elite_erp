@@ -113,6 +113,8 @@ def _serialize(project):
         'status': status_name,
         'expected_customer_need_date': str(
             project.expected_customer_need_date) if project.expected_customer_need_date else '',
+        'updated_at': project.updated_at.isoformat() if project.updated_at else '',
+        'updated_on': project.updated_at.strftime("%Y-%m-%d %H:%M:%S") if project.updated_at else '',
     }
 
 
@@ -312,7 +314,9 @@ def list_layout_drawing_approvals_api_view(request):
                 'drawing_name': drawing.drawing_name,
                 'approver_name': drawing.level_one_approver.username if drawing.level_one_approver else '',
                 'approver_status': drawing.level_one_status.as_name if drawing.level_one_status else '',
+                'updated_by': drawing.level_one_approver.username if drawing.level_one_approver else (drawing.project.updated_by.username if getattr(drawing.project, 'updated_by', None) else ''),
                 'updated_at': drawing.updated_at.isoformat() if drawing.updated_at else '',
+                'updated_on': drawing.updated_at.strftime("%Y-%m-%d %H:%M:%S") if drawing.updated_at else '',
                 'edit_url': f'/projects/record/{drawing.project_id}?section=layout-drawing&layoutDrawingId={drawing.id}',
             }
         )

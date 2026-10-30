@@ -147,7 +147,8 @@ def _serialize_record(record: Any):
         "project_id": record.project.project_id,
         "revision": record.revision,
         "cut_optimiser_id": record.cut_optimiser_id,
-        "updated_by": record.updated_by_id,
+        "updated_by": record.updated_by.username if record.updated_by else (str(record.updated_by_id) if record.updated_by_id else ""),
+        "updated_by_id": record.updated_by_id,
         "raw_sheet_name": record.raw_sheet_name or "",
         "raw_sheet_length": "" if record.raw_sheet_length is None else str(record.raw_sheet_length),
         "raw_sheet_width": "" if record.raw_sheet_width is None else str(record.raw_sheet_width),
@@ -165,6 +166,7 @@ def _serialize_record(record: Any):
         ],
         "created_at": record.created_at.isoformat() if record.created_at else "",
         "updated_at": record.updated_at.isoformat() if record.updated_at else "",
+        "updated_on": record.updated_at.strftime("%Y-%m-%d %H:%M:%S") if record.updated_at else "",
     }
 
 
