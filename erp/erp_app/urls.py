@@ -21,6 +21,7 @@ from .sub_views.project_quotation_api import (
     stock_planning_api_view,
 )
 from .sub_views.project_costing_api import project_costing_quotations_api_view, project_costing_status_api_view
+from .sub_views.items_to_order_api import items_to_order_api_view
 from .sub_views.lab_furniture_item_api import create_item_code_name_api_view, item_code_name_detail_api_view
 from .sub_views.stock_purchase_api import (
     purchase_item_grns_api_view,
@@ -217,6 +218,7 @@ urlpatterns = [
     path("api/quotations/list/", quotations_list_api_view, name="api-quotations-list"),
     path("api/quotations/create/", quotation_create_api_view, name="api-quotations-create"),
     path("api/quotations/stock-planning/", stock_planning_api_view, name="api-quotations-stock-planning"),
+    path("api/stocks/items-to-order/", items_to_order_api_view, name="api-stocks-items-to-order"),
     path("api/quotations/<int:pk>/", quotation_detail_api_view, name="api-quotations-detail"),
     path("api/project-quotation/<int:pk>/summary/", project_quotation_summary_api_view, name="api-project-quotation-summary"),
     path("api/project-quotation/<int:pk>/status/", quotation_status_api_view, name="api-project-quotation-status"),

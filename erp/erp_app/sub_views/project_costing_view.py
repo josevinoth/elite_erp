@@ -87,9 +87,11 @@ class ProjectCostingSummaryView:
         }
 
     def _serialize_summary(self, summary):
-        return {
-            **ProjectCostingSummarySerializer(summary, context=self.get_serializer_context()).data,
-        }
+        data = ProjectCostingSummarySerializer(summary, context=self.get_serializer_context()).data
+        data["updated_on"] = summary.updated_at.strftime("%Y-%m-%d %H:%M:%S") if getattr(summary, "updated_at", None) else None
+        if not data.get("updated_by"):
+            data["updated_by"] = getattr(summary.project, "created_by", None) or "—"
+        return data
 
     @staticmethod
     def _visible_costing_items_queryset(summary):

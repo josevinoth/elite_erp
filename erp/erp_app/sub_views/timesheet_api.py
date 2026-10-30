@@ -172,6 +172,9 @@ def _serialize(obj):
         "billing_date": str(obj.billing_date) if obj.billing_date else "",
         "efforts": str(obj.efforts),
         "remarks": obj.remarks,
+        "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
+        "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
+        "updated_by": obj.employee_name.username if obj.employee_name_id else "",
     }
 
 

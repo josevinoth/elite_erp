@@ -234,6 +234,9 @@ def _serialize(obj):
         "unit_price": str(first_item.unit_price) if first_item else "0",
         "total_price": str(first_item.total_price) if first_item else "0",
         "status": None,
+        "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
+        "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
+        "updated_by": getattr(obj, "updated_by", "") or "",
     }
 
 

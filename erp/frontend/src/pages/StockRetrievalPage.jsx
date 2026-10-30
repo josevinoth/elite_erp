@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ActionConfirmationPage from "../components/ActionConfirmationPage";
 import ConfirmPopupModal from "../components/ConfirmPopupModal";
@@ -147,6 +147,8 @@ function StockRetrievalPage() {
      { key: "grn_allocated_qty", label: "Requested Qty" },
      { key: "requested_by_name", label: "Requested By" },
      { key: "requested_on", label: "Requested On" },
+     { key: "updated_by", label: "Updated By", exportValue: (row) => row?.updated_by || row?.requested_by_name || "—" },
+     { key: "updated_on", label: "Updated On", exportValue: (row) => row?.updated_on || (row?.updated_at ? new Date(row.updated_at).toLocaleString() : (row?.requested_on ? new Date(row.requested_on).toLocaleString() : "—")) },
      { key: "length", label: "L" },
      { key: "width", label: "W" },
      { key: "height", label: "H" },
@@ -375,6 +377,8 @@ function StockRetrievalPage() {
                 <th>Requested Qty</th>
                 <th>Requested By</th>
                 <th>Requested On</th>
+                <th>Updated By</th>
+                <th>Updated On</th>
                 <th className="stock-retrieval-table__right">L</th>
                 <th className="stock-retrieval-table__right">W</th>
                 <th className="stock-retrieval-table__right">H</th>
@@ -396,6 +400,8 @@ function StockRetrievalPage() {
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.grn_allocated_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, grn_allocated_qty: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_by_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, requested_by_name: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_on ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, requested_on: e.target.value }))} /></th>
+                  <th></th>
+                  <th></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.length ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, length: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.width ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, width: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.height ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, height: e.target.value }))} /></th>
@@ -408,7 +414,7 @@ function StockRetrievalPage() {
              <tbody>
                {filteredItems.length === 0 ? (
                  <tr>
-                   <td colSpan={19} className="stock-retrieval-empty">No retrieval items found.</td>
+                   <td colSpan={21} className="stock-retrieval-empty">No retrieval items found.</td>
                  </tr>
                 ) : filteredItems.map((row) => {
                  const canEditRow = canEdit || String(row?.project_owner_id || "") === currentUserId;
@@ -426,6 +432,8 @@ function StockRetrievalPage() {
                   <td className="stock-retrieval-table__right">{row.grn_allocated_qty}</td>
                   <td>{row?.requested_by_name || "-"}</td>
                   <td>{row?.requested_on ? new Date(row.requested_on).toLocaleString() : "-"}</td>
+                  <td>{row?.updated_by || row?.requested_by_name || "—"}</td>
+                  <td>{row?.updated_on || (row?.updated_at ? new Date(row.updated_at).toLocaleString() : (row?.requested_on ? new Date(row.requested_on).toLocaleString() : "—"))}</td>
                   <td className="stock-retrieval-table__right">{row.length}</td>
                   <td className="stock-retrieval-table__right">{row.width}</td>
                   <td className="stock-retrieval-table__right">{row.height}</td>

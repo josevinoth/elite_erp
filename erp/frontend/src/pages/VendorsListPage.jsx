@@ -168,13 +168,15 @@ function VendorsListPage() {
                 <th>Phone</th>
                 <th>Email</th>
                 <th>Address</th>
+                <th>Updated By</th>
+                <th>Updated On</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredVendors.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="vendor-table__empty">
+                  <td colSpan={9} className="vendor-table__empty">
                     {search ? "No vendors match your search." : "No vendors found."}
                   </td>
                 </tr>
@@ -187,6 +189,8 @@ function VendorsListPage() {
                     <td>{vendor.phone_number || "-"}</td>
                     <td>{vendor.email_id || "-"}</td>
                     <td className="vendor-table__address">{vendor.address || "-"}</td>
+                    <td>{vendor.updated_by || "—"}</td>
+                    <td>{vendor.updated_on || (vendor.updated_at ? new Date(vendor.updated_at).toLocaleString() : "—")}</td>
                     <td>
                       <div className="vendor-table__actions">
                         <button
