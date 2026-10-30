@@ -80,6 +80,9 @@ function StocksListPage() {
           unit_price: item.unit_price || "0",
           total_price: item.total_price || "0",
           lce_cost: item.lce_cost || "0",
+          updated_at: purchase.updated_at || "",
+          updated_on: purchase.updated_on || purchase.updated_at || "",
+          updated_by: purchase.updated_by || "",
         });
       });
     });
@@ -105,9 +108,14 @@ function StocksListPage() {
 
   const renderHeaderActions = useCallback(
     () => (
-      <button type="button" className="crud-add-btn" onClick={() => navigate("/stock-purchase")}>
-        Stock Purchase
-      </button>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <button type="button" className="crud-add-btn" onClick={() => navigate("/items-to-order")}>
+          Items to Order
+        </button>
+        <button type="button" className="crud-add-btn" onClick={() => navigate("/stock-purchase")}>
+          Stock Purchase
+        </button>
+      </div>
     ),
     [navigate]
   );
@@ -121,7 +129,7 @@ function StocksListPage() {
       rowActions={rowActions}
       renderHeaderActions={renderHeaderActions}
       exportFileName="Stocks List"
-      includeAuditColumns={false}
+      includeAuditColumns={true}
       showDefaultEdit={false}
       showDefaultDelete={false}
       defaultPageSize={20}

@@ -56,7 +56,8 @@ function CutOptimiserListPage() {
     { key: "cut_optimiser_id", label: "Cut ID" },
     { key: "project_name", label: "Project" },
     { key: "revision", label: "Revision", exportValue: (row) => `R${row.revision || 1}` },
-    { key: "updated_at", label: "Last Updated", exportValue: (row) => formatDateTime(row.updated_at) },
+    { key: "updated_by", label: "Updated By" },
+    { key: "updated_at", label: "Updated On", exportValue: (row) => formatDateTime(row.updated_at) },
   ];
 
   const loadRows = async () => {
@@ -113,27 +114,30 @@ function CutOptimiserListPage() {
               <th>Cut ID</th>
               <th>Project</th>
               <th style={{ textAlign: "right" }}>Revision</th>
-              <th>Last Updated</th>
-               <th />
-             </tr>
-             <tr>
-               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.cut_optimiser_id ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, cut_optimiser_id: e.target.value }))} /></th>
-               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, project_name: e.target.value }))} /></th>
-               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.revision ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, revision: e.target.value }))} /></th>
-               <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.updated_at ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, updated_at: e.target.value }))} /></th>
-               <th></th>
-             </tr>
-           </thead>
+              <th>Updated By</th>
+              <th>Updated On</th>
+              <th />
+            </tr>
+            <tr>
+              <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.cut_optimiser_id ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, cut_optimiser_id: e.target.value }))} /></th>
+              <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, project_name: e.target.value }))} /></th>
+              <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.revision ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, revision: e.target.value }))} /></th>
+              <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.updated_by ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, updated_by: e.target.value }))} /></th>
+              <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.updated_at ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, updated_at: e.target.value }))} /></th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} style={{ textAlign: "center" }}>Loading...</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: "center" }}>Loading...</td></tr>
             ) : rows.length ? (
               rows.map((row) => (
                 <tr key={row.id}>
                   <td>{formatCutId(row.cut_optimiser_id)}</td>
                   <td>{row.project_name || "-"}</td>
                   <td style={{ textAlign: "right" }}>R{row.revision || 1}</td>
-                  <td>{formatDateTime(row.updated_at)}</td>
+                  <td>{row.updated_by || "—"}</td>
+                  <td>{formatDateTime(row.updated_at) || "—"}</td>
                   <td>
                     <button
                       type="button"

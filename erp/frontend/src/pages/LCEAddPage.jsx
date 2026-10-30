@@ -1760,7 +1760,7 @@ function LCEAddPage() {
                     color: "#64748b",
                   }}
                 >
-                  Select multiple item codes or add rows individually. Auto-fetches category, name, min &amp; max cost from purchases.
+                  Select multiple item codes. Auto-fetches min &amp; max cost from purchases.
                 </small>
               </div>
 
@@ -1775,14 +1775,12 @@ function LCEAddPage() {
                       color: "#64748b",
                     }}
                   >
-                    No item codes linked yet. Use the selector above or click &ldquo;+ Add Item Row&rdquo;.
+                    No item codes linked yet. Use the selector above to add items.
                   </p>
                 ) : (
                   <table className="users-table">
                     <thead>
                       <tr>
-                        <th style={{ minWidth: "140px" }}>Item Category</th>
-                        <th style={{ minWidth: "160px" }}>Item Name</th>
                         <th style={{ minWidth: "220px" }}>Item Code</th>
                         <th style={{ minWidth: "100px" }}>Min Cost</th>
                         <th style={{ minWidth: "100px" }}>Max Cost</th>
@@ -1806,50 +1804,39 @@ function LCEAddPage() {
                             </span>
                           </span>
                         </th>
-                        <th style={{ minWidth: "180px" }}>Actions</th>
+                        <th style={{ minWidth: "140px" }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((row) => (
-                        <tr key={row.rowId}>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              value={row.item_category || ""}
-                              readOnly
-                              disabled
-                              placeholder="Auto"
-                              title={row.item_category || "Auto-fetched category"}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              value={row.item_name || ""}
-                              readOnly
-                              disabled
-                              placeholder="Auto"
-                              title={row.item_name || "Auto-fetched name"}
-                            />
-                          </td>
-                          <td>
-                            <select
-                              className="form-control"
-                              value={row.item_code_id || ""}
-                              onChange={(e) =>
-                                handleItemCodeChange(row.rowId, e.target.value)
-                              }
-                            >
-                              <option value="">Select Item Code</option>
-                              {itemMasterOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
+                      {items.map((row) => {
+                        const master = itemMasterOptions.find(
+                          (o) =>
+                            (row.item_code_id && String(o.value) === String(row.item_code_id)) ||
+                            (row.item_code && o.item_code === row.item_code)
+                        );
+                        const itemName = row.item_name || master?.item_name || "";
+                        const itemCategory = row.item_category || master?.item_category || "";
+                        const itemCode = row.item_code || master?.item_code || "";
+                        const concatenatedItemCode = itemCode
+                          ? `${itemCode}${itemName ? ` - ${itemName}` : ""}${itemCategory ? ` (${itemCategory})` : ""}`
+                          : (itemName || "—");
+
+                        return (
+                          <tr key={row.rowId}>
+                            <td>
+                              <span
+                                style={{
+                                  fontWeight: 600,
+                                  color: "#1e293b",
+                                  fontSize: "0.875rem",
+                                  display: "inline-block",
+                                  padding: "0.25rem 0",
+                                }}
+                                title={concatenatedItemCode}
+                              >
+                                {concatenatedItemCode}
+                              </span>
+                            </td>
                           <td>
                             <input
                               type="number"
@@ -1911,9 +1898,9 @@ function LCEAddPage() {
                                 style={{ background: "#1e3a5f", color: "#93c5fd" }}
                                 onClick={() =>
                                   setHistoryModalItem({
-                                    itemCode: row.item_code,
-                                    itemName: row.item_name,
-                                    itemCategory: row.item_category,
+                                    itemCode: itemCode || row.item_code,
+                                    itemName: itemName || row.item_name,
+                                    itemCategory: itemCategory || row.item_category,
                                   })
                                 }
                                 disabled={!row.item_code}
@@ -1934,7 +1921,8 @@ function LCEAddPage() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                 )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BsPencilSquare, BsPlusCircleFill, BsXCircleFill } from "react-icons/bs";
 import { CardBody, CardHeader } from "../components/Card";
+import ConfirmPopupModal from "../components/ConfirmPopupModal";
 
 const toNumber = (value) => {
   const numeric = Number(value);
@@ -41,6 +42,12 @@ function QuotationItemModal({
   const [formError, setFormError] = useState("");
   const [loadingCost, setLoadingCost] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [alertModal, setAlertModal] = useState({
+    open: false,
+    title: "Alert",
+    message: "",
+    type: "warning",
+  });
 
   const isMaterialCostType = (costTypeId) => {
     const normalized = String(costTypeId || "").trim();
@@ -160,7 +167,12 @@ function QuotationItemModal({
         if (lceCost <= 0) {
           const errMsg = `LCE cost is not available or 0 for item code '${selected.item_code}'. You cannot add this item.`;
           setFormError(errMsg);
-          window.alert(errMsg);
+          setAlertModal({
+            open: true,
+            title: "Cannot Add Item",
+            message: errMsg,
+            type: "warning",
+          });
           setForm((prev) => ({
             ...prev,
             lce_cost: "0",
@@ -211,7 +223,12 @@ function QuotationItemModal({
       if (lceCost <= 0) {
         const errMsg = `LCE cost is not available or 0 for item code '${form.item_code}'. You cannot add this item.`;
         setFormError(errMsg);
-        window.alert(errMsg);
+        setAlertModal({
+          open: true,
+          title: "Cannot Add Item",
+          message: errMsg,
+          type: "warning",
+        });
         return;
       }
     } else {
@@ -249,7 +266,12 @@ function QuotationItemModal({
     } catch (err) {
       const msg = err.message || "Failed to save quotation item.";
       setFormError(msg);
-      window.alert(msg);
+      setAlertModal({
+        open: true,
+        title: "Error",
+        message: msg,
+        type: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -503,6 +525,17 @@ function QuotationItemModal({
           </form>
         </CardBody>
       </div>
+
+      <ConfirmPopupModal
+        open={alertModal.open}
+        title={alertModal.title}
+        type={alertModal.type}
+        message={alertModal.message}
+        confirmLabel="OK"
+        cancelLabel={null}
+        onConfirm={() => setAlertModal((prev) => ({ ...prev, open: false }))}
+        onCancel={() => setAlertModal((prev) => ({ ...prev, open: false }))}
+      />
     </div>
   );
 }

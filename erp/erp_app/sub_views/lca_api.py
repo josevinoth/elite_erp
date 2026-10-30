@@ -85,6 +85,12 @@ def _serialize_purchase_item(item):
     cat_name = getattr(item.item_category, "name", "") if item.item_category else ""
     code_val = getattr(item.item_code, "item_code", "") if item.item_code else (str(item.item_code or ""))
     sp_num = f"SPV{item.vendor_detail_id:04d}" if item.vendor_detail_id else ""
+    p_date = ""
+    if item.vendor_detail:
+        if getattr(item.vendor_detail, "invoice_date", None):
+            p_date = str(item.vendor_detail.invoice_date)
+        elif getattr(item.vendor_detail, "created_at", None):
+            p_date = item.vendor_detail.created_at.strftime("%Y-%m-%d")
 
     qty = Decimal(str(item.quantity or 0))
     unit_price = Decimal(str(item.unit_price or 0))
@@ -103,6 +109,7 @@ def _serialize_purchase_item(item):
         "id": item.id,
         "grn_number": raw_grn,
         "purchase_number": sp_num,
+        "purchase_date": p_date,
         "invoice_number": item.vendor_detail.invoice_number if item.vendor_detail else "",
         "item_category": cat_name,
         "item_name": item.item_name,
@@ -319,6 +326,9 @@ def _serialize_list_row(obj):
         "total_supplier_price": str(obj.total_supplier_price),
         "total_supplier_price_omr": str(obj.total_supplier_price_omr),
         "total": str(obj.total),
+        "updated_by": obj.created_by or "",
+        "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
+        "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
     }
 
 

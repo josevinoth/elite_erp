@@ -259,6 +259,15 @@ export async function listStockPlanningItems(projectId = null) {
   return parseJson(res);
 }
 
+export async function listItemsToOrder(projectId = null, stage = null) {
+  const params = new URLSearchParams();
+  if (projectId) params.append("project_id", String(projectId).trim());
+  if (stage) params.append("stage", String(stage).trim());
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`/api/stocks/items-to-order/${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function createQuotationSummary(payload, options = {}) {
   const normalizedPayload = payload && typeof payload === "object" ? payload : {};
   const body = {

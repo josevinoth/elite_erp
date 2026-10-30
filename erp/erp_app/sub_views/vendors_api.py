@@ -29,6 +29,9 @@ def _serialize(vendor):
         'email': vendor.email,
         'phone': vendor.phone,
         'address': vendor.address,
+        'updated_at': vendor.updated_at.isoformat() if vendor.updated_at else '',
+        'updated_on': vendor.updated_at.strftime("%Y-%m-%d %H:%M:%S") if vendor.updated_at else '',
+        'updated_by': getattr(vendor, 'updated_by', '') or '',
     }
 
 

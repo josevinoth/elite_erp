@@ -343,6 +343,45 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             return []
 
         requested_qty = Decimal(str(getattr(candidate, "requested_qty", 0) or 0))
+
+        if not allocations_data and requested_qty > 0:
+            from .sub_views.stock_purchase_api import _purchase_items_for_item_master
+            purchase_items = _purchase_items_for_item_master(candidate.item_code)
+            allocations_data = []
+            rem = requested_qty
+            for pi in purchase_items:
+                if rem <= 0:
+                    break
+                p_qty = Decimal(str(getattr(pi, "purchase_qty", None) or pi.quantity or 0))
+                consumed_qs = ProjectCostingItemAllocation.objects.select_related("costing_item__retrieval_status").filter(
+                    purchase_item=pi,
+                    costing_item__retrieval_status__status_name__in=[
+                        RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                        RetrievalStatusInfo.STATUS_ITEM_RETURN,
+                        RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+                    ],
+                )
+                if candidate.pk:
+                    consumed_qs = consumed_qs.exclude(costing_item_id=candidate.pk)
+                consumed_qty = sum(
+                    (
+                        max(
+                            Decimal(str(x.allocated_qty or 0)) - Decimal(str(getattr(x, "returned_qty", 0) or 0)),
+                            Decimal("0"),
+                        )
+                        for x in consumed_qs
+                    ),
+                    Decimal("0"),
+                )
+                avail = max(p_qty - consumed_qty, Decimal("0"))
+                if avail > 0:
+                    alloc_qty = min(rem, avail)
+                    allocations_data.append({
+                        "purchase_item": pi,
+                        "allocated_qty": alloc_qty,
+                    })
+                    rem -= alloc_qty
+
         normalized_rows = []
         total_allocated = Decimal("0")
         first_purchase_item = None
@@ -520,10 +559,25 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         instance, allocations_data = self._build_instance(validated_data)
         instance.save()
         self._sync_allocations(instance, allocations_data)
+        self._sync_summary_material_cost(instance.costing_id_id)
         return instance
 
     def update(self, instance, validated_data):
         instance, allocations_data = self._build_instance(validated_data, instance=instance)
         instance.save()
         self._sync_allocations(instance, allocations_data)
+        self._sync_summary_material_cost(instance.costing_id_id)
         return instance
+
+    @staticmethod
+    def _sync_summary_material_cost(costing_id):
+        if not costing_id:
+            return
+        from django.db.models import Sum
+        from .sub_models.project_costing_summary_mod import ProjectCostingSummaryInfo
+        summary = ProjectCostingSummaryInfo.objects.filter(pk=costing_id).first()
+        if not summary:
+            return
+        total = ProjectCostingItemInfo.objects.filter(costing_id=summary).aggregate(s=Sum("total_cost"))["s"] or Decimal("0")
+        summary.total_material_cost = total
+        summary.save()
