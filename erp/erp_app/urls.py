@@ -22,6 +22,10 @@ from .sub_views.project_quotation_api import (
 )
 from .sub_views.project_costing_api import project_costing_quotations_api_view, project_costing_status_api_view
 from .sub_views.items_to_order_api import items_to_order_api_view
+from .sub_views.lce_estimate_api import (
+    check_lce_item_usage_api_view,
+    delete_lce_item_api_view,
+)
 from .sub_views.lab_furniture_item_api import create_item_code_name_api_view, item_code_name_detail_api_view
 from .sub_views.stock_purchase_api import (
     purchase_item_grns_api_view,
@@ -153,6 +157,7 @@ from .views import (
     mark_message_notifications_read_api_view,
     mark_task_notifications_read_api_view,
     project_detail_api_view,
+    project_downstream_check_api_view,
     project_edit_api_view,
     register_api_view,
     register_meta_api_view,
@@ -211,6 +216,7 @@ urlpatterns = [
     path("api/projects/create/", create_project_api_view, name="api-projects-create"),
     path("api/projects/<int:project_id>/", project_detail_api_view, name="api-projects-detail"),
     path("api/projects/<int:project_id>/edit/", project_edit_api_view, name="api-projects-edit"),
+    path("api/projects/<int:project_id>/downstream-check/", project_downstream_check_api_view, name="api-projects-downstream-check"),
     path("api/project-quotations/", list_project_quotations_api_view, name="api-project-quotations-list"),
     path("api/project-quotations/create/", create_project_quotation_item_api_view, name="api-project-quotations-create"),
     path("api/project-quotations/<int:pk>/", project_quotation_item_detail_api_view, name="api-project-quotations-detail"),
@@ -464,6 +470,26 @@ urlpatterns = [
         "lce/purchase-history/<path:item_code>/",
         lce_purchase_history_api_view,
         name="lce-purchase-history",
+    ),
+    path(
+        "api/lce/check-item-usage/",
+        check_lce_item_usage_api_view,
+        name="api-lce-check-item-usage",
+    ),
+    path(
+        "lce/check-item-usage/",
+        check_lce_item_usage_api_view,
+        name="lce-check-item-usage",
+    ),
+    path(
+        "api/lce/delete-item/",
+        delete_lce_item_api_view,
+        name="api-lce-delete-item",
+    ),
+    path(
+        "lce/delete-item/",
+        delete_lce_item_api_view,
+        name="lce-delete-item",
     ),
     # Landing Cost Actuals (LCA)
     path("api/lca/", list_lca_actuals_api_view, name="api-lca-list"),

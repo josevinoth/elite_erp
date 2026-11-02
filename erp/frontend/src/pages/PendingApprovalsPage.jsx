@@ -470,7 +470,7 @@ function PendingApprovalsPage() {
                       <input
                         className="users-table__filter-input"
                         type="text"
-                        placeholder="Filter username..."
+                        placeholder="Filter"
                         value={filters.username}
                         onChange={(e) => setFilters((prev) => ({ ...prev, username: e.target.value }))}
                       />
@@ -479,7 +479,7 @@ function PendingApprovalsPage() {
                       <input
                         className="users-table__filter-input"
                         type="text"
-                        placeholder="Filter email..."
+                        placeholder="Filter"
                         value={filters.email}
                         onChange={(e) => setFilters((prev) => ({ ...prev, email: e.target.value }))}
                       />
@@ -488,7 +488,7 @@ function PendingApprovalsPage() {
                       <input
                         className="users-table__filter-input"
                         type="text"
-                        placeholder="Filter date..."
+                        placeholder="Filter"
                         value={filters.date_joined}
                         onChange={(e) => setFilters((prev) => ({ ...prev, date_joined: e.target.value }))}
                       />

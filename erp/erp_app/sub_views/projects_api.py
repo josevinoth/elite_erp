@@ -2,6 +2,7 @@ import datetime
 import json
 
 from django.db import transaction
+from django.db.models import ProtectedError
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 
@@ -589,6 +590,84 @@ def create_project_api_view(request):
     return Response({'success': True, 'project': _serialize(project)}, status=status.HTTP_201_CREATED)
 
 
+def get_project_downstream_connections(project):
+    """
+    Check all connected downstream models referencing this Project.
+    Returns a dict mapping readable downstream name to count of connected records.
+    """
+    connections = {}
+
+    KNOWN_RELATIONS = [
+        ("project_quotation_summaries", "Project Quotation(s)"),
+        ("project_costing_summaries", "Project Costing(s)"),
+        ("layout_drawings", "Layout Drawing(s)"),
+        ("cutoptimiserrecord_set", "Cut Sheet Optimiser Record(s)"),
+        ("lce_cost_details", "Landing Cost Estimate (LCE) Detail(s)"),
+        ("ic_project_ref", "Item Costing(s)"),
+        ("tasks", "Task(s)"),
+    ]
+
+    for attr, label in KNOWN_RELATIONS:
+        try:
+            rel = getattr(project, attr, None)
+            if rel is not None and hasattr(rel, "count"):
+                cnt = rel.count()
+                if cnt > 0:
+                    connections[label] = cnt
+        except Exception:
+            pass
+
+    checked_attrs = {attr for attr, _ in KNOWN_RELATIONS}
+    for field in project._meta.get_fields():
+        if field.is_relation and (field.one_to_many or field.one_to_one) and not field.many_to_many:
+            accessor_name = getattr(field, "get_accessor_name", lambda: None)()
+            if not accessor_name or accessor_name in checked_attrs:
+                continue
+            try:
+                rel = getattr(project, accessor_name, None)
+                if rel is not None:
+                    cnt = rel.count() if hasattr(rel, "count") else (1 if rel else 0)
+                    if cnt > 0:
+                        model_meta = getattr(getattr(field, "related_model", None), "_meta", None)
+                        label = (
+                            model_meta.verbose_name_plural.title()
+                            if model_meta
+                            else accessor_name.replace("_", " ").title()
+                        )
+                        connections[label] = cnt
+            except Exception:
+                pass
+
+    return connections
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def project_downstream_check_api_view(request, project_id):
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        return Response({'message': 'Project not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    connections = get_project_downstream_connections(project)
+    has_downstream = bool(connections)
+    details = [f"{count} {name}" for name, count in connections.items()]
+
+    return Response({
+        'project_id': project.project_id,
+        'project_name': project.project_name,
+        'has_downstream': has_downstream,
+        'can_delete': not has_downstream,
+        'connected_items': connections,
+        'details': details,
+        'message': (
+            f"Project '{project.project_id}' cannot be deleted because it is connected to {', '.join(details)}."
+            if has_downstream
+            else f"Project '{project.project_id}' has no connected downstream items and can be deleted."
+        ),
+    }, status=status.HTTP_200_OK)
+
+
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def project_detail_api_view(request, project_id):
@@ -597,8 +676,32 @@ def project_detail_api_view(request, project_id):
     except Project.DoesNotExist:
         return Response({'message': 'Project not found.'}, status=status.HTTP_404_NOT_FOUND)
     if request.method == 'DELETE':
-        project.delete()
-        return Response({'success': True, 'message': 'Project deleted.'}, status=status.HTTP_200_OK)
+        connections = get_project_downstream_connections(project)
+        if connections:
+            parts = [f"{count} {name}" for name, count in connections.items()]
+            detail_str = ", ".join(parts)
+            return Response({
+                'success': False,
+                'message': (
+                    f"Cannot delete project '{project.project_id}' ({project.project_name or 'No Name'}): "
+                    f"It has connected downstream items ({detail_str}). "
+                    f"Please remove or unlink all connected downstream records before deleting this project."
+                ),
+                'connected_items': connections,
+                'details': parts,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            project.delete()
+            return Response({
+                'success': True,
+                'message': f"Project '{project.project_id}' deleted successfully.",
+            }, status=status.HTTP_200_OK)
+        except ProtectedError as err:
+            return Response({
+                'success': False,
+                'message': f"Cannot delete project: Protected references exist ({err}).",
+            }, status=status.HTTP_400_BAD_REQUEST)
 
     payload = request.data or {}
     project_id = normalize_text(payload.get('project_id', project.project_id))
