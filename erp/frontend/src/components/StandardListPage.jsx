@@ -15,10 +15,12 @@ async function noopDelete() {
 
 function StandardListPage({
   title,
+  description = null,
   columns,
   fetchRows,
   rowKey = "id",
   addButtonTo = null,
+  addButtonLabel = null,
   showAddButton = false,
   showExportButton = true,
   exportFileName = null,
@@ -38,6 +40,7 @@ function StandardListPage({
   deleteConfirmFn = null,
   showDefaultEdit = false,
   showDefaultDelete = false,
+  enableRowClickEdit = true,
 }) {
   const fetchFn = useCallback(async () => {
     const data = await fetchRows();
@@ -47,6 +50,7 @@ function StandardListPage({
   return (
     <CrudPage
       title={title}
+      description={description}
       columns={columns}
       fields={[]}
       fetchFn={fetchFn}
@@ -55,6 +59,7 @@ function StandardListPage({
       deleteFn={deleteFn || noopDelete}
       rowKey={rowKey}
       addButtonTo={addButtonTo}
+      addButtonLabel={addButtonLabel}
       showAddButton={showAddButton}
       showExportButton={showExportButton}
       exportFileName={exportFileName || title}
@@ -73,9 +78,9 @@ function StandardListPage({
       deleteConfirmFn={deleteConfirmFn}
       showEditButton={showDefaultEdit}
       showDeleteButton={showDefaultDelete}
+      enableRowClickEdit={enableRowClickEdit}
     />
   );
 }
 
 export default StandardListPage;
-

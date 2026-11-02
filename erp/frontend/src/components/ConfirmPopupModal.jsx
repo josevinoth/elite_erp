@@ -17,6 +17,7 @@ function ConfirmPopupModal({
   cancelLabel = "Cancel",
   confirmDisabled = false,
   cancelDisabled = false,
+  maxWidth,
   onConfirm,
   onCancel,
   children = null,
@@ -59,7 +60,7 @@ function ConfirmPopupModal({
         aria-modal="true"
         aria-label={title}
         style={{
-          width: "min(520px, 94vw)",
+          width: maxWidth ? `min(${maxWidth}, 94vw)` : "min(520px, 94vw)",
           borderRadius: "10px",
           overflow: "hidden",
           boxShadow: "0 20px 45px rgba(0, 0, 0, 0.35)",
@@ -139,14 +140,17 @@ function ConfirmPopupModal({
                 {cancelLabel}
               </button>
             ) : null}
-            <button
-              type="button"
-              className="modal-btn modal-btn--save"
-              onClick={onConfirm}
-              disabled={confirmDisabled}
-            >
-              {confirmLabel}
-            </button>
+            {confirmLabel ? (
+              <button
+                type="button"
+                className={`modal-btn ${type === "danger" ? "modal-btn--danger" : "modal-btn--save"}`}
+                style={type === "danger" ? { background: "#dc2626", color: "#ffffff" } : undefined}
+                onClick={onConfirm}
+                disabled={confirmDisabled}
+              >
+                {confirmLabel}
+              </button>
+            ) : null}
           </div>
         </CardBody>
       </div>

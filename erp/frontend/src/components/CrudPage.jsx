@@ -4,6 +4,7 @@ import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } 
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import PaginationControls from "./PaginationControls";
+import ConfirmPopupModal from "./ConfirmPopupModal";
 
 const AUDIT_COLUMN_KEYS = ["updated_by", "updated_on"];
 
@@ -11,7 +12,7 @@ function getTitleVariant(title) {
   const normalized = String(title || "").toLowerCase();
   if (normalized.includes("user")) return "users";
   if (normalized.includes("vendor")) return "vendors";
-  if (normalized.includes("project")) return "projects";
+  if (normalized.includes("project") || normalized.includes("lca") || normalized.includes("lce") || normalized.includes("landing")) return "projects";
   if (normalized.includes("quotation")) return "quotation";
   if (normalized.includes("stock")) return "stock";
   if (normalized.includes("task")) return "tasks";
@@ -49,6 +50,18 @@ function normalizeUpdatedBy(row) {
   if (value && typeof value === "object") {
     return String(value.username || value.name || value.label || value.email || value.id || "");
   }
+
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    const usernameMatch = value.match(/['"]username['"]\s*:\s*['"]([^'"]+)['"]/);
+    if (usernameMatch) {
+      return usernameMatch[1];
+    }
+    const nameMatch = value.match(/['"](?:name|label|email)['"]\s*:\s*['"]([^'"]+)['"]/);
+    if (nameMatch) {
+      return nameMatch[1];
+    }
+  }
+
   return value == null ? "" : String(value);
 }
 
@@ -158,6 +171,7 @@ function CrudPage({
   computeValues = null,   // (changedKey, changedValue, allValues) => extraValues
   editDisabledPredicate = null,  // (row) => boolean
   deleteDisabledPredicate = null,  // (row) => boolean
+  checkDeleteAllowedFn = null,  // async (row) => ({ allowed: boolean, title?: string, message: string, details?: string[] })
   deleteConfirmFn = null,  // (row) => string — custom confirmation message per row
   editDisabledTitle = "Edit",
   deleteDisabledTitle = "Delete",
@@ -176,8 +190,11 @@ function CrudPage({
   defaultPageSize = 20,
   pageSizeOptions = [10, 20, 50, 100],
   enablePagination = true,
-  showEditButton = true,
+  showEditButton = false,
   showDeleteButton = true,
+  description = null,
+  addButtonLabel = null,
+  enableRowClickEdit = true,
 }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
@@ -198,6 +215,19 @@ function CrudPage({
   const [globalSearch, setGlobalSearch] = useState("");
   const autoOpenedRef = useRef(false);
   const autoEditOpenedRef = useRef(false);
+  const [deleteModalState, setDeleteModalState] = useState({
+    open: false,
+    id: null,
+    title: "Confirm Delete",
+    message: "",
+    details: [],
+    type: "danger",
+    canDelete: true,
+    confirmLabel: "Delete",
+    cancelLabel: "Cancel",
+    deleting: false,
+    loading: false,
+  });
 
   const reloadRows = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -205,13 +235,26 @@ function CrudPage({
     if (!includeAuditColumns) {
       return columns;
     }
-    const updatedByLabel = columns.find((c) => c.key === "updated_by")?.label || "Updated By";
-    const updatedOnLabel = columns.find((c) => c.key === "updated_on")?.label || "Updated On";
+    const updatedByCol = columns.find((c) => c.key === "updated_by");
+    const updatedOnCol = columns.find((c) => c.key === "updated_on");
     const baseColumns = columns.filter((c) => !AUDIT_COLUMN_KEYS.includes(c.key));
+    const defaultAuditAlign = columns[0]?.align;
+    const defaultAuditHeaderAlign = columns[0]?.headerAlign || defaultAuditAlign;
+
     return [
       ...baseColumns,
-      { key: "updated_by", label: updatedByLabel },
-      { key: "updated_on", label: updatedOnLabel },
+      {
+        key: "updated_by",
+        label: updatedByCol?.label || "Updated By",
+        align: updatedByCol?.align || defaultAuditAlign,
+        headerAlign: updatedByCol?.headerAlign || defaultAuditHeaderAlign,
+      },
+      {
+        key: "updated_on",
+        label: updatedOnCol?.label || "Updated On",
+        align: updatedOnCol?.align || defaultAuditAlign,
+        headerAlign: updatedOnCol?.headerAlign || defaultAuditHeaderAlign,
+      },
     ];
   }, [columns, includeAuditColumns]);
 
@@ -478,13 +521,87 @@ function CrudPage({
     }
   };
 
-  const handleDelete = async (id) => {
+  const promptDelete = async (id) => {
     const row = rows.find((r) => r[rowKey] === id);
+    if (!row) return;
+
+    if (typeof checkDeleteAllowedFn === "function") {
+      setDeleteModalState({
+        open: true,
+        id,
+        title: "Checking Dependencies...",
+        message: "Verifying connected downstream items...",
+        details: [],
+        type: "info",
+        canDelete: false,
+        confirmLabel: null,
+        cancelLabel: "Cancel",
+        deleting: false,
+        loading: true,
+      });
+
+      try {
+        const result = await checkDeleteAllowedFn(row);
+        const allowed = result?.allowed !== false;
+        setDeleteModalState({
+          open: true,
+          id,
+          title: result?.title || (allowed ? "Confirm Delete" : "Cannot Delete Record"),
+          message:
+            result?.message ||
+            (allowed
+              ? "Are you sure you want to delete this record?"
+              : "This record has connected downstream items."),
+          details: Array.isArray(result?.details) ? result.details : [],
+          type: result?.type || (allowed ? "danger" : "warning"),
+          canDelete: allowed,
+          confirmLabel: allowed ? (result?.confirmLabel || "Delete") : null,
+          cancelLabel: result?.cancelLabel || (allowed ? "Cancel" : "Close"),
+          deleting: false,
+          loading: false,
+        });
+      } catch (err) {
+        setDeleteModalState({
+          open: true,
+          id,
+          title: "Delete Check Failed",
+          message: err.message || "Failed to check downstream dependencies.",
+          details: [],
+          type: "warning",
+          canDelete: false,
+          confirmLabel: null,
+          cancelLabel: "Close",
+          deleting: false,
+          loading: false,
+        });
+      }
+      return;
+    }
+
     const confirmMessage =
       typeof deleteConfirmFn === "function" && row
         ? deleteConfirmFn(row)
-        : "Delete this record?";
-    if (!window.confirm(confirmMessage)) return;
+        : "Are you sure you want to delete this record?";
+
+    setDeleteModalState({
+      open: true,
+      id,
+      title: "Confirm Delete",
+      message: confirmMessage,
+      details: [],
+      type: "danger",
+      canDelete: true,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      deleting: false,
+      loading: false,
+    });
+  };
+
+  const handleExecuteDelete = async () => {
+    const id = deleteModalState.id;
+    if (id == null || !deleteModalState.canDelete) return;
+    setDeleteModalState((prev) => ({ ...prev, deleting: true }));
     setError("");
     try {
       await deleteFn(id);
@@ -493,10 +610,55 @@ function CrudPage({
         if (onRowsChange) onRowsChange(next);
         return next;
       });
+      setDeleteModalState({
+        open: false,
+        id: null,
+        title: "Confirm Delete",
+        message: "",
+        details: [],
+        type: "danger",
+        canDelete: true,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        deleting: false,
+        loading: false,
+      });
     } catch (err) {
       setError(err.message || "Delete failed.");
+      setDeleteModalState({
+        open: false,
+        id: null,
+        title: "Confirm Delete",
+        message: "",
+        details: [],
+        type: "danger",
+        canDelete: true,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        deleting: false,
+        loading: false,
+      });
     }
   };
+
+  const cancelDelete = () => {
+    if (deleteModalState.deleting) return;
+    setDeleteModalState({
+      open: false,
+      id: null,
+      title: "Confirm Delete",
+      message: "",
+      details: [],
+      type: "danger",
+      canDelete: true,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      deleting: false,
+      loading: false,
+    });
+  };
+
+  const handleDelete = promptDelete;
 
   const handleSort = (key) => {
     setSortConfig((prev) => {
@@ -634,13 +796,23 @@ function CrudPage({
       ? saveDisabledPredicate(editRow, formValues)
       : false;
 
+  const hasActionsColumn =
+    (rowActions && rowActions.length > 0) || showEditButton || showDeleteButton;
+
   const effectiveTableMaxHeight = tableMaxHeight || (stickyHeader ? "60vh" : null);
   const titleVariant = getTitleVariant(title);
 
   return (
     <section className="module-page crud-page">
       <div className="crud-page__header">
+        <div>
           <h1 className={`module-page__title module-page__title--${titleVariant}`}>{title}</h1>
+          {description ? (
+            <p className="module-page__description" style={{ margin: "0.25rem 0 0 0" }}>
+              {description}
+            </p>
+          ) : null}
+        </div>
         <div className="crud-page__header-tools">
           <input
             type="search"
@@ -682,7 +854,7 @@ function CrudPage({
           {showAddButton ? (
             <button type="button" className="crud-add-btn" onClick={handleAddClick}>
               <BsPlusCircleFill aria-hidden="true" />
-              <span>Add New</span>
+              <span>{addButtonLabel || "Add New"}</span>
             </button>
           ) : null}
         </div>
@@ -711,136 +883,200 @@ function CrudPage({
                   />
                 </th>
               ) : null}
-                {tableColumns.map((col) => (
+                {tableColumns.map((col) => {
+                  const effectiveHeaderAlign = col.headerAlign || col.align;
+                  return (
+                    <th
+                      key={col.key}
+                      className={stickyHeader ? "users-table__sticky-head" : undefined}
+                      style={{
+                        textAlign: effectiveHeaderAlign || undefined,
+                        ...(col.width ? { width: col.width, minWidth: col.width } : {}),
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="users-table__sort-btn"
+                        onClick={() => handleSort(col.key)}
+                        style={{
+                          justifyContent:
+                            effectiveHeaderAlign === "center"
+                              ? "center"
+                              : effectiveHeaderAlign === "right"
+                              ? "flex-end"
+                              : "space-between",
+                          gap: effectiveHeaderAlign === "center" ? "0.4rem" : undefined,
+                          textAlign: effectiveHeaderAlign || undefined,
+                          width: "100%",
+                        }}
+                      >
+                        <span>{col.label}</span>
+                        <span className="users-table__sort-icon">
+                          {sortConfig.key === col.key
+                            ? sortConfig.direction === "asc"
+                              ? "▲"
+                              : "▼"
+                            : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                })}
+              {hasActionsColumn ? (
                 <th
-                  key={col.key}
-                  className={stickyHeader ? "users-table__sticky-head" : undefined}
+                  className={`${stickyHeader ? "users-table__sticky-head " : ""}users-table__actions-col`}
+                  style={{ width: "50px", minWidth: "45px", maxWidth: "55px", textAlign: "center" }}
                 >
-                  <button
-                    type="button"
-                    className="users-table__sort-btn"
-                    onClick={() => handleSort(col.key)}
-                  >
-                    <span>{col.label}</span>
-                    <span className="users-table__sort-icon">
-                      {sortConfig.key === col.key
-                        ? sortConfig.direction === "asc"
-                          ? "▲"
-                          : "▼"
-                        : "↕"}
-                    </span>
-                  </button>
+                  Actions
                 </th>
-              ))}
-              <th
-                className={`${stickyHeader ? "users-table__sticky-head " : ""}users-table__actions-col`}
-              >
-                Actions
-              </th>
+              ) : null}
             </tr>
             <tr>
               {enableBulkSelect ? <th className={stickyHeader ? "users-table__sticky-filter" : undefined} /> : null}
-              {tableColumns.map((col) => (
-                <th key={`filter-${col.key}`} className={stickyHeader ? "users-table__sticky-filter" : undefined}>
-                  <input
-                    className="users-table__filter-input"
-                    type="text"
-                    placeholder="Filter"
-                    value={filters[col.key] ?? ""}
-                    onChange={(e) => handleFilterChange(col.key, e.target.value)}
-                  />
-                </th>
-              ))}
-              <th className={stickyHeader ? "users-table__sticky-filter" : undefined} />
+              {tableColumns.map((col) => {
+                const effectiveHeaderAlign = col.headerAlign || col.align;
+                return (
+                  <th
+                    key={`filter-${col.key}`}
+                    className={stickyHeader ? "users-table__sticky-filter" : undefined}
+                    style={{ textAlign: effectiveHeaderAlign || undefined }}
+                  >
+                    <input
+                      className="users-table__filter-input"
+                      type="text"
+                      placeholder="Filter"
+                      value={filters[col.key] ?? ""}
+                      onChange={(e) => handleFilterChange(col.key, e.target.value)}
+                      style={{ textAlign: effectiveHeaderAlign || undefined }}
+                    />
+                  </th>
+                );
+              })}
+              {hasActionsColumn ? (
+                <th
+                  className={`${stickyHeader ? "users-table__sticky-filter " : ""}users-table__actions-col`}
+                  style={{ width: "50px", minWidth: "45px", maxWidth: "55px", textAlign: "center" }}
+                />
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {!loading && pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={tableColumns.length + (enableBulkSelect ? 2 : 1)}>No records found.</td>
+                <td colSpan={tableColumns.length + (enableBulkSelect ? 1 : 0) + (hasActionsColumn ? 1 : 0)}>No records found.</td>
               </tr>
             ) : null}
-            {pagedRows.map((row) => (
-              <tr key={row[rowKey]}>
-                {enableBulkSelect ? (
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedRowIds.has(row[rowKey])}
-                      onChange={() => handleRowSelection(row[rowKey])}
-                      aria-label={`Select row ${row[rowKey]}`}
-                    />
-                  </td>
-                ) : null}
-                {tableColumns.map((col) => (
-                  <td key={col.key}>{formatDateTimeForTable(row[col.key])}</td>
-                ))}
-                <td className="users-table__actions-col">
-                  <div className="users-actions">
-                    {rowActions.map((action) => {
-                      const Icon = action.icon;
-                      const isDisabled =
-                        typeof action.disabled === "function"
-                          ? action.disabled(row)
-                          : !!action.disabled;
-                      const actionTitle =
-                        typeof action.title === "function"
-                          ? action.title(row)
-                          : (action.title || action.label);
-                      return (
-                        <button
-                          key={action.key || action.label}
-                          type="button"
-                          className={`users-action ${action.className || ""}`.trim()}
-                          aria-label={action.ariaLabel || action.label}
-                          title={isDisabled ? (action.disabledTitle || actionTitle) : actionTitle}
-                          disabled={isDisabled}
-                          onClick={() => !isDisabled && action.onClick?.(row)}
-                        >
-                          {Icon ? <Icon aria-hidden="true" /> : action.label}
-                        </button>
-                      );
-                    })}
-                    {showEditButton ? (() => {
-                      const editDisabled =
-                        typeof editDisabledPredicate === "function"
-                          ? editDisabledPredicate(row)
-                          : false;
-                      return (
-                        <button
-                          type="button"
-                          className="users-action users-action--edit"
-                          aria-label="Edit"
-                          title={editDisabled ? editDisabledTitle : "Edit"}
-                          disabled={editDisabled}
-                          onClick={() => !editDisabled && handleEditClick(row)}
-                        >
-                          <BsPencilSquare aria-hidden="true" />
-                        </button>
-                      );
-                    })() : null}
-                    {showDeleteButton ? (() => {
-                      const deleteDisabled =
-                        typeof deleteDisabledPredicate === "function"
-                          ? deleteDisabledPredicate(row)
-                          : false;
-                      return (
-                        <button
-                          type="button"
-                          className="users-action users-action--delete"
-                          aria-label="Delete"
-                          title={deleteDisabled ? deleteDisabledTitle : "Delete"}
-                          disabled={deleteDisabled}
-                          onClick={() => !deleteDisabled && handleDelete(row[rowKey])}
-                        >
-                          <BsTrashFill aria-hidden="true" />
-                        </button>
-                      );
-                    })() : null}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {pagedRows.map((row) => {
+              const editDisabled =
+                typeof editDisabledPredicate === "function"
+                  ? editDisabledPredicate(row)
+                  : false;
+              const isRowClickable = enableRowClickEdit && !editDisabled;
+
+              return (
+                <tr
+                  key={row[rowKey]}
+                  className={isRowClickable ? "users-table__row--clickable" : undefined}
+                  style={isRowClickable ? { cursor: "pointer" } : undefined}
+                  onClick={() => {
+                    if (isRowClickable) {
+                      handleEditClick(row);
+                    }
+                  }}
+                >
+                  {enableBulkSelect ? (
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(row[rowKey])}
+                        onChange={() => handleRowSelection(row[rowKey])}
+                        aria-label={`Select row ${row[rowKey]}`}
+                      />
+                    </td>
+                  ) : null}
+                  {tableColumns.map((col) => (
+                    <td key={col.key} style={col.align ? { textAlign: col.align } : undefined}>
+                      {col.render ? col.render(row) : formatDateTimeForTable(row[col.key])}
+                    </td>
+                  ))}
+                  {hasActionsColumn ? (
+                    <td
+                      className="users-table__actions-col"
+                      style={{ width: "50px", minWidth: "45px", maxWidth: "55px", textAlign: "center" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="users-actions">
+                        {rowActions.map((action) => {
+                          const Icon = action.icon;
+                          const isDisabled =
+                            typeof action.disabled === "function"
+                              ? action.disabled(row)
+                              : !!action.disabled;
+                          const actionTitle =
+                            typeof action.title === "function"
+                              ? action.title(row)
+                              : (action.title || action.label);
+                          return (
+                            <button
+                              key={action.key || action.label}
+                              type="button"
+                              className={`users-action ${action.className || ""}`.trim()}
+                              aria-label={action.ariaLabel || action.label}
+                              title={isDisabled ? (action.disabledTitle || actionTitle) : actionTitle}
+                              disabled={isDisabled}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!isDisabled) action.onClick?.(row);
+                              }}
+                            >
+                              {Icon ? <Icon aria-hidden="true" /> : action.label}
+                            </button>
+                          );
+                        })}
+                        {showEditButton ? (() => {
+                          return (
+                            <button
+                              type="button"
+                              className="users-action users-action--edit"
+                              aria-label="Edit"
+                              title={editDisabled ? editDisabledTitle : "Edit"}
+                              disabled={editDisabled}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!editDisabled) handleEditClick(row);
+                              }}
+                            >
+                              <BsPencilSquare aria-hidden="true" />
+                            </button>
+                          );
+                        })() : null}
+                        {showDeleteButton ? (() => {
+                          const deleteDisabled =
+                            typeof deleteDisabledPredicate === "function"
+                              ? deleteDisabledPredicate(row)
+                              : false;
+                          return (
+                            <button
+                              type="button"
+                              className="users-action users-action--delete"
+                              aria-label="Delete"
+                              title={deleteDisabled ? deleteDisabledTitle : "Delete"}
+                              disabled={deleteDisabled}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!deleteDisabled) promptDelete(row[rowKey]);
+                              }}
+                            >
+                              <BsTrashFill aria-hidden="true" />
+                            </button>
+                          );
+                        })() : null}
+                      </div>
+                    </td>
+                  ) : null}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1007,6 +1243,73 @@ function CrudPage({
       ) : null}
 
       {renderFooter ? renderFooter() : null}
+
+      <ConfirmPopupModal
+        open={deleteModalState.open}
+        title={deleteModalState.title || "Confirm Delete"}
+        type={deleteModalState.type || "danger"}
+        message={deleteModalState.message}
+        confirmLabel={
+          deleteModalState.canDelete
+            ? deleteModalState.deleting
+              ? "Deleting..."
+              : deleteModalState.confirmLabel || "Delete"
+            : null
+        }
+        cancelLabel={deleteModalState.cancelLabel || (deleteModalState.canDelete ? "Cancel" : "Close")}
+        confirmDisabled={deleteModalState.deleting || !deleteModalState.canDelete || deleteModalState.loading}
+        cancelDisabled={deleteModalState.deleting}
+        onConfirm={handleExecuteDelete}
+        onCancel={cancelDelete}
+      >
+        {deleteModalState.details && deleteModalState.details.length > 0 ? (
+          <div
+            style={{
+              marginTop: "0.85rem",
+              padding: "0.75rem 1rem",
+              background: "#fff1f2",
+              border: "1px solid #fecdd3",
+              borderRadius: "6px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                color: "#9f1239",
+                marginBottom: "0.35rem",
+              }}
+            >
+              Connected Downstream Items:
+            </div>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: "1.25rem",
+                fontSize: "0.82rem",
+                color: "#be123c",
+                lineHeight: "1.5",
+              }}
+            >
+              {deleteModalState.details.map((item, idx) => (
+                <li key={idx}>
+                  <strong>{item}</strong>
+                </li>
+              ))}
+            </ul>
+            <div
+              style={{
+                marginTop: "0.5rem",
+                fontSize: "0.78rem",
+                color: "#881337",
+                fontWeight: 500,
+              }}
+            >
+              Please delete, unlink, or reassign all connected downstream items before deleting this record.
+            </div>
+          </div>
+        ) : null}
+      </ConfirmPopupModal>
     </section>
   );
 }

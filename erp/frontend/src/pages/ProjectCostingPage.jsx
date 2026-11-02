@@ -164,7 +164,7 @@ const recalculateCostingSummary = (summary) => {
   };
 };
 
-function ProjectCostingPage({ projectId = null, projectCode = "", embedded = false, onStatusChange = null }) {
+function ProjectCostingPage({ projectId = null, projectCode = "", embedded = false, onStatusChange = null, initialCostingId = null, onClose = null }) {
   const navigate = useNavigate();
   const currentUser = useMemo(() => getSessionUser(), []);
   const roleName = String(currentUser?.role || "").trim().toLowerCase();
@@ -346,9 +346,15 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     const activeFilters = Object.entries(listColumnFilters).filter(([, value]) => String(value || "").trim());
     if (!activeFilters.length) return scopedCostings;
     return scopedCostings.filter((row) => (
-      activeFilters.every(([key, filterValue]) => (
-        String(row?.[key] ?? "").toLowerCase().includes(String(filterValue).trim().toLowerCase())
-      ))
+      activeFilters.every(([key, filterValue]) => {
+        let val = row?.[key];
+        if (key === "updated_on") {
+          val = row?.updated_on || (row?.updated_at ? new Date(row.updated_at).toLocaleString() : "");
+        } else if (key === "status_name") {
+          val = row?.status_name || row?.status || "";
+        }
+        return String(val ?? "").toLowerCase().includes(String(filterValue).trim().toLowerCase());
+      })
     ));
   }, [listColumnFilters, scopedCostings]);
 
@@ -458,7 +464,17 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     }
   }, [isAdmin, normalizeStatusName]);
 
+  useEffect(() => {
+    if (initialCostingId) {
+      openCosting(initialCostingId);
+    }
+  }, [initialCostingId, openCosting]);
+
   const closeCosting = useCallback(() => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     setEditingCosting(null);
     setEditingItems([]);
     setSummaryForm(EMPTY_SUMMARY_FORM);
@@ -595,6 +611,9 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         );
       }
       setStatus({ type: "success", message: "Costing summary saved." });
+      if (onClose) {
+        onClose();
+      }
     } catch (err) {
       setStatus({ type: "error", message: err.message || "Failed to save summary." });
     } finally {
@@ -861,6 +880,17 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
               <span className="project-costing-title__text">Project Costing - {c.costing_id}</span>
             </h1>
           </div>
+          {onClose ? (
+            <div className="pq-header-actions">
+              <button
+                type="button"
+                className="crud-add-btn"
+                onClick={onClose}
+              >
+                Back to Project
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {status.message ? (
@@ -1435,8 +1465,8 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_code ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_code: event.target.value }))} /></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.project_name ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, project_name: event.target.value }))} /></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.status_name ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, status_name: event.target.value }))} /></th>
-                <th></th>
-                <th></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.updated_on ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, updated_on: event.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.updated_by ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, updated_by: event.target.value }))} /></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.total_material_cost ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, total_material_cost: event.target.value }))} /></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.planned_order_value ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, planned_order_value: event.target.value }))} /></th>
                 <th></th>
@@ -1473,15 +1503,6 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                     <td className="project-costing-table__right">{row.planned_order_value ?? "—"}</td>
                     <td className="project-costing-table__center" onClick={(e) => e.stopPropagation()}>
                       <div className="project-costing-row-actions">
-                        <button
-                          type="button"
-                          className="users-action users-action--edit"
-                          title="Edit costing"
-                          disabled={saving}
-                          onClick={() => openCosting(row.id)}
-                        >
-                          <BsPencilSquare aria-hidden="true" />
-                        </button>
                         <button
                           type="button"
                           className="users-action users-action--delete"

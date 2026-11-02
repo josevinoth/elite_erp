@@ -1,3 +1,18 @@
+function normalizeUpdatedBy(val) {
+  if (!val) return "";
+  if (typeof val === "object") {
+    return val.username || val.name || val.label || String(val.id || "");
+  }
+  const str = String(val).trim();
+  if (str.startsWith("{")) {
+    const match = str.match(/['"]username['"]\s*:\s*['"]([^'"]+)['"]/);
+    if (match) return match[1];
+    const nameMatch = str.match(/['"](?:name|label)['"]\s*:\s*['"]([^'"]+)['"]/);
+    if (nameMatch) return nameMatch[1];
+  }
+  return str;
+}
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -16,6 +31,7 @@ function VendorsListPage() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [columnFilters, setColumnFilters] = useState({});
   const [status, setStatus] = useState({ type: "", message: "" });
   const [deleteModal, setDeleteModal] = useState({
     open: false,
@@ -28,7 +44,16 @@ function VendorsListPage() {
 
   const loadVendors = useCallback(async () => {
     const data = await listVendors();
-    setVendors(Array.isArray(data?.vendors) ? data.vendors : []);
+    const raw = Array.isArray(data?.vendors) ? data.vendors : [];
+    setVendors(
+      raw.map((v) => ({
+        ...v,
+        vendor_name: v.vendor_name || v.name || "",
+        phone_number: v.phone_number || v.phone || "",
+        email_id: v.email_id || v.email || "",
+        updated_by: normalizeUpdatedBy(v.updated_by || v.updated_by_label || v.created_by) || "Jose",
+      }))
+    );
   }, []);
 
   useEffect(() => {
@@ -116,13 +141,39 @@ function VendorsListPage() {
   };
 
   const filteredVendors = useMemo(() => {
+    let result = vendors;
+
     const q = search.trim().toLowerCase();
-    if (!q) return vendors;
-    return vendors.filter((v) =>
-      [v.vendor_code, v.vendor_name, v.contact_person, v.phone_number, v.email_id, v.address]
-        .some((val) => String(val || "").toLowerCase().includes(q))
-    );
-  }, [vendors, search]);
+    if (q) {
+      result = result.filter((v) =>
+        [
+          v.vendor_code,
+          v.vendor_name,
+          v.contact_person,
+          v.phone_number,
+          v.email_id,
+          v.address,
+          v.updated_by,
+          v.updated_on || (v.updated_at ? new Date(v.updated_at).toLocaleString() : ""),
+        ].some((val) => String(val || "").toLowerCase().includes(q))
+      );
+    }
+
+    const activeFilters = Object.entries(columnFilters).filter(([, val]) => String(val || "").trim());
+    if (activeFilters.length > 0) {
+      result = result.filter((v) =>
+        activeFilters.every(([key, filterVal]) => {
+          const valToSearch =
+            key === "updated_on"
+              ? v.updated_on || (v.updated_at ? new Date(v.updated_at).toLocaleString() : "")
+              : v[key];
+          return String(valToSearch ?? "").toLowerCase().includes(String(filterVal).trim().toLowerCase());
+        })
+      );
+    }
+
+    return result;
+  }, [vendors, search, columnFilters]);
 
   return (
     <section className="module-page vendor-page">
@@ -167,10 +218,85 @@ function VendorsListPage() {
                 <th>Contact Person</th>
                 <th>Phone</th>
                 <th>Email</th>
-                <th>Address</th>
+                <th className="vendor-table__col-address">Address</th>
                 <th>Updated By</th>
                 <th>Updated On</th>
                 <th>Actions</th>
+              </tr>
+              <tr>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.vendor_code ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, vendor_code: e.target.value }))}
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.vendor_name ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, vendor_name: e.target.value }))}
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.contact_person ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, contact_person: e.target.value }))}
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.phone_number ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, phone_number: e.target.value }))}
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.email_id ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, email_id: e.target.value }))}
+                  />
+                </th>
+                <th className="vendor-table__col-address">
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.address ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, address: e.target.value }))}
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.updated_by ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, updated_by: e.target.value }))}
+                  />
+                </th>
+                <th>
+                  <input
+                    className="users-table__filter-input"
+                    type="text"
+                    placeholder="Filter"
+                    value={columnFilters.updated_on ?? ""}
+                    onChange={(e) => setColumnFilters((prev) => ({ ...prev, updated_on: e.target.value }))}
+                  />
+                </th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -182,30 +308,30 @@ function VendorsListPage() {
                 </tr>
               ) : (
                 filteredVendors.map((vendor) => (
-                  <tr key={vendor.id}>
+                  <tr
+                    key={vendor.id}
+                    onClick={() => navigate(`/vendors/edit/${vendor.id}`)}
+                    style={{ cursor: "pointer" }}
+                    className="users-table__row--clickable"
+                  >
                     <td>{vendor.vendor_code || "-"}</td>
                     <td>{vendor.vendor_name || "-"}</td>
                     <td>{vendor.contact_person || "-"}</td>
                     <td>{vendor.phone_number || "-"}</td>
                     <td>{vendor.email_id || "-"}</td>
                     <td className="vendor-table__address">{vendor.address || "-"}</td>
-                    <td>{vendor.updated_by || "—"}</td>
+                    <td>{normalizeUpdatedBy(vendor.updated_by) || "—"}</td>
                     <td>{vendor.updated_on || (vendor.updated_at ? new Date(vendor.updated_at).toLocaleString() : "—")}</td>
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <div className="vendor-table__actions">
-                        <button
-                          type="button"
-                          className="users-action users-action--edit"
-                          title="Edit"
-                          onClick={() => navigate(`/vendors/edit/${vendor.id}`)}
-                        >
-                          <BsPencilSquare aria-hidden="true" />
-                        </button>
                         <button
                           type="button"
                           className="users-action users-action--delete"
                           title="Delete"
-                          onClick={() => openDeleteModal(vendor)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDeleteModal(vendor);
+                          }}
                         >
                           <BsTrashFill aria-hidden="true" />
                         </button>

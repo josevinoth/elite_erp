@@ -295,6 +295,7 @@ class ProjectQuotationItemInfo(models.Model):
             self.item_category = resolved_master.item_category
             self.item_name = normalize_text(resolved_master.item_name)
             self.item_code = resolved_master
+            self.item_type = getattr(resolved_master, "item_type", self.item_type)
             # Keep existing purchase_qty for legacy rows if no stock quantity exists yet.
             self.purchase_qty = _resolve_purchase_qty(resolved_master, fallback=self.purchase_qty)
             allow_over_request = bool(getattr(self, "_allow_requested_qty_override", False))

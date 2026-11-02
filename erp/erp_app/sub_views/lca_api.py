@@ -318,15 +318,28 @@ def _serialize(obj):
     }
 
 
+def _clean_user_display(val):
+    if not val:
+        return ""
+    if isinstance(val, dict):
+        return val.get("username") or val.get("name") or str(val.get("id") or "")
+    val_str = str(val).strip()
+    if val_str.startswith("{") and ("'username':" in val_str or '"username":' in val_str):
+        import re
+        m = re.search(r"['\"]username['\"]\s*:\s*['\"]([^'\"]+)['\"]", val_str)
+        if m:
+            return m.group(1)
+    return val_str
+
+
 def _serialize_list_row(obj):
     return {
         "id": obj.id,
         "lca_id": f"LCA_{obj.id:03d}",
-        "date": obj.updated_at.date().isoformat() if obj.updated_at else "",
         "total_supplier_price": str(obj.total_supplier_price),
         "total_supplier_price_omr": str(obj.total_supplier_price_omr),
         "total": str(obj.total),
-        "updated_by": obj.created_by or "",
+        "updated_by": _clean_user_display(obj.created_by),
         "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
         "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
     }
@@ -410,8 +423,11 @@ def create_lca_actuals_api_view(request):
     text_values = {field: normalize_text(payload.get(field, "")) for field in TEXT_FIELDS}
     foreign_currency = _to_currency(payload.get("foreign_currency_id"))
 
+    user_val = payload.get("created_by")
+    if isinstance(user_val, dict):
+        user_val = user_val.get("username") or request.user.username
     actuals = LandingCostActuals(
-        created_by=normalize_text(payload.get("created_by") or request.user.username),
+        created_by=normalize_text(user_val or request.user.username),
         foreign_currency=foreign_currency,
     )
     item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
@@ -477,7 +493,10 @@ def lca_actuals_record_api_view(request, lca_id):
     actuals.balance_payment_value_omr = values["balance_payment_value_omr"]
     actuals.total_supplier_price_omr = values["total_supplier_price_omr"]
     actuals.total = values["total"]
-    actuals.created_by = normalize_text(payload.get("created_by") or actuals.created_by or request.user.username)
+    user_val = payload.get("created_by")
+    if isinstance(user_val, dict):
+        user_val = user_val.get("username") or actuals.created_by or request.user.username
+    actuals.created_by = normalize_text(user_val or actuals.created_by or request.user.username)
     actuals.save()
 
     if "item_ids" in payload:

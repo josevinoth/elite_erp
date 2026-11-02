@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BsPencilSquare, BsPlusCircleFill } from "react-icons/bs";
 import { createVendor, getVendor, listVendors, updateVendor } from "../services/crudApi";
+import { getSessionUser } from "../services/sessionUser";
 import "../styles/Vendor.css";
 
 const EMPTY_FORM = {
@@ -117,12 +118,14 @@ function VendorFormPage() {
 
   const handleSave = async (event) => {
     event.preventDefault();
+    const currentUser = getSessionUser();
     const payload = {
       vendor_name: normalize(form.vendor_name),
       contact_person: normalize(form.contact_person),
       phone_number: normalize(form.phone_number),
       email_id: normalize(form.email_id),
       address: normalize(form.address),
+      updated_by: currentUser?.username || "",
     };
 
     if (!payload.vendor_name) {
@@ -177,7 +180,7 @@ function VendorFormPage() {
   return (
     <section className="vendor-form-page">
       <div className="vendor-form-page__center">
-        <div className="vendor-card col-4">
+        <div className="vendor-card">
           <div className="vendor-card__head">
             <h2 className="vendor-card__title">
               <BsPlusCircleFill className="vendor-card__title-icon" aria-hidden="true" />

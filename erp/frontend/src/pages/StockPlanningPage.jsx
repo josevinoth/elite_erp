@@ -17,6 +17,7 @@ function StockPlanningPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState({ type: "", message: "" });
+  const [columnFilters, setColumnFilters] = useState({});
 
   useEffect(() => {
     let alive = true;
@@ -45,6 +46,19 @@ function StockPlanningPage() {
     const requestedQty = rows.reduce((acc, row) => acc + Number(row.requested_qty || 0), 0);
     return { count, requestedQty };
   }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    const activeFilters = Object.entries(columnFilters).filter(([, val]) => String(val || "").trim());
+    if (!activeFilters.length) return rows;
+    return rows.filter((row) =>
+      activeFilters.every(([key, filterVal]) => {
+        const val = key === "updated_on"
+          ? (row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : ""))
+          : row[key];
+        return String(val ?? "").toLowerCase().includes(String(filterVal).trim().toLowerCase());
+      })
+    );
+  }, [rows, columnFilters]);
 
   return (
     <section className="module-page">
@@ -92,15 +106,33 @@ function StockPlanningPage() {
                 <th>Updated By</th>
                 <th>Updated On</th>
               </tr>
+              <tr>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.quotation_number ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, quotation_number: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_id ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_id: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_name: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_category ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_category: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_name: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_code ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_code: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_type ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_type: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.purchase_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, purchase_qty: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_qty: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stock_status_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, stock_status_name: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.length ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, length: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.width ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, width: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.height ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, height: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.volume ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, volume: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.updated_by ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, updated_by: e.target.value }))} /></th>
+                <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.updated_on ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, updated_on: e.target.value }))} /></th>
+              </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={16} style={{ textAlign: "center", color: "#64748b", padding: "1rem" }}>
                     No stock planning items.
                   </td>
                 </tr>
-              ) : rows.map((row) => (
+              ) : filteredRows.map((row) => (
                 <tr key={row.id}>
                   <td>{row.quotation_number || "-"}</td>
                   <td>{row.project_id || "-"}</td>
