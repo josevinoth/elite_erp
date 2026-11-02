@@ -85,6 +85,7 @@ def items_to_order_api_view(request):
                 "quotation_number__project__updated_by",
                 "item_code",
                 "item_code__item_type",
+                "item_code",
                 "item_category",
                 "item_type",
                 "stock_status",
@@ -113,6 +114,19 @@ def items_to_order_api_view(request):
                     else (
                         item.quotation_number.created_at.strftime("%Y-%m-%d %H:%M")
                         if getattr(item, "quotation_number", None) and getattr(item.quotation_number, "created_at", None)
+                project = item.quotation_number.project
+                owner = getattr(project, "project_owner", None)
+                req_by = (
+                    f"{owner.first_name} {owner.last_name}".strip() or owner.username
+                    if owner
+                    else "—"
+                )
+                req_date = (
+                    item.created_at.strftime("%Y-%m-%d %H:%M")
+                    if item.created_at
+                    else (
+                        item.quotation_number.created_at.strftime("%Y-%m-%d %H:%M")
+                        if item.quotation_number and item.quotation_number.created_at
                         else "—"
                     )
                 )
@@ -123,6 +137,7 @@ def items_to_order_api_view(request):
                 quo_num = getattr(item.quotation_number, "quotation_number", "") or (f"Q-{item.quotation_number_id}" if getattr(item, "quotation_number_id", None) else "—")
                 proj_id = getattr(project, "project_id", "") or (str(project.id) if project else "") or "—"
                 proj_name = getattr(project, "project_name", "") or getattr(item.quotation_number, "project_name", "") or "—"
+                type_name = getattr(getattr(item, "item_type", None), "name", "") or getattr(getattr(item.item_code, "item_type", None), "name", "") or "—"
 
                 results.append({
                     "id": f"quo-{item.id}",
@@ -133,6 +148,11 @@ def items_to_order_api_view(request):
                     "reference_number": quo_num,
                     "project_id": proj_id,
                     "project_name": proj_name,
+                    "quotation_number": item.quotation_number.quotation_number or f"Q-{item.quotation_number_id}",
+                    "costing_number": "—",
+                    "reference_number": item.quotation_number.quotation_number or f"Q-{item.quotation_number_id}",
+                    "project_id": getattr(project, "project_id", "") or str(project.id),
+                    "project_name": getattr(project, "project_name", "") or item.quotation_number.project_name or "—",
                     "item_category": cat_name,
                     "item_name": item_name,
                     "item_code": code_name,
@@ -162,6 +182,7 @@ def items_to_order_api_view(request):
                 "costing_id__project__updated_by",
                 "item_code",
                 "item_code__item_type",
+                "item_code",
                 "item_category",
                 "item_type",
                 "stock_status",
@@ -194,6 +215,22 @@ def items_to_order_api_view(request):
                         else (
                             item.costing_id.created_at.strftime("%Y-%m-%d %H:%M")
                             if getattr(item, "costing_id", None) and getattr(item.costing_id, "created_at", None)
+                project = item.costing_id.project
+                owner = item.requested_by or getattr(project, "project_owner", None)
+                req_by = (
+                    f"{owner.first_name} {owner.last_name}".strip() or owner.username
+                    if owner
+                    else "—"
+                )
+                req_date = (
+                    item.requested_on.strftime("%Y-%m-%d %H:%M")
+                    if item.requested_on
+                    else (
+                        item.created_at.strftime("%Y-%m-%d %H:%M")
+                        if item.created_at
+                        else (
+                            item.costing_id.created_at.strftime("%Y-%m-%d %H:%M")
+                            if item.costing_id and item.costing_id.created_at
                             else "—"
                         )
                     )
@@ -206,6 +243,8 @@ def items_to_order_api_view(request):
                 quotation_no = getattr(getattr(item.costing_id, "quotation_number", None), "quotation_number", "") or "—"
                 proj_id = getattr(project, "project_id", "") or (str(project.id) if project else "") or "—"
                 proj_name = getattr(project, "project_name", "") or getattr(item.costing_id, "project_name", "") or "—"
+                type_name = getattr(getattr(item, "item_type", None), "name", "") or getattr(getattr(item.item_code, "item_type", None), "name", "") or "—"
+                quotation_no = getattr(item.costing_id.quotation_number, "quotation_number", "") or "—"
 
                 results.append({
                     "id": f"cost-{item.id}",
@@ -216,6 +255,10 @@ def items_to_order_api_view(request):
                     "reference_number": costing_ref,
                     "project_id": proj_id,
                     "project_name": proj_name,
+                    "costing_number": item.costing_id.costing_id or f"C-{item.costing_id_id}",
+                    "reference_number": item.costing_id.costing_id or f"C-{item.costing_id_id}",
+                    "project_id": getattr(project, "project_id", "") or str(project.id),
+                    "project_name": getattr(project, "project_name", "") or item.costing_id.project_name or "—",
                     "item_category": cat_name,
                     "item_name": item_name,
                     "item_code": code_name,
@@ -234,4 +277,5 @@ def items_to_order_api_view(request):
         "status": "success",
         "items": results,
         "total_items": len(results),
+        "message": "Items to order retrieved successfully.",
     }, status=status.HTTP_200_OK)

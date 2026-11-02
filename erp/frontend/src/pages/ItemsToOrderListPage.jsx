@@ -4,6 +4,9 @@ import {
   BsArrowLeft,
   BsCartCheck,
   BsBoxes,
+  BsClipboardData,
+  BsBoxes,
+  BsCheckCircleFill,
 } from "react-icons/bs";
 import { listItemsToOrder } from "../services/crudApi";
 import { Card, CardHeader, CardBody } from "../components/Card";
@@ -56,6 +59,9 @@ function ItemsToOrderListPage() {
     try {
       const data = await listItemsToOrder();
       setItems(Array.isArray(data?.items) ? data.items : []);
+      if (data?.message) {
+        setStatus({ type: "success", message: data.message });
+      }
     } catch (err) {
       setItems([]);
       setStatus({ type: "error", message: err.message || "Failed to load items to order." });
@@ -85,6 +91,8 @@ function ItemsToOrderListPage() {
         }
         const rowVal = String(row[key] ?? "").toLowerCase();
         return rowVal.includes(needle);
+        const rowVal = String(row[key] ?? "").toLowerCase();
+        return rowVal.includes(String(filterVal).trim().toLowerCase());
       });
     });
   }, [columnFilters, items, stageTab]);
@@ -119,6 +127,7 @@ function ItemsToOrderListPage() {
       </div>
 
       {status.message && status.type === "error" ? (
+      {status.message ? (
         <p className={`users-status users-status--${status.type}`}>{status.message}</p>
       ) : null}
 
@@ -154,6 +163,31 @@ function ItemsToOrderListPage() {
           <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#7c3aed", lineHeight: 1 }}>
             {stats.costingItems}
           </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+        <div className="project-costing-card" style={{ padding: "1rem", borderLeft: "4px solid #0284c7" }}>
+          <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>TOTAL ITEMS TO ORDER</div>
+          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#0f172a", marginTop: "0.25rem" }}>
+            {stats.totalItems}
+          </div>
+          <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.25rem" }}>
+            {stats.totalOrderQty.toFixed(2)} units needed
+          </div>
+        </div>
+
+        <div className="project-costing-card" style={{ padding: "1rem", borderLeft: "4px solid #0ea5e9" }}>
+          <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>FROM QUOTATION STAGE</div>
+          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#0284c7", marginTop: "0.25rem" }}>
+            {stats.quotationItems}
+          </div>
+          <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.25rem" }}>Completed quotations</div>
+        </div>
+
+        <div className="project-costing-card" style={{ padding: "1rem", borderLeft: "4px solid #8b5cf6" }}>
+          <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>FROM COSTING STAGE</div>
+          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#7c3aed", marginTop: "0.25rem" }}>
+            {stats.costingItems}
+          </div>
+          <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.25rem" }}>Completed costings</div>
         </div>
       </div>
 
@@ -211,6 +245,8 @@ function ItemsToOrderListPage() {
                     <th>Reference #</th>
                     <th>Project ID</th>
                     <th>Project Name</th>
+                    <th>Item Category</th>
+                    <th>Item Name</th>
                     <th>Item Code</th>
                     <th>Item Type</th>
                     <th className="project-costing-table__right">Requested Qty</th>
@@ -219,12 +255,16 @@ function ItemsToOrderListPage() {
                     <th>Stock Status</th>
                     <th>Requested By</th>
                     <th>Requested Date</th>
+                    <th>Updated By</th>
+                    <th>Updated On</th>
                   </tr>
                   <tr>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stage ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, stage: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.reference_number ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, reference_number: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_id ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_id: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_name: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_category ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_category: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_name: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_code ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_code: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_type ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_type: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_qty: e.target.value }))} /></th>
@@ -233,12 +273,15 @@ function ItemsToOrderListPage() {
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stock_status ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, stock_status: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_by ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_by: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_date ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_date: e.target.value }))} /></th>
+                    <th></th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredItems.length === 0 ? (
                     <tr>
                       <td colSpan={12} className="project-costing-empty">
+                      <td colSpan={16} className="project-costing-empty">
                         No missing stock items found. All requested quantities are covered by current stock.
                       </td>
                     </tr>
@@ -259,6 +302,9 @@ function ItemsToOrderListPage() {
                           {row.item_category && row.item_category !== "—" ? ` • ${row.item_category}` : ""}
                         </div>
                       </td>
+                      <td>{row.item_category}</td>
+                      <td>{row.item_name}</td>
+                      <td>{row.item_code}</td>
                       <td>{row.item_type}</td>
                       <td className="project-costing-table__right">{row.requested_qty}</td>
                       <td className="project-costing-table__right">{row.purchase_qty}</td>
