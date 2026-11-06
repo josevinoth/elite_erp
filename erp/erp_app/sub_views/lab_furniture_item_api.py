@@ -43,6 +43,8 @@ def _serialize_item_code_name(obj):
         "item_name": obj.item_name,
         "item_category_id": getattr(obj, "item_category_id", None),
         "item_category": obj.item_category.name if getattr(obj, "item_category_id", None) else "",
+        "procurement_classification": getattr(obj, "procurement_classification", "") or "",
+        "business_criticality": getattr(obj, "business_criticality", "") or "",
         "label": f"{obj.item_code} - {obj.item_name}",
         "updated_at": getattr(obj, "updated_at", None).isoformat() if getattr(obj, "updated_at", None) else "",
         "updated_on": getattr(obj, "updated_at", None).strftime("%Y-%m-%d %H:%M:%S") if getattr(obj, "updated_at", None) else "",
@@ -107,6 +109,18 @@ def _resolve_item_code_name(lookup_id=None, code=None, name=None):
     return None
 
 
+def _format_qty_number(val):
+    if val in (None, ""):
+        return 0
+    try:
+        d = Decimal(str(val))
+        if d == d.to_integral():
+            return int(d)
+        return float(d)
+    except Exception:
+        return 0
+
+
 def _serialize(obj):
     item_category_id = getattr(obj, "item_category_id", None)
     uom_id = getattr(obj, "uom_id", None)
@@ -118,6 +132,8 @@ def _serialize(obj):
         "item_name_ref_id": getattr(obj, "item_name_ref_id", None),
         "item_code": obj.item_code,
         "item_name": obj.item_name,
+        "procurement_classification": getattr(obj, "procurement_classification", "") or "",
+        "business_criticality": getattr(obj, "business_criticality", "") or "",
         "item_category": obj.item_category.name if item_category_id else "",
         "item_category_id": item_category_id,
         "uom": f"{obj.uom.name} ({obj.uom.symbol})" if uom_id else "",
@@ -128,13 +144,14 @@ def _serialize(obj):
         "width": str(obj.width),
         "height": str(obj.height),
         "volume": str(obj.volume),
-        "recommended_free_stock_qty": int(getattr(obj, "recommended_free_stock_qty", 0) or 0),
-        "warning_alert_qty": int(getattr(obj, "warning_alert_qty", 0) or 0),
-        "to_order_qty": int(getattr(obj, "to_order_qty", 0) or 0),
-        "physical_plus_ordered_qty": int(getattr(obj, "physical_plus_ordered_qty", 0) or 0),
-        "physical_qty": int(getattr(obj, "physical_qty", 0) or 0),
-        "ordered_qty": int(getattr(obj, "ordered_qty", 0) or 0),
-        "total_reqd": int(getattr(obj, "total_reqd", 0) or 0),
+        "recommended_free_stock_qty": _format_qty_number(getattr(obj, "recommended_free_stock_qty", 0)),
+        "warning_alert_qty": _format_qty_number(getattr(obj, "warning_alert_qty", 0)),
+        "to_order_qty": _format_qty_number(getattr(obj, "to_order_qty", 0)),
+        "to_order_qty_including_free_stock": _format_qty_number(getattr(obj, "to_order_qty_including_free_stock", 0)),
+        "physical_plus_ordered_qty": _format_qty_number(getattr(obj, "physical_plus_ordered_qty", 0)),
+        "physical_qty": _format_qty_number(getattr(obj, "physical_qty", 0)),
+        "ordered_qty": _format_qty_number(getattr(obj, "ordered_qty", 0)),
+        "total_reqd": _format_qty_number(getattr(obj, "total_reqd", 0)),
         "updated_by": obj.updated_by.username if updated_by_id else "",
         "updated_on": obj.updated_at.isoformat() if getattr(obj, "updated_at", None) else "",
         "available_qty": str(getattr(obj, "available_qty", 0) or 0),
@@ -228,6 +245,8 @@ def create_item_code_name_api_view(request):
     item_code = _normalize_code(payload.get("item_code"))
     item_name = normalize_text(payload.get("item_name"))
     item_category = _resolve_existing_category(payload.get("item_category_id", payload.get("item_category")))
+    procurement_classification = normalize_text(payload.get("procurement_classification", "")).upper()
+    business_criticality = normalize_text(payload.get("business_criticality", "")).upper()
 
     if not item_code:
         return JsonResponse({"message": "Item code is required."}, status=400)
@@ -241,7 +260,13 @@ def create_item_code_name_api_view(request):
     if ItemCodeName.objects.filter(item_name__iexact=item_name).exists():
         return JsonResponse({"message": "Item name already exists."}, status=400)
 
-    obj = ItemCodeName(item_code=item_code, item_name=item_name, item_category=item_category)
+    obj = ItemCodeName(
+        item_code=item_code,
+        item_name=item_name,
+        item_category=item_category,
+        procurement_classification=procurement_classification,
+        business_criticality=business_criticality,
+    )
     try:
         obj.save()
     except IntegrityError:
@@ -288,6 +313,10 @@ def item_code_name_detail_api_view(request, pk):
     obj.item_code = item_code
     obj.item_name = item_name
     obj.item_category = item_category
+    if "procurement_classification" in payload:
+        obj.procurement_classification = normalize_text(payload.get("procurement_classification", "")).upper()
+    if "business_criticality" in payload:
+        obj.business_criticality = normalize_text(payload.get("business_criticality", "")).upper()
     try:
         obj.save()
     except IntegrityError:
@@ -354,13 +383,16 @@ def create_lab_furniture_item_api_view(request):
     length = _to_decimal(payload.get("length"), "0")
     width = _to_decimal(payload.get("width"), "0")
     height = _to_decimal(payload.get("height"), "0")
-    recommended_free_stock_qty = _to_int(payload.get("recommended_free_stock_qty"), 0)
-    warning_alert_qty = _to_int(payload.get("warning_alert_qty"), 0)
-    to_order_qty = _to_int(payload.get("to_order_qty"), 0)
-    physical_plus_ordered_qty = _to_int(payload.get("physical_plus_ordered_qty"), 0)
-    physical_qty = _to_int(payload.get("physical_qty"), 0)
-    ordered_qty = _to_int(payload.get("ordered_qty"), 0)
-    total_reqd = _to_int(payload.get("total_reqd"), 0)
+    recommended_free_stock_qty = _to_decimal(payload.get("recommended_free_stock_qty"), "0")
+    warning_alert_qty = _to_decimal(payload.get("warning_alert_qty"), "0")
+    physical_qty = _to_decimal(payload.get("physical_qty"), "0")
+    ordered_qty = _to_decimal(payload.get("ordered_qty"), "0")
+    physical_plus_ordered_qty = physical_qty + ordered_qty
+    total_reqd = _to_decimal(payload.get("total_reqd"), "0")
+    to_order_qty = total_reqd - physical_plus_ordered_qty
+    to_order_qty_including_free_stock = total_reqd + recommended_free_stock_qty - physical_plus_ordered_qty
+    procurement_classification = normalize_text(payload.get("procurement_classification", "")).upper()
+    business_criticality = normalize_text(payload.get("business_criticality", "")).upper()
 
     if not item_code_name:
         return JsonResponse({"message": "Valid item code reference is required."}, status=400)
@@ -381,18 +413,26 @@ def create_lab_furniture_item_api_view(request):
     if not item_type:
         return JsonResponse({"message": "Selected Item Type was not found."}, status=400)
 
+    if not procurement_classification and getattr(item_code_name, "procurement_classification", None):
+        procurement_classification = item_code_name.procurement_classification
+    if not business_criticality and getattr(item_code_name, "business_criticality", None):
+        business_criticality = item_code_name.business_criticality
+
     obj = LabFurnitureItem.objects.create(
         item_code_ref=item_code_name,
         item_name_ref=item_code_name,
         item_category=item_category,
         uom=uom,
         item_type=item_type,
+        procurement_classification=procurement_classification,
+        business_criticality=business_criticality,
         length=length,
         width=width,
         height=height,
         recommended_free_stock_qty=recommended_free_stock_qty,
         warning_alert_qty=warning_alert_qty,
         to_order_qty=to_order_qty,
+        to_order_qty_including_free_stock=to_order_qty_including_free_stock,
         physical_plus_ordered_qty=physical_plus_ordered_qty,
         physical_qty=physical_qty,
         ordered_qty=ordered_qty,
@@ -439,13 +479,14 @@ def lab_furniture_item_detail_api_view(request, pk):
     length = _to_decimal(payload.get("length", obj.length), "0")
     width = _to_decimal(payload.get("width", obj.width), "0")
     height = _to_decimal(payload.get("height", obj.height), "0")
-    recommended_free_stock_qty = _to_int(payload.get("recommended_free_stock_qty", obj.recommended_free_stock_qty), 0)
-    warning_alert_qty = _to_int(payload.get("warning_alert_qty", obj.warning_alert_qty), 0)
-    to_order_qty = _to_int(payload.get("to_order_qty", obj.to_order_qty), 0)
-    physical_plus_ordered_qty = _to_int(payload.get("physical_plus_ordered_qty", obj.physical_plus_ordered_qty), 0)
-    physical_qty = _to_int(payload.get("physical_qty", obj.physical_qty), 0)
-    ordered_qty = _to_int(payload.get("ordered_qty", obj.ordered_qty), 0)
-    total_reqd = _to_int(payload.get("total_reqd", obj.total_reqd), 0)
+    recommended_free_stock_qty = _to_decimal(payload.get("recommended_free_stock_qty", obj.recommended_free_stock_qty), "0")
+    warning_alert_qty = _to_decimal(payload.get("warning_alert_qty", obj.warning_alert_qty), "0")
+    physical_qty = _to_decimal(payload.get("physical_qty", obj.physical_qty), "0")
+    ordered_qty = _to_decimal(payload.get("ordered_qty", obj.ordered_qty), "0")
+    physical_plus_ordered_qty = physical_qty + ordered_qty
+    total_reqd = _to_decimal(payload.get("total_reqd", obj.total_reqd), "0")
+    to_order_qty = total_reqd - physical_plus_ordered_qty
+    to_order_qty_including_free_stock = total_reqd + recommended_free_stock_qty - physical_plus_ordered_qty
 
     if not item_code_name:
         return JsonResponse({"message": "Valid item code reference is required."}, status=400)
@@ -477,10 +518,15 @@ def lab_furniture_item_detail_api_view(request, pk):
     obj.recommended_free_stock_qty = recommended_free_stock_qty
     obj.warning_alert_qty = warning_alert_qty
     obj.to_order_qty = to_order_qty
+    obj.to_order_qty_including_free_stock = to_order_qty_including_free_stock
     obj.physical_plus_ordered_qty = physical_plus_ordered_qty
     obj.physical_qty = physical_qty
     obj.ordered_qty = ordered_qty
     obj.total_reqd = total_reqd
+    if "procurement_classification" in payload:
+        obj.procurement_classification = normalize_text(payload.get("procurement_classification", "")).upper()
+    if "business_criticality" in payload:
+        obj.business_criticality = normalize_text(payload.get("business_criticality", "")).upper()
     obj.updated_by = request.user
     obj.save()
     if item_code_name.item_category_id != item_category.id:

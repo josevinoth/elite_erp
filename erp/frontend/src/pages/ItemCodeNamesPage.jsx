@@ -8,16 +8,45 @@ import {
   updateItemCodeName,
 } from "../services/crudApi";
 
+const PROCUREMENT_CLASSIFICATION_OPTIONS = [
+  { value: "OMAN", label: "OMAN" },
+  { value: "UAE", label: "UAE" },
+  { value: "IMP", label: "IMP" },
+];
+
+const BUSINESS_CRITICALITY_OPTIONS = [
+  { value: "VIP", label: "VIP" },
+  { value: "CRITICAL", label: "CRITICAL" },
+  { value: "NON CRITICAL", label: "NON CRITICAL" },
+  { value: "UNDESIRED", label: "UNDESIRED" },
+];
+
 const COLUMNS = [
   { key: "item_category", label: "Item Category" },
   { key: "item_name", label: "Item Name" },
   { key: "item_code", label: "Item Code" },
+  { key: "procurement_classification", label: "Procurement Classification" },
+  { key: "business_criticality", label: "Business Criticality" },
 ];
 
 const FIELDS = [
   { key: "item_category_id", label: "Item Category", required: true },
   { key: "item_name", label: "Item Name", required: true },
   { key: "item_code", label: "Item Code", required: true },
+  {
+    key: "procurement_classification",
+    label: "Procurement Classification",
+    options: PROCUREMENT_CLASSIFICATION_OPTIONS,
+    placeholder: "Select Procurement Classification",
+    isClearable: true,
+  },
+  {
+    key: "business_criticality",
+    label: "Business Criticality",
+    options: BUSINESS_CRITICALITY_OPTIONS,
+    placeholder: "Select Business Criticality",
+    isClearable: true,
+  },
 ];
 
 function ItemCodeNamesPage() {
@@ -69,6 +98,8 @@ function ItemCodeNamesPage() {
       ...FIELDS[2],
       type: "text",
     },
+    FIELDS[3],
+    FIELDS[4],
   ], [categoryOptions]);
 
   const computeValues = useCallback((changedKey, changedValue) => {

@@ -2363,11 +2363,11 @@ select.auth-input option {
 }
 
 .modal-card--item-master {
-  width: min(640px, calc(100vw - 1.5rem));
-  max-width: 640px;
+  width: min(780px, calc(100vw - 1.5rem));
+  max-width: 780px;
   align-self: start;
-  margin-top: 5.5rem;
-  max-height: calc(100vh - 7rem);
+  margin-top: 5rem;
+  max-height: calc(100vh - 6.5rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2375,9 +2375,9 @@ select.auth-input option {
 
 @media (max-width: 900px) {
   .modal-card--item-master {
-    max-width: min(640px, calc(100vw - 1.5rem));
-    margin-top: 4.75rem;
-    max-height: calc(100vh - 6.25rem);
+    max-width: min(780px, calc(100vw - 1.5rem));
+    margin-top: 4.5rem;
+    max-height: calc(100vh - 5.5rem);
   }
 }
 
@@ -2438,6 +2438,44 @@ select.auth-input option {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.25rem 1.5rem;
+}
+
+.modal-card--item-master .modal-form__row {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  align-items: center;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.modal-card--item-master .modal-form__label {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #334155;
+  text-align: left;
+  line-height: 1.35;
+  margin: 0;
+  user-select: none;
+}
+
+.modal-card--item-master .modal-form__actions {
+  display: flex;
+  gap: 0.65rem;
+  justify-content: flex-end;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border, #e2e8f0);
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 680px) {
+  .modal-card--item-master .modal-form__row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
 }
 
 .modal-form__row {

@@ -111,6 +111,7 @@ function ProjectsAddPage() {
   const [savingProject, setSavingProject] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [projectStatus, setProjectStatus] = useState("");
+  const [existingProjects, setExistingProjects] = useState([]);
 
   // Sub-table states
   const [quotations, setQuotations] = useState([]);
@@ -198,6 +199,18 @@ function ProjectsAddPage() {
     run();
     return () => { alive = false; };
   }, [ensureStatusExists, formValues.status, isEditMode, mapOptions]);
+
+  // Always load all projects for duplicate validation
+  useEffect(() => {
+    let alive = true;
+    listProjects()
+      .then((data) => {
+        if (!alive) return;
+        setExistingProjects(Array.isArray(data?.projects) ? data.projects : []);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // Load project record
   useEffect(() => {
@@ -349,11 +362,73 @@ function ProjectsAddPage() {
     }
   };
 
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    const trimmed = String(value || "").trim().toLowerCase();
+    if (!trimmed) return;
+    const currentId = isEditMode ? String(projectId) : null;
+
+    if (name === "project_id") {
+      const dup = existingProjects.find(
+        (p) => String(p.id) !== currentId && String(p.project_id || "").trim().toLowerCase() === trimmed
+      );
+      if (dup) {
+        setProjectError(`Project ID '${value.trim()}' already exists. Duplicate project ID is not allowed.`);
+      } else if (projectError && projectError.includes("Project ID")) {
+        setProjectError("");
+      }
+    } else if (name === "project_name") {
+      const dup = existingProjects.find(
+        (p) => String(p.id) !== currentId && String(p.project_name || "").trim().toLowerCase() === trimmed
+      );
+      if (dup) {
+        setProjectError(`Project Name '${value.trim()}' already exists. Duplicate project name is not allowed.`);
+      } else if (projectError && projectError.includes("Project Name")) {
+        setProjectError("");
+      }
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSavingProject(true);
     setProjectError("");
     setProjectStatus("");
+
+    const trimmedId = String(formValues.project_id || "").trim();
+    const trimmedName = String(formValues.project_name || "").trim();
+
+    if (!trimmedId) {
+      setProjectError("Project ID is required.");
+      setSavingProject(false);
+      return;
+    }
+
+    if (!trimmedName) {
+      setProjectError("Project Name is required.");
+      setSavingProject(false);
+      return;
+    }
+
+    const currentId = isEditMode ? String(projectId) : null;
+    const dupId = existingProjects.find(
+      (p) => String(p.id) !== currentId && String(p.project_id || "").trim().toLowerCase() === trimmedId.toLowerCase()
+    );
+    if (dupId) {
+      setProjectError(`Project ID '${trimmedId}' already exists. Duplicate project ID is not allowed.`);
+      setSavingProject(false);
+      return;
+    }
+
+    const dupName = existingProjects.find(
+      (p) => String(p.id) !== currentId && String(p.project_name || "").trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (dupName) {
+      setProjectError(`Project Name '${trimmedName}' already exists. Duplicate project name is not allowed.`);
+      setSavingProject(false);
+      return;
+    }
+
     const payload = Object.fromEntries(
       Object.entries(formValues).map(([key, value]) => [key, normalizePayloadValue(key, value)])
     );
@@ -361,6 +436,7 @@ function ProjectsAddPage() {
       if (isEditMode) {
         await updateProject(projectId, payload);
         setProjectStatus("Project updated successfully.");
+        listProjects().then((d) => setExistingProjects(d?.projects || [])).catch(() => {});
       } else {
         const data = await createProject(payload);
         const saved = data?.project;
@@ -480,14 +556,14 @@ function ProjectsAddPage() {
               <div className="lca-field-pair">
                 <label className="lca-label" htmlFor="project-id">Project ID *</label>
                 <div className="lca-input">
-                  <input id="project-id" name="project_id" type="text" className="auth-input" value={formValues.project_id} onChange={handleChange} required />
+                  <input id="project-id" name="project_id" type="text" className="auth-input" value={formValues.project_id} onChange={handleChange} onBlur={handleBlur} required />
                 </div>
               </div>
 
               <div className="lca-field-pair">
                 <label className="lca-label" htmlFor="project-name">Project Name *</label>
                 <div className="lca-input">
-                  <input id="project-name" name="project_name" type="text" className="auth-input" value={formValues.project_name} onChange={handleChange} required />
+                  <input id="project-name" name="project_name" type="text" className="auth-input" value={formValues.project_name} onChange={handleChange} onBlur={handleBlur} required />
                 </div>
               </div>
 
