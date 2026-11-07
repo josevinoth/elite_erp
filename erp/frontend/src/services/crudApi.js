@@ -485,6 +485,13 @@ export async function deleteProjectCosting(id) {
   return parseJson(res);
 }
 
+export async function checkProjectCostingDownstream(id) {
+  const res = await fetch(`/api/project-costing/${id}/downstream-check/`, {
+    credentials: "include",
+  });
+  return parseJson(res);
+}
+
 export async function generateProjectCosting(quotationId) {
   const headers = await csrfHeaders();
   const res = await fetch("/api/project-costing/generate/", {

@@ -349,3 +349,10 @@
   gap: 1rem;
   justify-content: flex-end;
 }
+
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

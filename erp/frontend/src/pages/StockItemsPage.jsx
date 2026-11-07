@@ -135,8 +135,6 @@ function StockItemsPage() {
       itemCode: itemCodeName.item_code,
       itemName: itemCodeName.item_name,
       itemCategoryId: itemCodeName.item_category_id == null ? "" : String(itemCodeName.item_category_id),
-      procurementClassification: itemCodeName.procurement_classification || "",
-      businessCriticality: itemCodeName.business_criticality || "",
     }));
     setItemCodeOptions(options);
     return options;
@@ -256,8 +254,6 @@ function StockItemsPage() {
         item_name_ref_id: selected ? selected.value : "",
         item_code: selected?.itemCode || "",
         item_name: selected?.itemName || "",
-        procurement_classification: selected?.procurementClassification || allValues.procurement_classification || "",
-        business_criticality: selected?.businessCriticality || allValues.business_criticality || "",
       };
     }
 

@@ -37,6 +37,14 @@ def _serialize_category(obj):
 
 
 def _serialize_item_code_name(obj):
+    updated_by_user = getattr(obj, "updated_by", None)
+    updated_by_name = ""
+    if updated_by_user:
+        updated_by_name = (
+            getattr(updated_by_user, "get_full_name", lambda: "")()
+            or getattr(updated_by_user, "username", "")
+            or str(updated_by_user)
+        )
     return {
         "id": obj.pk,
         "item_code": obj.item_code,
@@ -48,7 +56,7 @@ def _serialize_item_code_name(obj):
         "label": f"{obj.item_code} - {obj.item_name}",
         "updated_at": getattr(obj, "updated_at", None).isoformat() if getattr(obj, "updated_at", None) else "",
         "updated_on": getattr(obj, "updated_at", None).strftime("%Y-%m-%d %H:%M:%S") if getattr(obj, "updated_at", None) else "",
-        "updated_by": getattr(obj, "updated_by", None).username if getattr(obj, "updated_by", None) else "",
+        "updated_by": updated_by_name,
     }
 
 
@@ -230,7 +238,7 @@ def list_item_code_names_api_view(request):
     if not_allowed:
         return not_allowed
 
-    rows = ItemCodeName.objects.select_related("item_category").order_by("item_code")
+    rows = ItemCodeName.objects.select_related("item_category", "updated_by").order_by("item_code")
     return JsonResponse({"item_code_names": [_serialize_item_code_name(row) for row in rows]})
 
 
@@ -266,6 +274,7 @@ def create_item_code_name_api_view(request):
         item_category=item_category,
         procurement_classification=procurement_classification,
         business_criticality=business_criticality,
+        updated_by=request.user if getattr(request, "user", None) and request.user.is_authenticated else None,
     )
     try:
         obj.save()
@@ -282,7 +291,7 @@ def item_code_name_detail_api_view(request, pk):
     if not_allowed:
         return not_allowed
 
-    obj = ItemCodeName.objects.select_related("item_category").filter(pk=pk).first()
+    obj = ItemCodeName.objects.select_related("item_category", "updated_by").filter(pk=pk).first()
     if not obj:
         return JsonResponse({"message": "Item code name not found."}, status=404)
 
@@ -313,6 +322,8 @@ def item_code_name_detail_api_view(request, pk):
     obj.item_code = item_code
     obj.item_name = item_name
     obj.item_category = item_category
+    if getattr(request, "user", None) and request.user.is_authenticated:
+        obj.updated_by = request.user
     if "procurement_classification" in payload:
         obj.procurement_classification = normalize_text(payload.get("procurement_classification", "")).upper()
     if "business_criticality" in payload:

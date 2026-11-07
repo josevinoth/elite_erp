@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from ..utils import normalize_text
@@ -38,6 +39,15 @@ class ItemCodeName(models.Model):
         default="",
         choices=BUSINESS_CRITICALITY_CHOICES,
     )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_item_code_names",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     class Meta:
         ordering = ["item_code"]
