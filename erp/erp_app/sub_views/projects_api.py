@@ -192,14 +192,28 @@ def _can_user_edit_layout_drawing(drawing, user):
     return _is_admin_user(user) or _is_assigned_approver(drawing, user)
 
 
+def _check_duplicate_project(project_id, project_name, exclude_id=None):
+    normalized_id = normalize_text(project_id)
+    if normalized_id:
+        qs_id = Project.objects.filter(project_id__iexact=normalized_id)
+        if exclude_id is not None:
+            qs_id = qs_id.exclude(id=exclude_id)
+        if qs_id.exists():
+            return f"Project ID '{normalized_id}' already exists. Duplicate project ID is not allowed."
+
+    normalized_name = normalize_text(project_name)
+    if normalized_name:
+        qs_name = Project.objects.filter(project_name__iexact=normalized_name)
+        if exclude_id is not None:
+            qs_name = qs_name.exclude(id=exclude_id)
+        if qs_name.exists():
+            return f"Project Name '{normalized_name}' already exists. Duplicate project name is not allowed."
+
+    return None
+
+
 def _project_exists_case_insensitive(project_id, project_name, exclude_id=None):
-    qs = Project.objects.filter(
-        project_id__iexact=project_id,
-        project_name__iexact=project_name,
-    )
-    if exclude_id is not None:
-        qs = qs.exclude(id=exclude_id)
-    return qs.exists()
+    return _check_duplicate_project(project_id, project_name, exclude_id=exclude_id) is not None
 
 
 def _get_default_project_status():
@@ -514,8 +528,9 @@ def create_project_api_view(request):
     project_name = normalize_text(payload.get('project_name', ''))
     if not project_id:
         return Response({'message': 'Project ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
-    if _project_exists_case_insensitive(project_id, project_name):
-        return Response({'message': 'Duplicate project exists (case-insensitive match).'}, status=status.HTTP_400_BAD_REQUEST)
+    dup_error = _check_duplicate_project(project_id, project_name)
+    if dup_error:
+        return Response({'message': dup_error}, status=status.HTTP_400_BAD_REQUEST)
     status_name = to_title_case(payload.get('status', ''))
     status_obj = None
     if status_name:
@@ -708,8 +723,9 @@ def project_detail_api_view(request, project_id):
     project_name = normalize_text(payload.get('project_name', project.project_name))
     if not project_id:
         return Response({'message': 'Project ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
-    if _project_exists_case_insensitive(project_id, project_name, exclude_id=project.id):
-        return Response({'message': 'Duplicate project exists (case-insensitive match).'}, status=status.HTTP_400_BAD_REQUEST)
+    dup_error = _check_duplicate_project(project_id, project_name, exclude_id=project.id)
+    if dup_error:
+        return Response({'message': dup_error}, status=status.HTTP_400_BAD_REQUEST)
     project.project_id = project_id
     project.description = normalize_text(payload.get('description', project.description))
     project.project_name = project_name
@@ -775,8 +791,5 @@ def project_detail_api_view(request, project_id):
     return Response({'success': True, 'project': _serialize(project)}, status=status.HTTP_200_OK)
 
 
-@api_view(["PATCH"])
-@permission_classes([IsAuthenticated])
-def project_edit_api_view(request, project_id):
-    return project_detail_api_view(request, project_id)
+project_edit_api_view = project_detail_api_view
 

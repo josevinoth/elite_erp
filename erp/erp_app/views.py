@@ -120,6 +120,7 @@ from .sub_views import (
     project_layout_drawing_view,
     project_costing_api_view,
     project_costing_detail_api_view,
+    project_costing_downstream_check_api_view,
     project_costing_edit_api_view,
     generate_project_costing_api_view,
     download_costing_items_import_template_api_view,

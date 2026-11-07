@@ -14,6 +14,7 @@ import {
   addRoom,
   createProjectCosting,
   createProjectCostingItem,
+  checkProjectCostingDownstream,
   deleteProjectCosting,
   deleteProjectCostingItem,
   downloadCostingItemsImportTemplate,
@@ -215,6 +216,19 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     open: false,
     maxQty: 0,
     value: "",
+    error: "",
+  });
+
+  // Delete project costing modal state
+  const [deleteCostingModal, setDeleteCostingModal] = useState({
+    open: false,
+    costing: null,
+    checking: false,
+    deleting: false,
+    canDelete: false,
+    details: [],
+    connectedItems: {},
+    message: "",
     error: "",
   });
 
@@ -529,20 +543,104 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
     }
   }, [loadList, openCosting, selectedProjectHasCosting, selectedProjectSelectionId]);
 
-  const handleDeleteCosting = useCallback(async (costingId) => {
-    if (!window.confirm("Delete this project costing and all linked items?")) return;
-    setSaving(true);
-    try {
-      await deleteProjectCosting(costingId);
-      await loadList();
-      if (editingCosting && String(editingCosting.id) === String(costingId)) closeCosting();
-      setStatus({ type: "success", message: "Project costing deleted." });
-    } catch (err) {
-      setStatus({ type: "error", message: err.message || "Failed to delete project costing." });
-    } finally {
-      setSaving(false);
+  const promptDeleteCosting = useCallback(async (costingOrId) => {
+    let costing = costingOrId;
+    if (typeof costingOrId === "number" || typeof costingOrId === "string") {
+      costing = (list || []).find((item) => String(item.id) === String(costingOrId)) || { id: costingOrId };
     }
-  }, [loadList, editingCosting, closeCosting]);
+    if (!costing) return;
+    setDeleteCostingModal({
+      open: true,
+      costing,
+      checking: true,
+      deleting: false,
+      canDelete: false,
+      details: [],
+      connectedItems: {},
+      message: "Checking downstream transactions...",
+      error: "",
+    });
+
+    try {
+      const data = await checkProjectCostingDownstream(costing.id);
+      if (data?.has_downstream) {
+        setDeleteCostingModal((prev) => ({
+          ...prev,
+          checking: false,
+          canDelete: false,
+          details: data.details || [],
+          connectedItems: data.connected_items || {},
+          message:
+            data.message ||
+            `Project costing for "${costing.project_name || costing.project_id || costing.costing_id}" cannot be deleted because it is connected to downstream records.`,
+        }));
+      } else {
+        setDeleteCostingModal((prev) => ({
+          ...prev,
+          checking: false,
+          canDelete: true,
+          details: [],
+          connectedItems: {},
+          message: `Are you sure you want to permanently delete project costing for "${costing.project_name || costing.project_id || costing.costing_id}"? All linked costing items will also be removed. This action cannot be undone.`,
+        }));
+      }
+    } catch (err) {
+      setDeleteCostingModal((prev) => ({
+        ...prev,
+        checking: false,
+        canDelete: false,
+        error: err.message || "Failed to check downstream connections.",
+        message: "Unable to verify downstream connections. Deletion blocked for safety.",
+      }));
+    }
+  }, [list]);
+
+  const closeDeleteCostingModal = useCallback(() => {
+    if (deleteCostingModal.deleting) return;
+    setDeleteCostingModal({
+      open: false,
+      costing: null,
+      checking: false,
+      deleting: false,
+      canDelete: false,
+      details: [],
+      connectedItems: {},
+      message: "",
+      error: "",
+    });
+  }, [deleteCostingModal.deleting]);
+
+  const confirmDeleteCosting = useCallback(async () => {
+    if (!deleteCostingModal.costing || !deleteCostingModal.canDelete) return;
+    setDeleteCostingModal((prev) => ({ ...prev, deleting: true, error: "" }));
+    try {
+      await deleteProjectCosting(deleteCostingModal.costing.id);
+      await loadList();
+      if (editingCosting && String(editingCosting.id) === String(deleteCostingModal.costing.id)) {
+        closeCosting();
+      }
+      setStatus({ type: "success", message: "Project costing deleted successfully." });
+      setDeleteCostingModal({
+        open: false,
+        costing: null,
+        checking: false,
+        deleting: false,
+        canDelete: false,
+        details: [],
+        connectedItems: {},
+        message: "",
+        error: "",
+      });
+    } catch (err) {
+      setDeleteCostingModal((prev) => ({
+        ...prev,
+        deleting: false,
+        error: err.message || "Failed to delete project costing.",
+      }));
+    }
+  }, [closeCosting, deleteCostingModal.canDelete, deleteCostingModal.costing, editingCosting, loadList]);
+
+  const handleDeleteCosting = promptDeleteCosting;
 
   // ── Summary save ─────────────────────────────────────────
   const openStatusConfirmation = useCallback((nextStatus) => {
@@ -1520,7 +1618,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                           className="users-action users-action--delete"
                           title="Delete costing"
                           disabled={saving}
-                          onClick={() => handleDeleteCosting(row.id)}
+                          onClick={() => handleDeleteCosting(row)}
                         >
                           <BsTrashFill aria-hidden="true" />
                         </button>
@@ -1533,6 +1631,142 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
           </table>
         </div>
       ) : null}
+
+      {/* ── Project Costing Delete Confirmation Modal ─────────── */}
+      <ConfirmPopupModal
+        open={deleteCostingModal.open}
+        type={deleteCostingModal.canDelete ? "warning" : "danger"}
+        title={
+          deleteCostingModal.checking
+            ? "Checking Downstream Links..."
+            : deleteCostingModal.canDelete
+            ? "Confirm Delete Project Costing"
+            : "Cannot Delete Project Costing"
+        }
+        message={deleteCostingModal.message}
+        confirmLabel={
+          deleteCostingModal.canDelete
+            ? deleteCostingModal.deleting
+              ? "Deleting..."
+              : "Delete Project Costing"
+            : null
+        }
+        cancelLabel={deleteCostingModal.canDelete ? "Cancel" : "Close"}
+        confirmDisabled={deleteCostingModal.deleting || !deleteCostingModal.canDelete || deleteCostingModal.checking}
+        cancelDisabled={deleteCostingModal.deleting}
+        onConfirm={confirmDeleteCosting}
+        onCancel={closeDeleteCostingModal}
+      >
+        {deleteCostingModal.checking ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "1.25rem 0.5rem", justifyContent: "center", color: "#64748b" }}>
+            <div style={{ width: 20, height: 20, border: "2px solid #cbd5e1", borderTopColor: "#556ee6", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+            <span>Checking downstream transactions...</span>
+          </div>
+        ) : null}
+
+        {!deleteCostingModal.checking && deleteCostingModal.details && deleteCostingModal.details.length > 0 ? (
+          <div
+            style={{
+              marginTop: "0.85rem",
+              padding: "0.75rem 1rem",
+              background: "#fff1f2",
+              border: "1px solid #fecdd3",
+              borderRadius: "6px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                color: "#9f1239",
+                marginBottom: "0.35rem",
+              }}
+            >
+              Connected Downstream Records ({deleteCostingModal.details.length}):
+            </div>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: "1.25rem",
+                fontSize: "0.82rem",
+                color: "#be123c",
+                lineHeight: "1.5",
+              }}
+            >
+              {deleteCostingModal.details.map((item, idx) => (
+                <li key={idx}>
+                  <strong>{item}</strong>
+                </li>
+              ))}
+            </ul>
+            <div
+              style={{
+                marginTop: "0.5rem",
+                fontSize: "0.78rem",
+                color: "#881337",
+                fontWeight: 500,
+              }}
+            >
+              Please delete, return, or unlink all connected downstream records before deleting this project costing.
+            </div>
+          </div>
+        ) : null}
+
+        {!deleteCostingModal.checking && deleteCostingModal.canDelete && deleteCostingModal.costing ? (
+          <div
+            style={{
+              marginTop: "0.85rem",
+              padding: "0.75rem 1rem",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: "6px",
+              fontSize: "0.84rem",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem 1rem" }}>
+              <div>
+                <span style={{ color: "#64748b", fontWeight: 500 }}>Project ID:</span>{" "}
+                <strong style={{ color: "#1e293b" }}>{deleteCostingModal.costing.project_code || deleteCostingModal.costing.project_id || "-"}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748b", fontWeight: 500 }}>Project Name:</span>{" "}
+                <strong style={{ color: "#1e293b" }}>{deleteCostingModal.costing.project_name || "-"}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748b", fontWeight: 500 }}>Quotation:</span>{" "}
+                <strong style={{ color: "#1e293b" }}>
+                  {deleteCostingModal.costing.quotation_number || "-"}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748b", fontWeight: 500 }}>Status:</span>{" "}
+                <strong style={{ color: "#1e293b" }}>
+                  {deleteCostingModal.costing.status_name || deleteCostingModal.costing.status || "-"}
+                </strong>
+              </div>
+            </div>
+            <p style={{ margin: "0.75rem 0 0", fontSize: "0.8rem", color: "#64748b", lineHeight: 1.4 }}>
+              This project costing has no linked downstream transactions. All linked costing items will also be removed.
+            </p>
+          </div>
+        ) : null}
+
+        {deleteCostingModal.error ? (
+          <div
+            style={{
+              marginTop: "0.65rem",
+              padding: "0.6rem 0.85rem",
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: "6px",
+              color: "#991b1b",
+              fontSize: "0.82rem",
+            }}
+          >
+            {deleteCostingModal.error}
+          </div>
+        ) : null}
+      </ConfirmPopupModal>
     </section>
   );
 }
