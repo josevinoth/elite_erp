@@ -114,7 +114,10 @@ def items_to_order_api_view(request):
                     else (
                         item.quotation_number.created_at.strftime("%Y-%m-%d %H:%M")
                         if getattr(item, "quotation_number", None) and getattr(item.quotation_number, "created_at", None)
-                project = item.quotation_number.project
+                        else "—"
+                    )
+                )
+                project = getattr(item.quotation_number, "project", None)
                 owner = getattr(project, "project_owner", None)
                 req_by = (
                     f"{owner.first_name} {owner.last_name}".strip() or owner.username
@@ -123,10 +126,10 @@ def items_to_order_api_view(request):
                 )
                 req_date = (
                     item.created_at.strftime("%Y-%m-%d %H:%M")
-                    if item.created_at
+                    if getattr(item, "created_at", None)
                     else (
                         item.quotation_number.created_at.strftime("%Y-%m-%d %H:%M")
-                        if item.quotation_number and item.quotation_number.created_at
+                        if getattr(item, "quotation_number", None) and getattr(item.quotation_number, "created_at", None)
                         else "—"
                     )
                 )
@@ -215,7 +218,11 @@ def items_to_order_api_view(request):
                         else (
                             item.costing_id.created_at.strftime("%Y-%m-%d %H:%M")
                             if getattr(item, "costing_id", None) and getattr(item.costing_id, "created_at", None)
-                project = item.costing_id.project
+                            else "—"
+                        )
+                    )
+                )
+                project = getattr(item.costing_id, "project", None)
                 owner = item.requested_by or getattr(project, "project_owner", None)
                 req_by = (
                     f"{owner.first_name} {owner.last_name}".strip() or owner.username
@@ -224,13 +231,13 @@ def items_to_order_api_view(request):
                 )
                 req_date = (
                     item.requested_on.strftime("%Y-%m-%d %H:%M")
-                    if item.requested_on
+                    if getattr(item, "requested_on", None)
                     else (
                         item.created_at.strftime("%Y-%m-%d %H:%M")
-                        if item.created_at
+                        if getattr(item, "created_at", None)
                         else (
                             item.costing_id.created_at.strftime("%Y-%m-%d %H:%M")
-                            if item.costing_id and item.costing_id.created_at
+                            if getattr(item, "costing_id", None) and getattr(item.costing_id, "created_at", None)
                             else "—"
                         )
                     )
