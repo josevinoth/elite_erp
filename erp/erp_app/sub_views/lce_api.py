@@ -3,8 +3,10 @@ LCE API endpoints and views.
 Direct item linkage and purchase history lookup.
 """
 from .lce_estimate_api import (
+    check_lce_item_usage_api_view,
     create_lce_charge_type_option_api_view,
     create_lce_estimate_api_view,
+    delete_lce_item_api_view,
     lce_estimate_meta_api_view,
     lce_estimate_record_api_view,
     lce_items_api_view,
@@ -14,8 +16,10 @@ from .lce_estimate_api import (
 )
 
 __all__ = [
+    "check_lce_item_usage_api_view",
     "create_lce_charge_type_option_api_view",
     "create_lce_estimate_api_view",
+    "delete_lce_item_api_view",
     "lce_estimate_meta_api_view",
     "lce_estimate_record_api_view",
     "lce_items_api_view",

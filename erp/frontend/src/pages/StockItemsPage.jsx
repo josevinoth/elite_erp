@@ -11,23 +11,39 @@ import {
   updateLabFurnitureItem,
 } from "../services/crudApi";
 
+const PROCUREMENT_CLASSIFICATION_OPTIONS = [
+  { value: "OMAN", label: "OMAN" },
+  { value: "UAE", label: "UAE" },
+  { value: "IMP", label: "IMP" },
+];
+
+const BUSINESS_CRITICALITY_OPTIONS = [
+  { value: "VIP", label: "VIP" },
+  { value: "CRITICAL", label: "CRITICAL" },
+  { value: "NON CRITICAL", label: "NON CRITICAL" },
+  { value: "UNDESIRED", label: "UNDESIRED" },
+];
+
 const COLUMNS = [
   { key: "item_category", label: "Item Category" },
   { key: "item_name", label: "Item Name" },
   { key: "item_code", label: "Item Code" },
+  { key: "procurement_classification", label: "Procurement Classification" },
+  { key: "business_criticality", label: "Business Criticality" },
   { key: "item_type", label: "Item Type" },
   { key: "uom", label: "UOM" },
   { key: "length", label: "Length/Size" },
   { key: "width", label: "Width" },
   { key: "height", label: "Height/Thk" },
   { key: "volume", label: "Volume" },
+  { key: "total_reqd", label: "Total Reqd" },
   { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty" },
   { key: "warning_alert_qty", label: "Warning Alert Qty" },
-  { key: "to_order_qty", label: "To Order Qty" },
-  { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty" },
   { key: "physical_qty", label: "Physical Qty" },
   { key: "ordered_qty", label: "Ordered Qty" },
-  { key: "total_reqd", label: "Total Reqd" },
+  { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty" },
+  { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)" },
+  { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)" },
 ];
 
 const FIELDS = [
@@ -35,25 +51,41 @@ const FIELDS = [
   { key: "item_code_ref_id", label: "Item Code & Name", required: true },
   { key: "item_code", label: "Item Code", readOnly: true },
   { key: "item_name", label: "Item Name", readOnly: true },
+  {
+    key: "procurement_classification",
+    label: "Procurement Classification",
+    options: PROCUREMENT_CLASSIFICATION_OPTIONS,
+    placeholder: "Select Procurement Classification",
+    isClearable: true,
+  },
+  {
+    key: "business_criticality",
+    label: "Business Criticality",
+    options: BUSINESS_CRITICALITY_OPTIONS,
+    placeholder: "Select Business Criticality",
+    isClearable: true,
+  },
   { key: "item_type_id", label: "Item Type", required: true },
   { key: "uom_id", label: "UOM", required: true },
   { key: "length", label: "Length/Size", type: "number", min: 0, step: "any", default: "0" },
   { key: "width", label: "Width", type: "number", min: 0, step: "any", default: "0" },
   { key: "height", label: "Height/Thk", type: "number", min: 0, step: "any", default: "0" },
   { key: "volume", label: "Volume", type: "number", readOnly: true, default: "0" },
-  { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty", type: "number", min: 0, step: 1, default: "0" },
-  { key: "warning_alert_qty", label: "Warning Alert Qty", type: "number", min: 0, step: 1, default: "0" },
-  { key: "to_order_qty", label: "To Order Qty", type: "number", min: 0, step: 1, default: "0" },
-  { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty", type: "number", min: 0, step: 1, default: "0" },
-  { key: "physical_qty", label: "Physical Qty", type: "number", min: 0, step: 1, default: "0" },
-  { key: "ordered_qty", label: "Ordered Qty", type: "number", min: 0, step: 1, default: "0" },
-  { key: "total_reqd", label: "Total Reqd", type: "number", min: 0, step: 1, default: "0" },
+  { key: "total_reqd", label: "Total Reqd", type: "number", min: 0, step: "any", default: "0" },
+  { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty", type: "number", min: 0, step: "any", default: "0" },
+  { key: "warning_alert_qty", label: "Warning Alert Qty", type: "number", min: 0, step: "any", default: "0" },
+  { key: "physical_qty", label: "Physical Qty", type: "number", min: 0, step: "any", default: "0" },
+  { key: "ordered_qty", label: "Ordered Qty", type: "number", min: 0, step: "any", default: "0" },
+  { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty", type: "number", readOnly: true, default: "0" },
+  { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)", type: "number", readOnly: true, default: "0" },
+  { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)", type: "number", readOnly: true, default: "0" },
 ];
 
 const QUANTITY_KEYS = [
   "recommended_free_stock_qty",
   "warning_alert_qty",
   "to_order_qty",
+  "to_order_qty_including_free_stock",
   "physical_plus_ordered_qty",
   "physical_qty",
   "ordered_qty",
@@ -65,6 +97,14 @@ function withQuantityDefaults(row = {}) {
   QUANTITY_KEYS.forEach((key) => {
     next[key] = row[key] === "" || row[key] == null ? 0 : row[key];
   });
+  const phy = Number(next.physical_qty || 0);
+  const ord = Number(next.ordered_qty || 0);
+  next.physical_plus_ordered_qty = (Number.isFinite(phy) ? phy : 0) + (Number.isFinite(ord) ? ord : 0);
+  const tot = Number(next.total_reqd || 0);
+  const rec = Number(next.recommended_free_stock_qty || 0);
+  next.to_order_qty = (Number.isFinite(tot) ? tot : 0) - next.physical_plus_ordered_qty;
+  next.to_order_qty_including_free_stock =
+    (Number.isFinite(tot) ? tot : 0) + (Number.isFinite(rec) ? rec : 0) - next.physical_plus_ordered_qty;
   return next;
 }
 
@@ -171,27 +211,19 @@ function StockItemsPage() {
     },
     FIELDS[2],
     FIELDS[3],
+    FIELDS[4],
+    FIELDS[5],
     {
-      ...FIELDS[4],
+      ...FIELDS[6],
       options: itemTypeOptions,
       isClearable: false,
     },
     {
-      ...FIELDS[5],
+      ...FIELDS[7],
       options: uomOptions,
       isClearable: false,
     },
-    FIELDS[6],
-    FIELDS[7],
-    FIELDS[8],
-    FIELDS[9],
-    FIELDS[10],
-    FIELDS[11],
-    FIELDS[12],
-    FIELDS[13],
-    FIELDS[14],
-    FIELDS[15],
-    FIELDS[16],
+    ...FIELDS.slice(8),
   ];
 
   const computeValues = useCallback((changedKey, _changedValue, allValues) => {
@@ -222,6 +254,27 @@ function StockItemsPage() {
         item_name_ref_id: selected ? selected.value : "",
         item_code: selected?.itemCode || "",
         item_name: selected?.itemName || "",
+      };
+    }
+
+    if (["physical_qty", "ordered_qty", "total_reqd", "recommended_free_stock_qty"].includes(changedKey)) {
+      const physicalQty = Number(allValues.physical_qty || 0);
+      const orderedQty = Number(allValues.ordered_qty || 0);
+      const physicalPlusOrdered =
+        (Number.isFinite(physicalQty) ? physicalQty : 0) +
+        (Number.isFinite(orderedQty) ? orderedQty : 0);
+      const totalReqd = Number(allValues.total_reqd || 0);
+      const recommendedFreeStock = Number(allValues.recommended_free_stock_qty || 0);
+      const toOrderExc = (Number.isFinite(totalReqd) ? totalReqd : 0) - physicalPlusOrdered;
+      const toOrderInc =
+        (Number.isFinite(totalReqd) ? totalReqd : 0) +
+        (Number.isFinite(recommendedFreeStock) ? recommendedFreeStock : 0) -
+        physicalPlusOrdered;
+
+      return {
+        physical_plus_ordered_qty: physicalPlusOrdered,
+        to_order_qty: toOrderExc,
+        to_order_qty_including_free_stock: toOrderInc,
       };
     }
 

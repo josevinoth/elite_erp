@@ -1,0 +1,15 @@
+project-includes = [
+    "**/*.py*",
+]
+python-interpreter-path = ".venv/Scripts/python.exe"
+search-path = [
+    "erp",
+    ".venv/Lib/site-packages",
+]
+site-packages-path = [
+    ".venv/Lib/site-packages",
+]
+
+[errors]
+missing-attribute = false
+bad-context-manager = false

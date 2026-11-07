@@ -2,6 +2,7 @@ import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -82,10 +83,17 @@ def _serialize_purchase_item(item):
     cat_name = getattr(item.item_category, "name", "") if item.item_category else ""
     code_val = getattr(item.item_code, "item_code", "") if item.item_code else (str(item.item_code or ""))
     sp_num = f"SPV{item.vendor_detail_id:04d}" if item.vendor_detail_id else ""
+    vendor_name = ""
+    if item.vendor_detail and getattr(item.vendor_detail, "vendor", None):
+        vendor_name = getattr(item.vendor_detail.vendor, "name", "") or ""
+    elif item.vendor_detail:
+        vendor_name = str(item.vendor_detail)
     return {
         "id": item.id,
         "grn_number": raw_grn,
         "purchase_number": sp_num,
+        "supplier_name": vendor_name,
+        "vendor_name": vendor_name,
         "invoice_number": item.vendor_detail.invoice_number if item.vendor_detail else "",
         "item_category": cat_name,
         "item_name": item.item_name,
@@ -140,16 +148,94 @@ def _calculate_item_purchase_stats(item_master):
     }
 
 
+def check_lce_item_wip_usage(item_code_input, item_id=None):
+    """
+    Check if an item's LCE cost is used in any Project Quotation or Project Costing
+    whose status is Work In Progress (WIP).
+    Returns a list of matching project dictionaries.
+    """
+    item = None
+    if item_id and str(item_id).isdigit():
+        item = LabFurnitureItem.objects.filter(pk=int(item_id)).first()
+    code_str = str(getattr(item_code_input, "item_code", item_code_input) or "").strip()
+    if not item and code_str:
+        if code_str.isdigit():
+            item = LabFurnitureItem.objects.filter(pk=int(code_str)).first()
+        if not item:
+            item = LabFurnitureItem.objects.filter(item_code_ref__item_code__iexact=code_str).first()
+
+    code_val = item.item_code if item else code_str
+    if item:
+        item_q = Q(item_code=item) | Q(item_code__item_code_ref__item_code__iexact=code_val)
+    elif code_val:
+        item_q = Q(item_code__item_code_ref__item_code__iexact=code_val)
+    else:
+        return []
+
+    from ..sub_models.project_quotation_items_mod import ProjectQuotationItemInfo
+    from ..sub_models.project_costing_items_mod import ProjectCostingItemInfo
+
+    wip_projects = []
+    seen = set()
+
+    quotation_items = (
+        ProjectQuotationItemInfo.objects.filter(
+            item_q,
+            quotation_number__status__status_name__iexact="Work In Progress",
+        )
+        .select_related("quotation_number__project", "quotation_number__status")
+        .order_by("quotation_number__project__project_id")
+    )
+    for qi in quotation_items:
+        q_sum = qi.quotation_number
+        if not q_sum:
+            continue
+        proj = q_sum.project
+        key = ("quotation", q_sum.quotation_number or q_sum.id)
+        if key not in seen:
+            seen.add(key)
+            wip_projects.append({
+                "stage": "Project Quotation",
+                "project_code": getattr(proj, "project_id", "") if proj else "",
+                "project_name": getattr(proj, "project_name", "") or getattr(q_sum, "project_name", "") or "—",
+                "reference": q_sum.quotation_number or f"Q-{q_sum.id}",
+                "status": getattr(q_sum.status, "status_name", "Work In Progress"),
+            })
+
+    costing_items = (
+        ProjectCostingItemInfo.objects.filter(
+            item_q,
+            costing_id__status__status_name__iexact="Work In Progress",
+        )
+        .select_related("costing_id__project", "costing_id__status")
+        .order_by("costing_id__project__project_id")
+    )
+    for ci in costing_items:
+        c_sum = ci.costing_id
+        if not c_sum:
+            continue
+        proj = c_sum.project
+        key = ("costing", c_sum.costing_id or c_sum.id)
+        if key not in seen:
+            seen.add(key)
+            wip_projects.append({
+                "stage": "Project Costing",
+                "project_code": getattr(proj, "project_id", "") if proj else "",
+                "project_name": getattr(proj, "project_name", "") or getattr(c_sum, "project_name", "") or "—",
+                "reference": c_sum.costing_id or f"C-{c_sum.id}",
+                "status": getattr(c_sum.status, "status_name", "Work In Progress"),
+            })
+
+    return wip_projects
+
+
 def _save_lce_items(estimate, items_payload):
     if items_payload is None:
         return
-    LCEEstimateItem.objects.filter(lce_estimate=estimate).delete()
-    item_rows = []
-    first_item = None
-    ex_works = Decimal(str(estimate.ex_works_material_cost or 0))
-    total_val = Decimal(str(estimate.total or 0))
-    cost_factor = (total_val / ex_works) if ex_works else Decimal("0")
 
+    # 1. Guard: Check for duplicate items in payload, and ensure no item is linked to another LCE
+    seen_item_ids = set()
+    validated_items = []
     for row in items_payload:
         if not isinstance(row, dict):
             continue
@@ -162,6 +248,59 @@ def _save_lce_items(estimate, items_payload):
         if not master_item:
             continue
 
+        item_code_display = getattr(master_item, "item_code", str(item_id))
+        if master_item.pk in seen_item_ids:
+            raise ValidationError(f"Duplicate item '{item_code_display}' in items list. Each item code can only be linked once.")
+        seen_item_ids.add(master_item.pk)
+
+        # Ensure this item is not already linked to another LCE estimate
+        other_link = (
+            LCEEstimateItem.objects.filter(item_code=master_item)
+            .exclude(lce_estimate=estimate)
+            .select_related("lce_estimate")
+            .first()
+        )
+        if other_link:
+            raise ValidationError(
+                f"Item '{item_code_display}' is already linked to LCE #{other_link.lce_estimate_id}. "
+                f"An item code can only be linked to one LCE."
+            )
+
+        validated_items.append((master_item, row))
+
+    # 2. Guard: if this estimate is already saved in the database,
+    # prevent removing any item that is used in WIP project quotations or costings.
+    if estimate.pk:
+        existing_items = list(
+            LCEEstimateItem.objects.filter(lce_estimate=estimate).select_related("item_code__item_code_ref")
+        )
+        if existing_items:
+            payload_codes = set()
+            for r in items_payload:
+                if isinstance(r, dict):
+                    c = str(r.get("item_code") or "").strip().upper()
+                    cid = str(r.get("item_code_id") or "").strip()
+                    if c:
+                        payload_codes.add(c)
+                    if cid:
+                        payload_codes.add(cid)
+            for ex in existing_items:
+                ex_code = ex.item_code.item_code.strip().upper() if ex.item_code else ""
+                ex_id = str(ex.item_code_id)
+                if ex_code not in payload_codes and ex_id not in payload_codes:
+                    wip_projs = check_lce_item_wip_usage(ex.item_code)
+                    if wip_projs:
+                        proj_list = ", ".join(f"{p['project_code']} ({p['stage']})" for p in wip_projs[:3])
+                        raise ValidationError(f"Cannot remove item {ex_code}: LCE cost is used in WIP projects ({proj_list}).")
+
+    LCEEstimateItem.objects.filter(lce_estimate=estimate).delete()
+    item_rows = []
+    first_item = None
+    ex_works = Decimal(str(estimate.ex_works_material_cost or 0))
+    total_val = Decimal(str(estimate.total or 0))
+    cost_factor = (total_val / ex_works) if ex_works else Decimal("0")
+
+    for master_item, row in validated_items:
         stats = _calculate_item_purchase_stats(master_item)
         auto_min = Decimal(stats["min_cost"])
         auto_max = Decimal(stats["max_cost"])
@@ -419,14 +558,28 @@ def _serialize(obj):
     }
 
 
+def _clean_user_display(val):
+    if not val:
+        return ""
+    if isinstance(val, dict):
+        return val.get("username") or val.get("name") or str(val.get("id") or "")
+    val_str = str(val).strip()
+    if val_str.startswith("{") and ("'username':" in val_str or '"username":' in val_str):
+        import re
+        m = re.search(r"['\"]username['\"]\s*:\s*['\"]([^'\"]+)['\"]", val_str)
+        if m:
+            return m.group(1)
+    return val_str
+
+
 def _serialize_list_row(obj):
     return {
         "id": obj.id,
         "lce_id": f"LCE_{obj.id:03d}",
-        "date": obj.updated_at.date().isoformat() if obj.updated_at else "",
         "total_supplier_price": str(obj.total_supplier_price),
         "total_supplier_price_omr": str(obj.total_supplier_price_omr),
         "total": str(obj.total),
+        "updated_by": _clean_user_display(obj.created_by),
         "updated_by": obj.created_by or "",
         "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
         "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
@@ -447,6 +600,14 @@ def lce_estimate_meta_api_view(request):
         _serialize_currency(row)
         for row in CountryCurrency.objects.filter(is_active=True).order_by("sort_order", "country_name")
     ]
+    linked_lce_items = {}
+    for item in LCEEstimateItem.objects.select_related("lce_estimate").all():
+        if item.item_code_id:
+            linked_lce_items[str(item.item_code_id)] = {
+                "lce_id": item.lce_estimate_id,
+                "lce_title": f"LCE #{item.lce_estimate_id}",
+            }
+
     item_master_options = [
         {
             "id": row.id,
@@ -454,6 +615,7 @@ def lce_estimate_meta_api_view(request):
             "item_name": row.item_name,
             "item_category": row.item_category.name if row.item_category else "",
             "label": f"{row.item_code} - {row.item_name}",
+            "linked_lce_id": linked_lce_items.get(str(row.id), {}).get("lce_id"),
         }
         for row in LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category").order_by("item_code_ref__item_code")
     ]
@@ -467,6 +629,7 @@ def lce_estimate_meta_api_view(request):
         "charge_types": charge_types,
         "currencies": currencies,
         "item_master_options": item_master_options,
+        "linked_lce_items": linked_lce_items,
         "stock_purchases": stock_purchases,
     })
 
@@ -537,7 +700,7 @@ def lce_purchase_history_api_view(request, item_code):
 
     rows = (
         StockPurchaseItem.objects.filter(query)
-        .select_related("item_category", "item_code__item_code_ref", "vendor_detail")
+        .select_related("item_category", "item_code__item_code_ref", "vendor_detail__vendor")
         .order_by("-updated_at", "-id")
     )
 
@@ -546,6 +709,12 @@ def lce_purchase_history_api_view(request, item_code):
         cat_name = getattr(r.item_category, "name", "") if r.item_category else (getattr(item.item_category, "name", "") if item and item.item_category else "")
         item_name = r.item_name or (item.item_name if item else "")
         code_val = (r.item_code.item_code if r.item_code else "") or (item.item_code if item else item_str)
+        supplier_name = ""
+        if r.vendor_detail and getattr(r.vendor_detail, "vendor", None):
+            supplier_name = getattr(r.vendor_detail.vendor, "name", "") or ""
+        elif r.vendor_detail:
+            supplier_name = str(r.vendor_detail)
+
         if r.unit_price not in (None, ""):
             cost = Decimal(str(r.unit_price)).quantize(Decimal("0.01"))
         elif r.total_price and r.quantity and r.quantity > 0:
@@ -562,6 +731,8 @@ def lce_purchase_history_api_view(request, item_code):
             "item_category": cat_name,
             "item_name": item_name,
             "item_code": code_val,
+            "supplier_name": supplier_name,
+            "vendor_name": supplier_name,
             "cost": str(cost),
             "purchase_number": sp_num,
             "invoice_number": r.vendor_detail.invoice_number if r.vendor_detail else "",
@@ -635,8 +806,11 @@ def create_lce_estimate_api_view(request):
     text_values = {field: normalize_text(payload.get(field, "")) for field in TEXT_FIELDS}
     foreign_currency = _to_currency(payload.get("foreign_currency_id"))
 
+    user_val = payload.get("created_by")
+    if isinstance(user_val, dict):
+        user_val = user_val.get("username") or request.user.username
     estimate = LCEEstimate(
-        created_by=normalize_text(payload.get("created_by") or request.user.username),
+        created_by=normalize_text(user_val or request.user.username),
         foreign_currency=foreign_currency,
     )
     items_payload = payload.get("items")
@@ -663,7 +837,10 @@ def create_lce_estimate_api_view(request):
     estimate.save()
 
     if items_payload is not None:
-        _save_lce_items(estimate, items_payload)
+        try:
+            _save_lce_items(estimate, items_payload)
+        except ValidationError as exc:
+            return JsonResponse({"message": exc.message if hasattr(exc, "message") else str(exc)}, status=400)
     elif item_ids:
         _link_items_to_estimate(estimate, item_ids)
     _replace_balance_settlements(estimate, payload.get("balance_settlements") or [])
@@ -722,14 +899,93 @@ def lce_estimate_record_api_view(request, lce_id):
     estimate.balance_payment_value_omr = values["balance_payment_value_omr"]
     estimate.total_supplier_price_omr = values["total_supplier_price_omr"]
     estimate.total = values["total"]
-    estimate.created_by = normalize_text(payload.get("created_by") or estimate.created_by or request.user.username)
+    user_val = payload.get("created_by")
+    if isinstance(user_val, dict):
+        user_val = user_val.get("username") or estimate.created_by or request.user.username
+    estimate.created_by = normalize_text(user_val or estimate.created_by or request.user.username)
     estimate.save()
 
     if items_payload is not None:
-        _save_lce_items(estimate, items_payload)
+        try:
+            _save_lce_items(estimate, items_payload)
+        except ValidationError as exc:
+            return JsonResponse({"message": exc.message if hasattr(exc, "message") else str(exc)}, status=400)
     elif "item_ids" in payload:
         _link_items_to_estimate(estimate, item_ids)
     if "balance_settlements" in payload:
         _replace_balance_settlements(estimate, payload.get("balance_settlements") or [])
 
     return JsonResponse({"success": True, "lce_estimate": _serialize(estimate)})
+
+
+@require_GET
+def check_lce_item_usage_api_view(request):
+    """
+    Check if an item's LCE cost is used in any Project Quotation or Project Costing
+    whose status is Work In Progress (WIP).
+    GET /api/lce/check-item-usage/?item_code=...&item_id=...
+    """
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    item_code = request.GET.get("item_code", "").strip()
+    item_id = request.GET.get("item_id", "").strip()
+    wip_projects = check_lce_item_wip_usage(item_code, item_id)
+
+    return JsonResponse({
+        "status": "success",
+        "can_delete": len(wip_projects) == 0,
+        "item_code": item_code,
+        "wip_projects": wip_projects,
+    })
+
+
+@require_http_methods(["POST", "DELETE"])
+@csrf_protect
+def delete_lce_item_api_view(request):
+    """
+    Delete an item from an LCE estimate.
+    Disallows deletion if the item's LCE cost is used in any WIP project quotation or costing.
+    POST /api/lce/delete-item/
+    Payload: { "lce_id": 15, "item_code": "12052", "item_code_id": "..." }
+    """
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    payload = _read_json(request)
+    item_code = str(payload.get("item_code") or request.GET.get("item_code") or "").strip()
+    item_id = str(payload.get("item_code_id") or payload.get("item_id") or request.GET.get("item_id") or "").strip()
+    lce_id = payload.get("lce_id") or request.GET.get("lce_id")
+
+    wip_projects = check_lce_item_wip_usage(item_code, item_id)
+    if wip_projects:
+        return JsonResponse({
+            "status": "error",
+            "can_delete": False,
+            "message": f"Cannot delete item {item_code}: this LCE cost is used in active WIP project(s).",
+            "wip_projects": wip_projects,
+        }, status=400)
+
+    if lce_id and str(lce_id).isdigit():
+        estimate = LCEEstimate.objects.filter(pk=int(lce_id)).first()
+        if estimate:
+            item = None
+            if item_id and item_id.isdigit():
+                item = LabFurnitureItem.objects.filter(pk=int(item_id)).first()
+            if not item and item_code:
+                item = LabFurnitureItem.objects.filter(item_code_ref__item_code__iexact=item_code).first()
+            if item:
+                LCEEstimateItem.objects.filter(lce_estimate=estimate, item_code=item).delete()
+            elif item_code:
+                LCEEstimateItem.objects.filter(
+                    lce_estimate=estimate,
+                    item_code__item_code_ref__item_code__iexact=item_code,
+                ).delete()
+
+    return JsonResponse({
+        "status": "success",
+        "can_delete": True,
+        "message": f"Item {item_code} deleted from LCE successfully.",
+    })

@@ -32,6 +32,7 @@ class Vendor(models.Model):
     email = models.CharField(max_length=254, blank=True)
     phone = models.CharField(max_length=30, blank=True)
     address = models.TextField(blank=True)
+    updated_by = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -73,7 +74,7 @@ class Vendor(models.Model):
             raise ValidationError({"email": "Email must contain '@'."})
 
     def save(self, *args, **kwargs):
-        for field in ["name", "contact_person", "email", "phone", "address", "vendor_code"]:
+        for field in ["name", "contact_person", "email", "phone", "address", "vendor_code", "updated_by"]:
             setattr(self, field, normalize_text(getattr(self, field)))
         if self.vendor_code == "":
             self.vendor_code = None
