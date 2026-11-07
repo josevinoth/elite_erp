@@ -244,7 +244,7 @@ const isSummaryRelatedMessage = (message) => {
   return summaryHints.some((hint) => normalized.includes(hint));
 };
 
-function ProjectQuotationPage({ projectId = null, embedded = false, onSummaryStatusChange = null }) {
+function ProjectQuotationPage({ projectId = null, embedded = false, onSummaryStatusChange = null, initialQuotationId = null, onClose = null }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryQuotationId = searchParams.get("quotationId");
@@ -255,7 +255,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const [selectedProjectIdForCreate, setSelectedProjectIdForCreate] = useState(() => (
     embedded && projectId ? String(projectId) : ""
   ));
-  const [selectedQuotationId, setSelectedQuotationId] = useState(() => queryQuotationId || "");
+  const [selectedQuotationId, setSelectedQuotationId] = useState(() => initialQuotationId ? String(initialQuotationId) : (queryQuotationId || ""));
   const [summary, setSummary] = useState(null);
   const [savedSummaryStatus, setSavedSummaryStatus] = useState("");
   const [items, setItems] = useState([]);
@@ -586,7 +586,9 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setLabFurnitureItems(labItems);
 
       let nextSelectedId = "";
-      if (embedded && projectId) {
+      if (initialQuotationId) {
+        nextSelectedId = String(initialQuotationId);
+      } else if (embedded && projectId) {
         nextSelectedId = summaryIdFromEmbedded || String(refreshedSummaryRows[0]?.id || "");
       } else if (selectedQuotationId) {
         nextSelectedId = String(selectedQuotationId);
@@ -728,6 +730,14 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (initialQuotationId) {
+      setSelectedQuotationId(String(initialQuotationId));
+      refreshSelectedSummary(String(initialQuotationId));
+      loadItemsForSummary(initialQuotationId);
+    }
+  }, [initialQuotationId, refreshSelectedSummary, loadItemsForSummary]);
 
   useEffect(() => {
     if (!embedded) {
@@ -1013,6 +1023,9 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       } catch (_refreshError) {
         // Keep save successful even if the follow-up refresh request intermittently fails.
       }
+      if (onClose) {
+        onClose();
+      }
     } catch (error) {
       setSummarySaveFeedback({
         type: error.payload?.status || "error",
@@ -1100,6 +1113,10 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   }, [clearStatus, closeStatusConfirmation, embedded, loadItemsForSummary, quotations, setSearchParams]);
 
   const handleCancelQuotation = useCallback(() => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     if (embedded && projectId) {
       navigate("/projects");
       return;
@@ -1428,11 +1445,24 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             <span className="project-costing-title__text">{quotationTitle}</span>
           </h1>
         </div>
+        {onClose ? (
         {!embedded && !selectedQuotationId ? (
           <div className="pq-header-actions">
             <button
               type="button"
               className="crud-add-btn"
+              onClick={onClose}
+            >
+              Back to Project
+            </button>
+          </div>
+        ) : !embedded && !selectedQuotationId ? (
+          <div className="pq-header-actions">
+            <button
+              type="button"
+              className="crud-add-btn"
+              onClick={() => navigate("/projects")}
+            >
               onClick={() => navigate("/projects")}
             >
               Back to Projects

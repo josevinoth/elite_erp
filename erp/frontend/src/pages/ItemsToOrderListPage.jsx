@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   BsArrowLeft,
   BsCartCheck,
+  BsBoxes,
   BsClipboardData,
   BsBoxes,
   BsCheckCircleFill,
@@ -83,6 +84,13 @@ function ItemsToOrderListPage() {
       // Column filters
       const activeFilters = Object.entries(columnFilters).filter(([, val]) => String(val || "").trim());
       return activeFilters.every(([key, filterVal]) => {
+        const needle = String(filterVal).trim().toLowerCase();
+        if (key === "item_code") {
+          const combined = `${row.item_code ?? ""} ${row.item_name ?? ""} ${row.item_category ?? ""}`.toLowerCase();
+          return combined.includes(needle);
+        }
+        const rowVal = String(row[key] ?? "").toLowerCase();
+        return rowVal.includes(needle);
         const rowVal = String(row[key] ?? "").toLowerCase();
         return rowVal.includes(String(filterVal).trim().toLowerCase());
       });
@@ -118,11 +126,43 @@ function ItemsToOrderListPage() {
         </div>
       </div>
 
+      {status.message && status.type === "error" ? (
       {status.message ? (
         <p className={`users-status users-status--${status.type}`}>{status.message}</p>
       ) : null}
 
       {/* Summary Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
+        <div className="project-costing-card" style={{ padding: "0.55rem 0.85rem", borderLeft: "3.5px solid #0284c7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>TOTAL ITEMS TO ORDER</div>
+            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.15rem" }}>
+              <span style={{ fontWeight: 600, color: "#0f172a" }}>{stats.totalOrderQty.toFixed(2)}</span> units needed
+            </div>
+          </div>
+          <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>
+            {stats.totalItems}
+          </div>
+        </div>
+
+        <div className="project-costing-card" style={{ padding: "0.55rem 0.85rem", borderLeft: "3.5px solid #0ea5e9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>FROM QUOTATION STAGE</div>
+            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.15rem" }}>Completed quotations</div>
+          </div>
+          <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#0284c7", lineHeight: 1 }}>
+            {stats.quotationItems}
+          </div>
+        </div>
+
+        <div className="project-costing-card" style={{ padding: "0.55rem 0.85rem", borderLeft: "3.5px solid #8b5cf6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>FROM COSTING STAGE</div>
+            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.15rem" }}>Completed costings</div>
+          </div>
+          <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#7c3aed", lineHeight: 1 }}>
+            {stats.costingItems}
+          </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
         <div className="project-costing-card" style={{ padding: "1rem", borderLeft: "4px solid #0284c7" }}>
           <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>TOTAL ITEMS TO ORDER</div>
@@ -240,6 +280,7 @@ function ItemsToOrderListPage() {
                 <tbody>
                   {filteredItems.length === 0 ? (
                     <tr>
+                      <td colSpan={12} className="project-costing-empty">
                       <td colSpan={16} className="project-costing-empty">
                         No missing stock items found. All requested quantities are covered by current stock.
                       </td>
@@ -254,6 +295,13 @@ function ItemsToOrderListPage() {
                       <td style={{ fontWeight: 600 }}>{row.reference_number}</td>
                       <td>{row.project_id}</td>
                       <td>{row.project_name}</td>
+                      <td>
+                        <div style={{ fontWeight: 600, color: "#0f172a" }}>{row.item_code}</div>
+                        <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "0.15rem", lineHeight: "1.3" }}>
+                          {row.item_name}
+                          {row.item_category && row.item_category !== "—" ? ` • ${row.item_category}` : ""}
+                        </div>
+                      </td>
                       <td>{row.item_category}</td>
                       <td>{row.item_name}</td>
                       <td>{row.item_code}</td>

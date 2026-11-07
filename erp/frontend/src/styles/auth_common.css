@@ -1149,9 +1149,17 @@ select.auth-input option {
   color: var(--muted);
 }
 
-.users-table-wrap {
+.users-table-wrap,
+.project-costing-table-wrap,
+.vendor-table-wrap,
+.stock-retrieval-wrap,
+.stock-acceptance-wrap,
+.pq-table-wrap-list {
   margin-top: 0.85rem;
-  overflow-x: auto;
+  max-height: 68vh;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  position: relative;
 }
 
 .users-table-wrap--fit {
@@ -1250,18 +1258,44 @@ select.auth-input option {
   table-layout: fixed;
 }
 
-.users-table thead th {
+.users-table thead,
+.project-costing-table thead,
+.vendor-table thead,
+.stock-retrieval-table thead {
   position: sticky;
-}
-
-.users-table thead tr:first-child th {
   top: 0;
-  z-index: 6;
+  z-index: 10;
 }
 
-.users-table thead tr:nth-child(2) th {
-  top: 41px;
-  z-index: 5;
+.users-table thead th,
+.project-costing-table thead th,
+.vendor-table thead th,
+.stock-retrieval-table thead th {
+  position: sticky !important;
+}
+
+.users-table thead tr:first-child th,
+.project-costing-table thead tr:first-child th,
+.vendor-table thead tr:first-child th,
+.stock-retrieval-table thead tr:first-child th,
+.users-table__sticky-head {
+  top: 0 !important;
+  z-index: 10 !important;
+  height: 38px;
+  box-sizing: border-box;
+  background: var(--list-header-bg, #2c3e50) !important;
+  color: #f7f9ff !important;
+}
+
+.users-table thead tr:nth-child(2) th,
+.project-costing-table thead tr:nth-child(2) th,
+.vendor-table thead tr:nth-child(2) th,
+.stock-retrieval-table thead tr:nth-child(2) th,
+.users-table__sticky-filter {
+  top: 38px !important;
+  z-index: 9 !important;
+  background: var(--list-header-bg-2, #eef2f7) !important;
+  color: #495057 !important;
 }
 
 .users-table th,
@@ -1288,13 +1322,15 @@ select.auth-input option {
   vertical-align: middle;
 }
 
-.crud-page .users-table .users-table__actions-col {
-  width: 74px;
-  min-width: 74px;
-  max-width: 74px;
-  text-align: center;
-  padding-top: 0.45rem;
-  padding-bottom: 0.45rem;
+.crud-page .users-table .users-table__actions-col,
+.crud-page .users-table th.users-table__actions-col,
+.crud-page .users-table td.users-table__actions-col,
+.users-table__actions-col {
+  width: 50px !important;
+  min-width: 45px !important;
+  max-width: 55px !important;
+  text-align: center !important;
+  padding: 0.45rem 0.25rem !important;
 }
 
 .crud-page .users-table td.users-table__actions-col {
@@ -1458,8 +1494,23 @@ select.auth-input option {
   z-index: 4;
 }
 
-.users-table tbody tr:hover {
-  background: #f8f9fc;
+.users-table tbody tr:hover,
+.users-table tbody tr:hover td,
+.users-table tbody tr.users-table__row--clickable:hover td,
+.pq-clickable-row:hover,
+.pq-clickable-row:hover td,
+.project-costing-table tbody tr:hover,
+.project-costing-table tbody tr:hover td,
+.vendor-table tbody tr:hover,
+.vendor-table tbody tr:hover td,
+.stock-retrieval-table tbody tr:hover,
+.stock-retrieval-table tbody tr:hover td {
+  background-color: #e2e8f0 !important;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.users-table tbody tr.users-table__row--clickable {
+  cursor: pointer;
 }
 
 .users-table tbody tr:last-child td {
@@ -2312,11 +2363,11 @@ select.auth-input option {
 }
 
 .modal-card--item-master {
-  width: min(640px, calc(100vw - 1.5rem));
-  max-width: 640px;
+  width: min(780px, calc(100vw - 1.5rem));
+  max-width: 780px;
   align-self: start;
-  margin-top: 5.5rem;
-  max-height: calc(100vh - 7rem);
+  margin-top: 5rem;
+  max-height: calc(100vh - 6.5rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2324,9 +2375,9 @@ select.auth-input option {
 
 @media (max-width: 900px) {
   .modal-card--item-master {
-    max-width: min(640px, calc(100vw - 1.5rem));
-    margin-top: 4.75rem;
-    max-height: calc(100vh - 6.25rem);
+    max-width: min(780px, calc(100vw - 1.5rem));
+    margin-top: 4.5rem;
+    max-height: calc(100vh - 5.5rem);
   }
 }
 
@@ -2387,6 +2438,44 @@ select.auth-input option {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.25rem 1.5rem;
+}
+
+.modal-card--item-master .modal-form__row {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  align-items: center;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.modal-card--item-master .modal-form__label {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #334155;
+  text-align: left;
+  line-height: 1.35;
+  margin: 0;
+  user-select: none;
+}
+
+.modal-card--item-master .modal-form__actions {
+  display: flex;
+  gap: 0.65rem;
+  justify-content: flex-end;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border, #e2e8f0);
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 680px) {
+  .modal-card--item-master .modal-form__row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
 }
 
 .modal-form__row {

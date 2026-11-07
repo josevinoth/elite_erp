@@ -102,7 +102,3 @@ function ItemCodeNamesPage() {
 }
 
 export default ItemCodeNamesPage;
-
-
-
-

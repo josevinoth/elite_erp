@@ -132,12 +132,18 @@ function CutOptimiserListPage() {
               <tr><td colSpan={6} style={{ textAlign: "center" }}>Loading...</td></tr>
             ) : rows.length ? (
               rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  onClick={() => navigate(`/projects/cut-optimiser/record/${row.id}`)}
+                  style={{ cursor: "pointer" }}
+                  className="users-table__row--clickable"
+                >
                   <td>{formatCutId(row.cut_optimiser_id)}</td>
                   <td>{row.project_name || "-"}</td>
                   <td style={{ textAlign: "right" }}>R{row.revision || 1}</td>
                   <td>{row.updated_by || "—"}</td>
                   <td>{formatDateTime(row.updated_at) || "—"}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
                   <td>
                     <button
                       type="button"
@@ -153,8 +159,10 @@ function CutOptimiserListPage() {
                       className="users-action users-action--delete"
                       title="Delete"
                       aria-label="Delete"
-                      style={{ marginLeft: "0.45rem" }}
-                      onClick={() => onDelete(row)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(row);
+                      }}
                     >
                       <BsTrashFill aria-hidden="true" />
                     </button>
