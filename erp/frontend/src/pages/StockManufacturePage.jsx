@@ -45,7 +45,6 @@ const calcRow = (row) => ({
 
 // ─── shared table header ──────────────────────────────────────────────────────
 function TableHead({ showAction, showAudit, columnFilters, setColumnFilters }) {
-function TableHead({ showAction, showAudit }) {
   return (
     <thead>
       <tr>
@@ -506,10 +505,9 @@ function StockManufacturePage() {
               <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
             )}
             {!loading && filteredListRows.length === 0 && (
-            {!loading && listRows.length === 0 && (
               <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem", color: "#888" }}>No records found.</td></tr>
             )}
-            {filteredListRows.map((row) => (
+            {!loading && filteredListRows.map((row) => (
               <tr key={row.id}>
                 {editId === row.id && editForm ? (
                   <>

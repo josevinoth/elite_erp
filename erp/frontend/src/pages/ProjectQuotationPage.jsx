@@ -1446,7 +1446,6 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
           </h1>
         </div>
         {onClose ? (
-        {!embedded && !selectedQuotationId ? (
           <div className="pq-header-actions">
             <button
               type="button"
@@ -1461,8 +1460,6 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             <button
               type="button"
               className="crud-add-btn"
-              onClick={() => navigate("/projects")}
-            >
               onClick={() => navigate("/projects")}
             >
               Back to Projects

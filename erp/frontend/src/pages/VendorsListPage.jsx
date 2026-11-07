@@ -324,9 +324,6 @@ function VendorsListPage() {
                     <td>{normalizeUpdatedBy(vendor.updated_by) || "—"}</td>
                     <td>{vendor.updated_on || (vendor.updated_at ? new Date(vendor.updated_at).toLocaleString() : "—")}</td>
                     <td onClick={(e) => e.stopPropagation()}>
-                    <td>{vendor.updated_by || "—"}</td>
-                    <td>{vendor.updated_on || (vendor.updated_at ? new Date(vendor.updated_at).toLocaleString() : "—")}</td>
-                    <td>
                       <div className="vendor-table__actions">
                         <button
                           type="button"

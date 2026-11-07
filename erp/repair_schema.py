@@ -1,74 +1,36 @@
 import os
 
 import django
+from django.apps import apps
 from django.db import connection
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "erp.settings")
 django.setup()
 
-from erp_app.sub_models import (  # noqa: E402
-    CDCTeamExpense,
-    ExpenseItem,
-    ExpenseSession,
-    ExpenseStatusOption,
-    ProjectCostingItemInfo,
-    Project,
-)
-
-models_to_ensure = [ExpenseItem, ExpenseSession, ExpenseStatusOption, Project, CDCTeamExpense]
+app_config = apps.get_app_config("erp_app")
 existing_tables = set(connection.introspection.table_names())
 
 with connection.schema_editor() as editor:
-    for model in models_to_ensure:
-        table = model._meta.db_table
-        if table not in existing_tables:
-            print("[CREATE TABLE]", table)
+    for model in app_config.get_models():
+        table_name = model._meta.db_table
+        if table_name not in existing_tables:
+            print(f"[CREATE TABLE] {table_name}")
             editor.create_model(model)
-            existing_tables.add(table)
+            existing_tables.add(table_name)
 
-    project_table = Project._meta.db_table
-    project_columns = {
-        c.name for c in connection.introspection.get_table_description(connection.cursor(), project_table)
-    }
-    required_project_fields = [
-        "proposal_date",
-        "updated_by",
-        "project_owner",
-        "order_value_omr",
-        "expected_customer_need_date",
-        "created_at",
-        "updated_at",
-        "status",
-    ]
+    for model in app_config.get_models():
+        table_name = model._meta.db_table
+        if table_name not in existing_tables:
+            continue
 
-    for field_name in required_project_fields:
-        field = Project._meta.get_field(field_name)
-        column = field.column
-        if column not in project_columns:
-            print("[ADD COLUMN]", f"{project_table}.{column}")
-            editor.add_field(Project, field)
-            project_columns.add(column)
+        columns = {col.name for col in connection.introspection.get_table_description(connection.cursor(), table_name)}
+        for field in model._meta.local_fields:
+            if field.name in {"id"}:
+                continue
+            if field.column not in columns:
+                print(f"[ADD COLUMN] {table_name}.{field.column}")
+                editor.add_field(model, field)
+                columns.add(field.column)
 
 print("Schema repair check complete.")
-
-project_costing_item_table = ProjectCostingItemInfo._meta.db_table
-project_costing_item_columns = {
-    c.name for c in connection.introspection.get_table_description(connection.cursor(), project_costing_item_table)
-}
-required_project_costing_item_fields = [
-    "requested_by",
-    "requested_on",
-    "rejection_comment",
-]
-
-with connection.schema_editor() as editor:
-    for field_name in required_project_costing_item_fields:
-        field = ProjectCostingItemInfo._meta.get_field(field_name)
-        column = field.column
-        if column not in project_costing_item_columns:
-            print("[ADD COLUMN]", f"{project_costing_item_table}.{column}")
-            editor.add_field(ProjectCostingItemInfo, field)
-            project_costing_item_columns.add(column)
-
-print("Project costing item schema repair check complete.")
 

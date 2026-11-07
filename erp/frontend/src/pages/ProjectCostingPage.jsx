@@ -166,7 +166,6 @@ const recalculateCostingSummary = (summary) => {
 };
 
 function ProjectCostingPage({ projectId = null, projectCode = "", embedded = false, onStatusChange = null, initialCostingId = null, onClose = null }) {
-function ProjectCostingPage({ projectId = null, projectCode = "", embedded = false, onStatusChange = null }) {
   const navigate = useNavigate();
   const currentUser = useMemo(() => getSessionUser(), []);
   const roleName = String(currentUser?.role || "").trim().toLowerCase();

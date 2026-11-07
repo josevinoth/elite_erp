@@ -5,7 +5,6 @@ import {
   BsCartCheck,
   BsBoxes,
   BsClipboardData,
-  BsBoxes,
   BsCheckCircleFill,
 } from "react-icons/bs";
 import { listItemsToOrder } from "../services/crudApi";
@@ -91,8 +90,6 @@ function ItemsToOrderListPage() {
         }
         const rowVal = String(row[key] ?? "").toLowerCase();
         return rowVal.includes(needle);
-        const rowVal = String(row[key] ?? "").toLowerCase();
-        return rowVal.includes(String(filterVal).trim().toLowerCase());
       });
     });
   }, [columnFilters, items, stageTab]);
@@ -126,7 +123,6 @@ function ItemsToOrderListPage() {
         </div>
       </div>
 
-      {status.message && status.type === "error" ? (
       {status.message ? (
         <p className={`users-status users-status--${status.type}`}>{status.message}</p>
       ) : null}
@@ -163,31 +159,6 @@ function ItemsToOrderListPage() {
           <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#7c3aed", lineHeight: 1 }}>
             {stats.costingItems}
           </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
-        <div className="project-costing-card" style={{ padding: "1rem", borderLeft: "4px solid #0284c7" }}>
-          <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>TOTAL ITEMS TO ORDER</div>
-          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#0f172a", marginTop: "0.25rem" }}>
-            {stats.totalItems}
-          </div>
-          <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.25rem" }}>
-            {stats.totalOrderQty.toFixed(2)} units needed
-          </div>
-        </div>
-
-        <div className="project-costing-card" style={{ padding: "1rem", borderLeft: "4px solid #0ea5e9" }}>
-          <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>FROM QUOTATION STAGE</div>
-          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#0284c7", marginTop: "0.25rem" }}>
-            {stats.quotationItems}
-          </div>
-          <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.25rem" }}>Completed quotations</div>
-        </div>
-
-        <div className="project-costing-card" style={{ padding: "1rem", borderLeft: "4px solid #8b5cf6" }}>
-          <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>FROM COSTING STAGE</div>
-          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#7c3aed", marginTop: "0.25rem" }}>
-            {stats.costingItems}
-          </div>
-          <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.25rem" }}>Completed costings</div>
         </div>
       </div>
 
@@ -280,7 +251,6 @@ function ItemsToOrderListPage() {
                 <tbody>
                   {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="project-costing-empty">
                       <td colSpan={16} className="project-costing-empty">
                         No missing stock items found. All requested quantities are covered by current stock.
                       </td>
@@ -296,28 +266,28 @@ function ItemsToOrderListPage() {
                       <td>{row.project_id}</td>
                       <td>{row.project_name}</td>
                       <td>
-                        <div style={{ fontWeight: 600, color: "#0f172a" }}>{row.item_code}</div>
+                        <div style={{ fontWeight: 600, color: "#0f172a" }}>{row.item_category || "—"}</div>
                         <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "0.15rem", lineHeight: "1.3" }}>
-                          {row.item_name}
-                          {row.item_category && row.item_category !== "—" ? ` • ${row.item_category}` : ""}
+                          {row.item_name || "—"}
                         </div>
                       </td>
-                      <td>{row.item_category}</td>
-                      <td>{row.item_name}</td>
-                      <td>{row.item_code}</td>
-                      <td>{row.item_type}</td>
-                      <td className="project-costing-table__right">{row.requested_qty}</td>
-                      <td className="project-costing-table__right">{row.purchase_qty}</td>
+                      <td>{row.item_name || "—"}</td>
+                      <td>{row.item_code || "—"}</td>
+                      <td>{row.item_type || "—"}</td>
+                      <td className="project-costing-table__right">{row.requested_qty ?? "—"}</td>
+                      <td className="project-costing-table__right">{row.purchase_qty ?? "—"}</td>
                       <td className="project-costing-table__right" style={{ fontWeight: 700, color: "#dc2626" }}>
-                        {row.order_qty}
+                        {row.order_qty ?? "—"}
                       </td>
                       <td>
                         <span className={`project-costing-stock-badge ${getStockBadgeClass(row.stock_status)}`}>
-                          {row.stock_status}
+                          {row.stock_status || "—"}
                         </span>
                       </td>
-                      <td>{row.requested_by}</td>
-                      <td>{row.requested_date}</td>
+                      <td>{row.requested_by || "—"}</td>
+                      <td>{row.requested_date || "—"}</td>
+                      <td>{row.updated_by || "—"}</td>
+                      <td>{row.updated_on || "—"}</td>
                     </tr>
                   ))}
                 </tbody>

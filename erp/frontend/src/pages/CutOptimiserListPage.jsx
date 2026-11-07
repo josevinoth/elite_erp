@@ -144,7 +144,6 @@ function CutOptimiserListPage() {
                   <td>{row.updated_by || "—"}</td>
                   <td>{formatDateTime(row.updated_at) || "—"}</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                  <td>
                     <button
                       type="button"
                       className="users-action users-action--edit"

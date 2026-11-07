@@ -79,8 +79,8 @@ function HomeLayout({ currentUser }) {
       ? [
           {
             title: "User Registration",
-            stat: "Create new user accounts",
-            to: "/register",
+            stat: "Admin-managed account creation",
+            to: "/users-management",
             icon: BsPersonPlusFill,
             theme: "indigo",
           },

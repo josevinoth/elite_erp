@@ -204,6 +204,13 @@ DATABASES = {
     }
 }
 
+PUBLIC_SELF_REGISTRATION = os.getenv('ALLOW_PUBLIC_REGISTRATION', '0').strip().lower() in {'1', 'true', 'yes', 'on'}
+APPROVED_EMAIL_DOMAINS = tuple(
+    domain.strip().lower()
+    for domain in os.getenv('APPROVED_EMAIL_DOMAINS', '').split(',')
+    if domain.strip()
+)
+
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
