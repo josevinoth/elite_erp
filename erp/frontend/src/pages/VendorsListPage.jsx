@@ -219,6 +219,7 @@ function VendorsListPage() {
                 <th>Phone</th>
                 <th>Email</th>
                 <th className="vendor-table__col-address">Address</th>
+                <th>Address</th>
                 <th>Updated By</th>
                 <th>Updated On</th>
                 <th>Actions</th>
@@ -323,6 +324,9 @@ function VendorsListPage() {
                     <td>{normalizeUpdatedBy(vendor.updated_by) || "—"}</td>
                     <td>{vendor.updated_on || (vendor.updated_at ? new Date(vendor.updated_at).toLocaleString() : "—")}</td>
                     <td onClick={(e) => e.stopPropagation()}>
+                    <td>{vendor.updated_by || "—"}</td>
+                    <td>{vendor.updated_on || (vendor.updated_at ? new Date(vendor.updated_at).toLocaleString() : "—")}</td>
+                    <td>
                       <div className="vendor-table__actions">
                         <button
                           type="button"

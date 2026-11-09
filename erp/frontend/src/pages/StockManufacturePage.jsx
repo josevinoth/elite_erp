@@ -45,6 +45,7 @@ const calcRow = (row) => ({
 
 // ─── shared table header ──────────────────────────────────────────────────────
 function TableHead({ showAction, showAudit, columnFilters, setColumnFilters }) {
+function TableHead({ showAction, showAudit }) {
   return (
     <thead>
       <tr>
@@ -499,11 +500,13 @@ function StockManufacturePage() {
       <div className="users-table-wrap" style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}>
         <table className="users-table users-table--sp-items">
           <TableHead showAction showAudit columnFilters={columnFilters} setColumnFilters={setColumnFilters} />
+          <TableHead showAction showAudit />
           <tbody>
             {loading && (
               <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
             )}
             {!loading && filteredListRows.length === 0 && (
+            {!loading && listRows.length === 0 && (
               <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem", color: "#888" }}>No records found.</td></tr>
             )}
             {filteredListRows.map((row) => (

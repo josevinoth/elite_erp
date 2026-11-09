@@ -166,6 +166,7 @@ const recalculateCostingSummary = (summary) => {
 };
 
 function ProjectCostingPage({ projectId = null, projectCode = "", embedded = false, onStatusChange = null, initialCostingId = null, onClose = null }) {
+function ProjectCostingPage({ projectId = null, projectCode = "", embedded = false, onStatusChange = null }) {
   const navigate = useNavigate();
   const currentUser = useMemo(() => getSessionUser(), []);
   const roleName = String(currentUser?.role || "").trim().toLowerCase();
@@ -1552,6 +1553,8 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.status_name ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, status_name: event.target.value }))} /></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.updated_on ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, updated_on: event.target.value }))} /></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.updated_by ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, updated_by: event.target.value }))} /></th>
+                <th></th>
+                <th></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.total_material_cost ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, total_material_cost: event.target.value }))} /></th>
                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={listColumnFilters.planned_order_value ?? ""} onChange={(event) => setListColumnFilters((prev) => ({ ...prev, planned_order_value: event.target.value }))} /></th>
                 <th></th>
@@ -1588,6 +1591,15 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                     <td className="project-costing-table__right">{row.planned_order_value ?? "—"}</td>
                     <td className="project-costing-table__center" onClick={(e) => e.stopPropagation()}>
                       <div className="project-costing-row-actions">
+                        <button
+                          type="button"
+                          className="users-action users-action--edit"
+                          title="Edit costing"
+                          disabled={saving}
+                          onClick={() => openCosting(row.id)}
+                        >
+                          <BsPencilSquare aria-hidden="true" />
+                        </button>
                         <button
                           type="button"
                           className="users-action users-action--delete"

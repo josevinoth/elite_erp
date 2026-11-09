@@ -340,6 +340,7 @@ def _serialize_list_row(obj):
         "total_supplier_price_omr": str(obj.total_supplier_price_omr),
         "total": str(obj.total),
         "updated_by": _clean_user_display(obj.created_by),
+        "updated_by": obj.created_by or "",
         "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
         "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
     }
