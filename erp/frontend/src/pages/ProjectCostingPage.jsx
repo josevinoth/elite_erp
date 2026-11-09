@@ -546,7 +546,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
   const promptDeleteCosting = useCallback(async (costingOrId) => {
     let costing = costingOrId;
     if (typeof costingOrId === "number" || typeof costingOrId === "string") {
-      costing = (list || []).find((item) => String(item.id) === String(costingOrId)) || { id: costingOrId };
+      costing = (costings || []).find((item) => String(item.id) === String(costingOrId)) || { id: costingOrId };
     }
     if (!costing) return;
     setDeleteCostingModal({
@@ -593,7 +593,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
         message: "Unable to verify downstream connections. Deletion blocked for safety.",
       }));
     }
-  }, [list]);
+  }, [costings]);
 
   const closeDeleteCostingModal = useCallback(() => {
     if (deleteCostingModal.deleting) return;
@@ -1277,10 +1277,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                     <th>Room</th>
                     <th>Cost Type</th>
                     <th>Item Code</th>
-                    <th>Item Type</th>
-                    <th className="project-costing-table__right">Purchase Qty</th>
                     <th className="project-costing-table__right">Requested Qty</th>
-                    <th>Stock Status</th>
                     <th>Retrieval Status</th>
                     <th>Rejection Comments</th>
                     <th className="project-costing-table__center">Actions</th>
@@ -1289,10 +1286,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.room_name ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, room_name: event.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.cost_type ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, cost_type: event.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.stock_status ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, stock_status: event.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.retrieval_status ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, retrieval_status: event.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.rejection_comment ?? ""} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, rejection_comment: event.target.value }))} /></th>
                     <th></th>
@@ -1301,7 +1295,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                 <tbody>
                   {filteredEditingItems.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="project-costing-empty">No costing items found.</td>
+                      <td colSpan={7} className="project-costing-empty">No costing items found.</td>
                     </tr>
                   ) : filteredEditingItems.map((item) => {
                     const rowCostType = item.cost_type?.name || item.cost_type_name || item.cost_type || "-";
@@ -1325,14 +1319,7 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
                             {concatenatedItemCode}
                           </span>
                         </td>
-                        <td>{item.item_type || "-"}</td>
-                        <td className="project-costing-table__right">{item.purchase_qty}</td>
                         <td className="project-costing-table__right">{item.requested_qty}</td>
-                        <td>
-                          <span className={`project-costing-stock-badge ${getStockStatusBadgeClass(getStockStatusName(item))}`}>
-                            {getStockStatusName(item)}
-                          </span>
-                        </td>
                         <td>
                           <span className={getRetrievalBadgeClass(retrievalName)}>{retrievalName}</span>
                         </td>

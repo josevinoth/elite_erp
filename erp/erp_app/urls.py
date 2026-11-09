@@ -26,7 +26,12 @@ from .sub_views.lce_estimate_api import (
     check_lce_item_usage_api_view,
     delete_lce_item_api_view,
 )
-from .sub_views.lab_furniture_item_api import create_item_code_name_api_view, item_code_name_detail_api_view
+from .sub_views.lab_furniture_item_api import (
+    create_item_code_name_api_view,
+    item_code_name_detail_api_view,
+    item_requested_projects_api_view,
+    item_ordered_pos_api_view,
+)
 from .sub_views.stock_purchase_api import (
     purchase_item_grns_api_view,
     stock_item_summary_api_view,
@@ -127,6 +132,11 @@ from .views import (
     project_costing_items_api_view,
     place_stock_order_api_view,
     place_stock_order_meta_api_view,
+    list_placed_stock_orders_api_view,
+    placed_stock_order_detail_api_view,
+    place_stock_order_vendors_api_view,
+    create_place_stock_order_api_view,
+    cancel_placed_stock_order_api_view,
     project_costing_item_detail_api_view,
     stock_retrieval_api_view,
     stock_retrieval_item_detail_api_view,
@@ -314,8 +324,11 @@ urlpatterns = [
         list_stock_purchase_status_options_api_view,
         name="list_stock_purchase_status_options_api_view",
     ),
-    path("api/stock-purchase/place-order/meta/", place_stock_order_meta_api_view, name="api-stock-purchase-place-order-meta"),
-    path("api/stock-purchase/place-order/", place_stock_order_api_view, name="api-stock-purchase-place-order"),
+    path("api/stock-purchase/place-order/meta/", place_stock_order_vendors_api_view, name="api-stock-purchase-place-order-meta"),
+    path("api/stock-purchase/place-order/create/", create_place_stock_order_api_view, name="api-stock-purchase-place-order-create"),
+    path("api/stock-purchase/place-order/<int:pk>/", placed_stock_order_detail_api_view, name="api-stock-purchase-place-order-detail"),
+    path("api/stock-purchase/place-order/<int:pk>/cancel/", cancel_placed_stock_order_api_view, name="api-stock-purchase-place-order-cancel"),
+    path("api/stock-purchase/place-order/", list_placed_stock_orders_api_view, name="api-stock-purchase-place-order"),
     # stock maintenance
     path("api/stock-maintenance/", list_stock_maintenance_api_view, name="api-stock-maintenance-list"),
     path("api/stock-maintenance/meta/", list_stock_maintenance_meta_api_view, name="api-stock-maintenance-meta"),
@@ -529,6 +542,8 @@ urlpatterns = [
     ),
     path("api/lab-furniture-items/create/", create_lab_furniture_item_api_view, name="api-lab-furniture-items-create"),
     path("api/lab-furniture-items/<int:pk>/", lab_furniture_item_detail_api_view, name="api-lab-furniture-items-detail"),
+    path("api/lab-furniture-items/<int:pk>/requested-projects/", item_requested_projects_api_view, name="api-lab-furniture-item-requested-projects"),
+    path("api/lab-furniture-items/<int:pk>/ordered-pos/", item_ordered_pos_api_view, name="api-lab-furniture-item-ordered-pos"),
     # item costing
     path("api/itemcosting/", list_item_costing_api_view, name="api-item-costing-list"),
     path("api/itemcosting/meta/", item_costing_meta_api_view, name="api-item-costing-meta"),

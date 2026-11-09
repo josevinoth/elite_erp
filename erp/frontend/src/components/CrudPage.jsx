@@ -1138,6 +1138,7 @@ function CrudPage({
                         isSearchable
                         isClearable={field.isClearable !== false}
                         isDisabled={field.disabled}
+                        filterOption={field.filterOption}
                         options={resolvedOptions}
                         placeholder={resolvedPlaceholder || `Select ${field.label}`}
                         value={(() => {

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import CrudPage from "../components/CrudPage";
+import TotalReqdProjectsModal from "../components/TotalReqdProjectsModal";
+import OrderedQtyPosModal from "../components/OrderedQtyPosModal";
 import {
   createLabFurnitureItem,
   deleteLabFurnitureItem,
@@ -32,10 +34,6 @@ const COLUMNS = [
   { key: "business_criticality", label: "Business Criticality" },
   { key: "item_type", label: "Item Type" },
   { key: "uom", label: "UOM" },
-  { key: "length", label: "Length/Size" },
-  { key: "width", label: "Width" },
-  { key: "height", label: "Height/Thk" },
-  { key: "volume", label: "Volume" },
   { key: "total_reqd", label: "Total Reqd" },
   { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty" },
   { key: "warning_alert_qty", label: "Warning Alert Qty" },
@@ -47,10 +45,12 @@ const COLUMNS = [
 ];
 
 const FIELDS = [
-  { key: "item_category_id", label: "Item Category", required: true },
-  { key: "item_code_ref_id", label: "Item Code & Name", required: true },
-  { key: "item_code", label: "Item Code", readOnly: true },
-  { key: "item_name", label: "Item Name", readOnly: true },
+  {
+    key: "item_code_ref_id",
+    label: "Item Code _ Item Category _ Item Name",
+    required: true,
+    placeholder: "Search & select Item Code _ Category _ Name...",
+  },
   {
     key: "procurement_classification",
     label: "Procurement Classification",
@@ -109,6 +109,8 @@ function withQuantityDefaults(row = {}) {
 }
 
 function StockItemsPage() {
+  const [selectedRequestedItem, setSelectedRequestedItem] = useState(null);
+  const [selectedOrderedItem, setSelectedOrderedItem] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [itemCodeOptions, setItemCodeOptions] = useState([]);
   const [uomOptions, setUomOptions] = useState([]);
@@ -129,13 +131,22 @@ function StockItemsPage() {
   const loadItemCodeNames = useCallback(async () => {
     const data = await listItemCodeNames();
     const rows = Array.isArray(data.item_code_names) ? data.item_code_names : [];
-    const options = rows.map((itemCodeName) => ({
-      value: String(itemCodeName.id),
-      label: itemCodeName.label,
-      itemCode: itemCodeName.item_code,
-      itemName: itemCodeName.item_name,
-      itemCategoryId: itemCodeName.item_category_id == null ? "" : String(itemCodeName.item_category_id),
-    }));
+    const options = rows.map((itemCodeName) => {
+      const category = itemCodeName.item_category || "";
+      const label = category
+        ? `${itemCodeName.item_code} _ ${category} _ ${itemCodeName.item_name}`
+        : `${itemCodeName.item_code} _ ${itemCodeName.item_name}`;
+      return {
+        value: String(itemCodeName.id),
+        label,
+        itemCode: itemCodeName.item_code,
+        itemName: itemCodeName.item_name,
+        itemCategory: category,
+        itemCategoryId: itemCodeName.item_category_id == null ? "" : String(itemCodeName.item_category_id),
+        procurementClassification: itemCodeName.procurement_classification || "",
+        businessCriticality: itemCodeName.business_criticality || "",
+      };
+    });
     setItemCodeOptions(options);
     return options;
   }, []);
@@ -177,85 +188,92 @@ function StockItemsPage() {
     return rows.map(withQuantityDefaults);
   }, []);
 
-  const createFn = useCallback(async (payload) => {
-    const data = await createLabFurnitureItem(withQuantityDefaults(payload));
-    return withQuantityDefaults(data.lab_furniture_item);
-  }, []);
+  const enrichPayload = useCallback(
+    (payload) => {
+      const next = { ...payload };
+      const selected = itemCodeOptions.find(
+        (opt) => String(opt.value) === String(payload.item_code_ref_id || "")
+      );
+      if (selected) {
+        next.item_code_ref_id = selected.value;
+        next.item_name_ref_id = selected.value;
+        next.item_code = selected.itemCode;
+        next.item_name = selected.itemName;
+        next.item_category_id = selected.itemCategoryId;
+        next.item_category = selected.itemCategory;
+        if (!next.procurement_classification && selected.procurementClassification) {
+          next.procurement_classification = selected.procurementClassification;
+        }
+        if (!next.business_criticality && selected.businessCriticality) {
+          next.business_criticality = selected.businessCriticality;
+        }
+      }
+      return withQuantityDefaults(next);
+    },
+    [itemCodeOptions]
+  );
 
-  const updateFn = useCallback(async (id, payload) => {
-    const data = await updateLabFurnitureItem(id, withQuantityDefaults(payload));
-    return withQuantityDefaults(data.lab_furniture_item);
-  }, []);
+  const createFn = useCallback(
+    async (payload) => {
+      const data = await createLabFurnitureItem(enrichPayload(payload));
+      return withQuantityDefaults(data.lab_furniture_item);
+    },
+    [enrichPayload]
+  );
+
+  const updateFn = useCallback(
+    async (id, payload) => {
+      const data = await updateLabFurnitureItem(id, enrichPayload(payload));
+      return withQuantityDefaults(data.lab_furniture_item);
+    },
+    [enrichPayload]
+  );
 
   const fields = [
     {
       ...FIELDS[0],
-      options: categoryOptions,
-      placeholder: "Select Item Category",
+      options: itemCodeOptions,
+      filterOption: (candidate, input) => {
+        if (!input) return true;
+        const terms = input.toLowerCase().split(/\s+/).filter(Boolean);
+        const text = candidate.label.toLowerCase();
+        return terms.every((t) => text.includes(t));
+      },
+      placeholder: "Search & select Item Code _ Category _ Name...",
       isClearable: false,
     },
-    {
-      ...FIELDS[1],
-      options: (formValues) => {
-        const selectedCategoryId = String(formValues?.item_category_id ?? "").trim();
-        if (!selectedCategoryId) {
-          return itemCodeOptions;
-        }
-        return itemCodeOptions.filter((option) => String(option.itemCategoryId || "") === selectedCategoryId);
-      },
-      placeholder: (formValues) => {
-        const selectedCategoryId = String(formValues?.item_category_id ?? "").trim();
-        return selectedCategoryId ? "Select Item Code & Name" : "Select Item Category first";
-      },
-      isClearable: false,
-    },
+    FIELDS[1],
     FIELDS[2],
-    FIELDS[3],
-    FIELDS[4],
-    FIELDS[5],
     {
-      ...FIELDS[6],
+      ...FIELDS[3],
       options: itemTypeOptions,
       isClearable: false,
     },
     {
-      ...FIELDS[7],
+      ...FIELDS[4],
       options: uomOptions,
       isClearable: false,
     },
-    ...FIELDS.slice(8),
+    ...FIELDS.slice(5),
   ];
 
-  const computeValues = useCallback((changedKey, _changedValue, allValues) => {
-    if (changedKey === "item_category_id") {
-      const selectedCategoryId = String(allValues.item_category_id || "").trim();
-      const selectedCodeId = String(allValues.item_code_ref_id || "").trim();
-      if (!selectedCategoryId || !selectedCodeId) {
-        return {};
-      }
-
-      const selected = itemCodeOptions.find((option) => String(option.value) === selectedCodeId);
-      if (selected && String(selected.itemCategoryId || "") !== selectedCategoryId) {
+  const computeValues = useCallback(
+    (changedKey, _changedValue, allValues) => {
+      if (changedKey === "item_code_ref_id") {
+        const selected = itemCodeOptions.find(
+          (option) => String(option.value) === String(allValues.item_code_ref_id || "")
+        );
         return {
-          item_code_ref_id: "",
-          item_name_ref_id: "",
-          item_code: "",
-          item_name: "",
+          item_code_ref_id: selected ? selected.value : "",
+          item_name_ref_id: selected ? selected.value : "",
+          item_code: selected?.itemCode || "",
+          item_name: selected?.itemName || "",
+          item_category_id: selected?.itemCategoryId || "",
+          item_category: selected?.itemCategory || "",
+          procurement_classification: selected?.procurementClassification || allValues.procurement_classification || "",
+          business_criticality: selected?.businessCriticality || allValues.business_criticality || "",
         };
       }
-      return {};
-    }
-
-    if (changedKey === "item_code_ref_id") {
-      const selected = itemCodeOptions.find(
-        (option) => String(option.value) === String(allValues.item_code_ref_id || "")
-      );
-      return {
-        item_name_ref_id: selected ? selected.value : "",
-        item_code: selected?.itemCode || "",
-        item_name: selected?.itemName || "",
-      };
-    }
 
     if (["physical_qty", "ordered_qty", "total_reqd", "recommended_free_stock_qty"].includes(changedKey)) {
       const physicalQty = Number(allValues.physical_qty || 0);
@@ -291,21 +309,115 @@ function StockItemsPage() {
     return { volume: volume.toFixed(3) };
   }, [itemCodeOptions]);
 
+  const columns = useMemo(() => {
+    return COLUMNS.map((col) => {
+      if (col.key === "total_reqd") {
+        return {
+          ...col,
+          align: "right",
+          render: (row) => {
+            const val = Number(row.total_reqd || 0);
+            const hasReq = val > 0;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedRequestedItem(row);
+                }}
+                style={{
+                  background: hasReq ? "#e0f2fe" : "#f8fafc",
+                  color: hasReq ? "#0284c7" : "#64748b",
+                  border: hasReq ? "1px solid #7dd3fc" : "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  transition: "all 0.15s ease",
+                }}
+                title={hasReq ? `View projects requesting ${row.item_code} (${val})` : "No project requirements"}
+              >
+                <span>{val}</span>
+                {hasReq && <span style={{ fontSize: "0.75rem", opacity: 0.85 }}>📋</span>}
+              </button>
+            );
+          },
+        };
+      }
+      if (col.key === "ordered_qty") {
+        return {
+          ...col,
+          align: "right",
+          render: (row) => {
+            const val = Number(row.ordered_qty || 0);
+            const hasOrdered = val > 0;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedOrderedItem(row);
+                }}
+                style={{
+                  background: hasOrdered ? "#ecfdf5" : "#f8fafc",
+                  color: hasOrdered ? "#047857" : "#64748b",
+                  border: hasOrdered ? "1px solid #a7f3d0" : "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  transition: "all 0.15s ease",
+                }}
+                title={hasOrdered ? `View purchase orders for ${row.item_code} (${val})` : "No placed orders"}
+              >
+                <span>{val}</span>
+                {hasOrdered && <span style={{ fontSize: "0.75rem", opacity: 0.85 }}>📦</span>}
+              </button>
+            );
+          },
+        };
+      }
+      return col;
+    });
+  }, []);
+
   return (
-    <CrudPage
-      title="Item Master"
-      columns={COLUMNS}
-      fields={fields}
-      fetchFn={fetchFn}
-      createFn={createFn}
-      updateFn={updateFn}
-      deleteFn={deleteLabFurnitureItem}
-      computeValues={computeValues}
-      tableMaxHeight="58vh"
-      tableWrapClassName="users-table-wrap--item-master"
-      modalCardClassName="modal-card--item-master"
-      stickyHeader
-    />
+    <>
+      <CrudPage
+        title="Item Master"
+        columns={columns}
+        fields={fields}
+        fetchFn={fetchFn}
+        createFn={createFn}
+        updateFn={updateFn}
+        deleteFn={deleteLabFurnitureItem}
+        computeValues={computeValues}
+        tableMaxHeight="58vh"
+        tableWrapClassName="users-table-wrap--item-master"
+        modalCardClassName="modal-card--item-master"
+        stickyHeader
+      />
+      {selectedRequestedItem && (
+        <TotalReqdProjectsModal
+          item={selectedRequestedItem}
+          onClose={() => setSelectedRequestedItem(null)}
+        />
+      )}
+      {selectedOrderedItem && (
+        <OrderedQtyPosModal
+          item={selectedOrderedItem}
+          onClose={() => setSelectedOrderedItem(null)}
+        />
+      )}
+    </>
   );
 }
 

@@ -1836,10 +1836,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                       <th>Item Category</th>
                       <th>Item Name</th>
                       <th>Item Code</th>
-                      <th>Item Type</th>
-                      <th className="project-costing-table__right">Purchase Qty</th>
                       <th className="project-costing-table__right">Requested Qty</th>
-                      <th>Stock Status</th>
                       <th className="project-costing-table__center">Actions</th>
                     </tr>
                     <tr>
@@ -1848,17 +1845,14 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_category} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_category: event.target.value }))} /></th>
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_name: event.target.value }))} /></th>
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
-                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
-                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
-                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.stock_status} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, stock_status: event.target.value }))} /></th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredItems.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="project-costing-empty">No quotation items found.</td>
+                        <td colSpan={7} className="project-costing-empty">No quotation items found.</td>
                       </tr>
                     ) : filteredItems.map((row) => {
                       const rowCostType = row.cost_type?.name || row.cost_type_name || row.cost_type || "-";
@@ -1874,14 +1868,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                           <td>{row.item_category || "-"}</td>
                           <td>{row.item_name || "-"}</td>
                           <td>{row.item_code || "-"}</td>
-                          <td>{row.item_type || "-"}</td>
-                          <td className="project-costing-table__right">{row.purchase_qty}</td>
                           <td className="project-costing-table__right">{row.requested_qty}</td>
-                          <td>
-                            <span className={`project-costing-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
-                              {getStockStatusName(row)}
-                            </span>
-                          </td>
                           <td className="project-costing-table__center" onClick={(e) => e.stopPropagation()}>
                             <div className="project-costing-inline-actions">
                               <button

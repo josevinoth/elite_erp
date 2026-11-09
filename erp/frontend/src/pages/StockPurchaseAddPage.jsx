@@ -19,6 +19,8 @@ import {
     updateStockPurchase,
     updateStockPurchaseVendorDetail,
     listStockPurchaseStatusOptions,
+    listPlacedStockOrders,
+    getPlacedStockOrderDetail,
 } from "../services/crudApi";
 
 const emptyItem = (id) => ({
@@ -37,6 +39,9 @@ const emptyItem = (id) => ({
     tax: "5",
     total_after_tax: "0.00",
     uom_id: "",
+    po_item_id: null,
+    po_order_qty: "",
+    combined_label: "",
 });
 
 const toNumber = (value) => {
@@ -355,6 +360,42 @@ function StockPurchaseAddPage() {
     const isEditMode = Boolean(purchaseId);
 
     const [notes, setNotes] = useState("");
+
+    const [poOptions, setPoOptions] = useState([]);
+
+    const [selectedPoId, setSelectedPoId] = useState("");
+
+    const [selectedPo, setSelectedPo] = useState(null);
+
+    const [loadingPo, setLoadingPo] = useState(false);
+
+
+
+    useEffect(() => {
+
+        let alive = true;
+
+        listPlacedStockOrders()
+
+            .then((data) => {
+
+                if (!alive) return;
+
+                setPoOptions(data.orders || []);
+
+            })
+
+            .catch(() => {
+
+                if (!alive) return;
+
+                setPoOptions([]);
+
+            });
+
+        return () => { alive = false; };
+
+    }, []);
     const [vendorFormValues, setVendorFormValues] = useState({
         vendor_id: "",
         invoice_number: "",
@@ -476,9 +517,20 @@ function StockPurchaseAddPage() {
                             total_after_tax: item.total_after_tax || computeRowTotalAfterTax(tp, tax),
                             lce_estimate_id: item.lce_estimate_id || null,
                             uom_id: item.uom_id ? String(item.uom_id) : "",
+                            po_item_id: item.po_item_id || null,
+                            po_order_qty: item.po_order_qty || "",
+                            combined_label: item.combined_label || "",
                         };
                     })
                     : [];
+
+                const poId = vendorDetail.purchase_order_id || record.purchase_order_id || "";
+                setSelectedPoId(poId ? String(poId) : "");
+                if (poId) {
+                    getPlacedStockOrderDetail(poId)
+                        .then((pData) => setSelectedPo(pData.order || null))
+                        .catch(() => setSelectedPo(null));
+                }
 
                 setVendorFormValues({
                     vendor_id: vendorDetail.vendor_id ? String(vendorDetail.vendor_id) : "",
@@ -512,6 +564,77 @@ function StockPurchaseAddPage() {
         const { name, value } = event.target;
         setPurchaseStatus("");
         setVendorFormValues((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handlePoChange = async (e) => {
+        const poId = e.target.value;
+        setSelectedPoId(poId);
+        if (!poId) {
+            setSelectedPo(null);
+            return;
+        }
+        setLoadingPo(true);
+        setStatus("");
+        try {
+            const data = await getPlacedStockOrderDetail(poId);
+            const po = data.order || {};
+            setSelectedPo(po);
+
+            // Auto-select vendor from PO
+            if (po.vendor_id) {
+                setVendorFormValues((prev) => ({
+                    ...prev,
+                    vendor_id: String(po.vendor_id),
+                    invoice_date: prev.invoice_date || new Date().toISOString().split("T")[0],
+                }));
+            }
+
+            // Auto-populate items from PO
+            const poItems = Array.isArray(data.items) ? data.items : (po.items || []);
+            if (poItems.length > 0) {
+                const mappedItems = poItems.map((pi, idx) => {
+                    const master = itemMasterOptions.find(
+                        (m) => String(m.id) === String(pi.item_code_ref_id) ||
+                               String(m.item_code || "").trim().toLowerCase() === String(pi.item_code || "").trim().toLowerCase()
+                    );
+                    const orderQty = toNumber(pi.order_qty);
+                    const balanceQty = pi.balance_qty !== undefined ? toNumber(pi.balance_qty) : orderQty;
+                    const defaultQty = balanceQty > 0 ? String(balanceQty) : String(orderQty);
+                    const defaultTax = "5";
+                    const unitPrice = "";
+                    const totalPrice = "0.00";
+                    const totalAfterTax = "0.00";
+
+                    return {
+                        rowId: idx + 1,
+                        grn_number: "",
+                        po_item_id: pi.id,
+                        po_order_qty: String(orderQty),
+                        combined_label: pi.combined_label || `${pi.item_code} _ ${pi.item_category} _ ${pi.item_name}`,
+                        item_master_id: master ? String(master.id) : (pi.item_code_ref_id ? String(pi.item_code_ref_id) : ""),
+                        item_code_id: master ? String(master.id) : (pi.item_code_ref_id ? String(pi.item_code_ref_id) : ""),
+                        item_code: pi.item_code || (master?.item_code || ""),
+                        item_category_id: master ? String(master.item_category_id || "") : "",
+                        item_category: pi.item_category || (master?.item_category || ""),
+                        item_name: pi.item_name || (master?.item_name || ""),
+                        item_type: master?.item_type || "BUY",
+                        uom_id: master?.uom_id ? String(master.uom_id) : "",
+                        quantity: defaultQty,
+                        unit_price: unitPrice,
+                        tax: defaultTax,
+                        total_price: totalPrice,
+                        total_after_tax: totalAfterTax,
+                    };
+                });
+                setItems(mappedItems);
+                setNextItemId(mappedItems.length + 1);
+                setStatus(`Loaded ${mappedItems.length} item(s) from Purchase Order ${po.order_code}. Enter Cost, Tax, and Qty Received.`);
+            }
+        } catch (err) {
+            setStatus(err?.message || "Failed to load Purchase Order details.");
+        } finally {
+            setLoadingPo(false);
+        }
     };
 
     const computedItemsTotalValue = useMemo(() => {
@@ -736,6 +859,7 @@ function StockPurchaseAddPage() {
         const payload = {
             notes,
             vendor_detail_id: savedPurchaseDetailId,
+            purchase_order_id: selectedPoId || null,
             items: cleanedItems,
             status_id: statusId,
             total_value: totalVal,
@@ -912,6 +1036,7 @@ function StockPurchaseAddPage() {
         try {
             const payload = {
                 vendor_id: vendorFormValues.vendor_id,
+                purchase_order_id: selectedPoId || null,
                 invoice_number: vendorFormValues.invoice_number,
                 invoice_date: vendorFormValues.invoice_date,
                 total_value: computedItemsTotalValue,
@@ -985,20 +1110,41 @@ function StockPurchaseAddPage() {
             seenCodes.add(code);
         }
 
-        if (!savedPurchaseDetailId) {
-            setStatus("Save purchase details first before adding items.");
+        if (!vendorFormValues.vendor_id) {
+            setStatus("Please select a vendor.");
+            setSaving(false);
+            return;
+        }
+        if (!String(vendorFormValues.invoice_number || "").trim()) {
+            setStatus("Invoice number is required.");
+            setSaving(false);
+            return;
+        }
+        if (!String(vendorFormValues.invoice_date || "").trim()) {
+            setStatus("Invoice date is required.");
             setSaving(false);
             return;
         }
 
+        const totalVal = toCurrency(
+            cleanedItems.reduce((acc, r) => acc + (toNumber(r.total_price) || 0), 0)
+        );
+        const totalAfterTax = toCurrency(
+            cleanedItems.reduce((acc, r) => acc + (toNumber(r.total_after_tax) || 0), 0)
+        );
+
         try {
             const payload = {
                 notes,
+                vendor_id: vendorFormValues.vendor_id,
+                purchase_order_id: selectedPoId || null,
+                invoice_number: vendorFormValues.invoice_number,
+                invoice_date: vendorFormValues.invoice_date,
                 vendor_detail_id: savedPurchaseDetailId,
                 items: cleanedItems,
                 status_id: statusId,
-                total_value: computedItemsTotalValue,
-                total_after_tax: computedTotalAfterTax,
+                total_value: totalVal,
+                total_after_tax: totalAfterTax,
             };
             const successData = isEditMode
                 ? await updateStockPurchase(purchaseId, payload)
@@ -1011,10 +1157,9 @@ function StockPurchaseAddPage() {
             if (savedSpNumber) setSpNumber(savedSpNumber);
 
             if (isEditMode) {
-                setStatus("Stock purchase updated successfully. You can continue editing items on this page.");
+                setStatus("Stock purchase and GRN updated successfully. PO status updated.");
             } else {
-                // Stay on page — redirect to edit URL so subsequent saves use PATCH
-                setStatus(`Stock purchase ${savedSpNumber || "saved"} successfully. You can continue adding or editing items.`);
+                setStatus(`Stock purchase ${savedSpNumber || "saved"} successfully. GRN created and PO status updated.`);
                 if (savedPurchaseId) {
                     navigate(`/stock-purchase/record/${savedPurchaseId}`, { replace: true });
                 }
@@ -1079,8 +1224,50 @@ function StockPurchaseAddPage() {
 
                             <div className="modal-form__row stock-purchase-add-form__purchase-details-row">
                                 <div className="modal-form__row">
-                                    <label className="modal-form__label" htmlFor="sp-vendor-id">Vendor *</label>
-                                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                                    <label className="modal-form__label" htmlFor="sp-po-id">
+                                        <span>Purchase Order (PO)</span>
+                                        {selectedPo?.status ? (
+                                            <span style={{
+                                                padding: "0.1rem 0.45rem",
+                                                fontSize: "0.72rem",
+                                                borderRadius: "4px",
+                                                background: selectedPo.status === "Order Received" ? "#dcfce7" : "#e0f2fe",
+                                                color: selectedPo.status === "Order Received" ? "#166534" : "#0369a1",
+                                                fontWeight: 600,
+                                                whiteSpace: "nowrap",
+                                                lineHeight: 1.3,
+                                            }}>
+                                                {selectedPo.status}
+                                            </span>
+                                        ) : null}
+                                    </label>
+                                    <select
+                                        id="sp-po-id"
+                                        name="purchase_order_id"
+                                        className="auth-input"
+                                        value={selectedPoId}
+                                        onChange={handlePoChange}
+                                        disabled={loadingPo}
+                                    >
+                                        <option value="">Select PO (Direct Purchase / Manual)</option>
+                                        {poOptions
+                                            .filter((po) =>
+                                                po.status === "Order Placed" ||
+                                                po.status === "Order Partially Received" ||
+                                                String(po.id) === String(selectedPoId)
+                                            )
+                                            .map((po) => (
+                                                <option key={po.id} value={po.id}>
+                                                    {po.order_code || `PO #${po.id}`} — {po.vendor_name || "Vendor"} ({po.status})
+                                                </option>
+                                            ))}
+                                    </select>
+                                </div>
+                                <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-vendor-id">
+                                        <span>Vendor <span style={{ color: "#ef4444" }}>*</span></span>
+                                    </label>
+                                    <div className="purchase-details-vendor-row">
                                         <select
                                             id="sp-vendor-id"
                                             name="vendor_id"
@@ -1098,12 +1285,11 @@ function StockPurchaseAddPage() {
                                         <button
                                             type="button"
                                             className="crud-add-btn"
-                                            style={{ whiteSpace: "nowrap", padding: "0.35rem 0.7rem", fontSize: "0.85rem" }}
                                             onClick={() => setShowVendorModal(true)}
                                             title="Add new vendor"
                                             aria-label="Add new vendor"
                                         >
-                                            <BsPlusCircleFill style={{ marginRight: "0.3rem" }} />
+                                            <BsPlusCircleFill />
                                             Add
                                         </button>
                                     </div>
@@ -1133,6 +1319,22 @@ function StockPurchaseAddPage() {
                                     />
                                 </div>
                                 <div className="modal-form__row">
+                                    <label className="modal-form__label" htmlFor="sp-status">Status *</label>
+                                    <select
+                                        id="sp-status"
+                                        name="status_id"
+                                        className="auth-input"
+                                        value={statusId}
+                                        onChange={e => setStatusId(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">Select status</option>
+                                        {statusOptions.map((opt) => (
+                                            <option key={opt.id} value={opt.id}>{opt.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="modal-form__row">
                                     <label className="modal-form__label" htmlFor="sp-total-value">Total Value</label>
                                     <input
                                         id="sp-total-value"
@@ -1158,22 +1360,6 @@ function StockPurchaseAddPage() {
                                         disabled
                                         title="Sum of all item Total After Tax values"
                                     />
-                                </div>
-                                <div className="modal-form__row">
-                                    <label className="modal-form__label" htmlFor="sp-status">Status *</label>
-                                    <select
-                                        id="sp-status"
-                                        name="status_id"
-                                        className="auth-input"
-                                        value={statusId}
-                                        onChange={e => setStatusId(e.target.value)}
-                                        required
-                                    >
-                                        <option value="">Select status</option>
-                                        {statusOptions.map((opt) => (
-                                            <option key={opt.id} value={opt.id}>{opt.name}</option>
-                                        ))}
-                                    </select>
                                 </div>
                             </div>
 
@@ -1226,21 +1412,19 @@ function StockPurchaseAddPage() {
                         </button>
                     </div>
                     <div className="users-table-wrap" style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}>
-                        <table className="users-table users-table--sp-items">
+                        <table className="users-table users-table--sp-items" style={{ minWidth: "100%" }}>
                             <thead>
                             <tr>
-                                <th style={{ width: "150px" }}>Item Code</th>
-                                <th style={{ width: "200px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>Item Category</th>
-                                <th style={{ width: "220px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>Item Name</th>
-                                <th style={{ width: "110px" }}>Item Type</th>
-                                <th style={{ width: "110px" }}>GRN No.</th>
-                                <th style={{ width: "125px" }}>UOM</th>
-                                <th style={{ width: "95px" }}>Qty/Size</th>
-                                <th style={{ width: "110px" }}>Unit Price</th>
-                                <th style={{ width: "110px" }}>Total Price</th>
-                                <th style={{ width: "105px" }}>Tax (%)</th>
-                                <th style={{ width: "125px" }}>Total After Tax</th>
-                                <th style={{ width: "60px", textAlign: "center" }}>Action</th>
+                                <th style={{ width: "240px", whiteSpace: "normal", wordWrap: "break-word" }}>Item (Code _ Category _ Name)</th>
+                                <th style={{ width: "95px" }}>GRN No.</th>
+                                <th style={{ width: "85px" }}>UOM</th>
+                                {selectedPoId ? <th style={{ width: "100px", textAlign: "right" }}>Qty Ordered</th> : null}
+                                <th style={{ width: "115px", textAlign: "right" }}>Qty Received *</th>
+                                <th style={{ width: "125px", textAlign: "right" }}>Cost (Unit Price) *</th>
+                                <th style={{ width: "90px", textAlign: "right" }}>Tax (%)</th>
+                                <th style={{ width: "115px", textAlign: "right" }}>Total Price</th>
+                                <th style={{ width: "125px", textAlign: "right" }}>Total After Tax</th>
+                                <th style={{ width: "70px", textAlign: "center" }}>Action</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -1248,53 +1432,78 @@ function StockPurchaseAddPage() {
                                 const uomObj = uomOptions.find((u) => String(u.id) === String(row.uom_id));
                                 const uomDisplay = uomObj ? (uomObj.symbol || uomObj.name) : "—";
                                 const isStubRow = !row.item_code && !row.item_name;
+                                const itemDisplayName = row.combined_label || [row.item_code, row.item_category, row.item_name].filter(Boolean).join(" _ ");
 
                                 return (
                                     <tr key={row.rowId}>
-                                        <td style={{ width: "140px", fontWeight: 600, color: "#1e293b" }}>
-                                            {row.item_code || (isStubRow ? <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not set</span> : "—")}
+                                        <td style={{ maxWidth: "260px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>
+                                            <div style={{ fontWeight: 600, color: "#1e293b", fontSize: "0.88rem" }}>
+                                                {itemDisplayName || (isStubRow ? <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not set</span> : "—")}
+                                            </div>
                                         </td>
-                                        <td style={{ width: "180px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>
-                                            {row.item_category || "—"}
+                                        <td style={{ width: "95px" }}>
+                                            {row.grn_number ? (
+                                                <span style={{ fontWeight: 600, color: "#0f766e" }}>{row.grn_number}</span>
+                                            ) : (
+                                                <span style={{ color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem" }}>Auto</span>
+                                            )}
                                         </td>
-                                        <td style={{ width: "200px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>
-                                            {row.item_name || "—"}
-                                        </td>
-                                        <td style={{ width: "100px" }}>
-                                            <span style={{
-                                                display: "inline-block",
-                                                padding: "0.2rem 0.5rem",
-                                                fontSize: "0.78rem",
-                                                borderRadius: "4px",
-                                                background: "#f1f5f9",
-                                                color: "#334155",
-                                                fontWeight: 600,
-                                            }}>
-                                                {row.item_type || "BUY"}
-                                            </span>
-                                        </td>
-                                        <td style={{ width: "100px" }}>
-                                            {row.grn_number || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Auto</span>}
-                                        </td>
-                                        <td style={{ width: "110px" }}>
+                                        <td style={{ width: "85px" }}>
                                             {uomDisplay}
                                         </td>
+                                        {selectedPoId ? (
+                                            <td style={{ width: "100px", textAlign: "right" }}>
+                                                <span style={{ fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>
+                                                    {row.po_order_qty || "—"}
+                                                </span>
+                                            </td>
+                                        ) : null}
+                                        <td style={{ width: "115px", textAlign: "right" }}>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                className="auth-input"
+                                                style={{ width: "100%", textAlign: "right", padding: "0.3rem 0.4rem" }}
+                                                value={row.quantity}
+                                                onChange={(e) => handleItemValueChange(row.rowId, "quantity", e.target.value)}
+                                                placeholder="0"
+                                                required
+                                            />
+                                        </td>
+                                        <td style={{ width: "125px", textAlign: "right" }}>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                className="auth-input"
+                                                style={{ width: "100%", textAlign: "right", padding: "0.3rem 0.4rem" }}
+                                                value={row.unit_price}
+                                                onChange={(e) => handleItemValueChange(row.rowId, "unit_price", e.target.value)}
+                                                placeholder="0.00"
+                                                required
+                                            />
+                                        </td>
                                         <td style={{ width: "90px", textAlign: "right" }}>
-                                            {row.quantity || "0"}
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="any"
+                                                className="auth-input"
+                                                style={{ width: "100%", textAlign: "right", padding: "0.3rem 0.4rem" }}
+                                                value={row.tax}
+                                                onChange={(e) => handleItemValueChange(row.rowId, "tax", e.target.value)}
+                                                placeholder="5"
+                                            />
                                         </td>
-                                        <td style={{ width: "100px", textAlign: "right" }}>
-                                            {row.unit_price ? Number(row.unit_price).toFixed(2) : "0.00"}
-                                        </td>
-                                        <td style={{ width: "110px", textAlign: "right", fontWeight: 500 }}>
+                                        <td style={{ width: "115px", textAlign: "right", fontWeight: 600, color: "#334155" }}>
                                             {row.total_price || "0.00"}
                                         </td>
-                                        <td style={{ width: "95px", textAlign: "right" }}>
-                                            {row.tax !== undefined && row.tax !== null && row.tax !== "" ? `${row.tax}%` : "5%"}
-                                        </td>
-                                        <td style={{ width: "125px", textAlign: "right", fontWeight: 600, color: "#0f766e" }}>
+                                        <td style={{ width: "125px", textAlign: "right", fontWeight: 700, color: "#0f766e" }}>
                                             {row.total_after_tax || "0.00"}
                                         </td>
-                                        <td style={{ width: "85px", verticalAlign: "middle", textAlign: "center" }}>
+                                        <td style={{ width: "70px", verticalAlign: "middle", textAlign: "center" }}>
                                             <div style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center", justifyContent: "center" }}>
                                                 <button
                                                     type="button"
@@ -1303,7 +1512,6 @@ function StockPurchaseAddPage() {
                                                         setItemToEdit(row);
                                                         setShowItemModal(true);
                                                     }}
-                                                    disabled={!savedPurchaseDetailId || saving}
                                                     title="Edit Item"
                                                     aria-label="Edit Item"
                                                     style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
@@ -1314,7 +1522,7 @@ function StockPurchaseAddPage() {
                                                     type="button"
                                                     className="users-action users-action--delete"
                                                     onClick={() => deleteItemRow(row.rowId)}
-                                                    disabled={!savedPurchaseDetailId || items.length <= 1 || saving || checkingDeleteRowId === row.rowId || !!row.lce_estimate_id}
+                                                    disabled={items.length <= 1 || saving || checkingDeleteRowId === row.rowId || !!row.lce_estimate_id}
                                                     title={checkingDeleteRowId === row.rowId ? "Checking linked usage..." : getDeleteItemTitle(row)}
                                                     aria-label="Delete"
                                                     style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
@@ -1328,6 +1536,35 @@ function StockPurchaseAddPage() {
                             })}
                             </tbody>
                         </table>
+                        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.8rem", marginTop: "1.25rem", padding: "1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                            <div style={{ marginRight: "auto", display: "flex", gap: "1.5rem", alignItems: "center" }}>
+                                <span style={{ fontSize: "0.95rem", color: "#64748b" }}>
+                                    Total Items: <strong style={{ color: "#0f172a" }}>{items.filter(r => r.item_code || r.item_name).length}</strong>
+                                </span>
+                                <span style={{ fontSize: "0.95rem", color: "#64748b" }}>
+                                    Total Value: <strong style={{ color: "#0f172a" }}>{computedItemsTotalValue}</strong>
+                                </span>
+                                <span style={{ fontSize: "0.95rem", color: "#64748b" }}>
+                                    Total After Tax: <strong style={{ color: "#0f766e" }}>{computedTotalAfterTax}</strong>
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                className="modal-btn modal-btn--cancel"
+                                onClick={() => navigate("/stock-purchase")}
+                                disabled={saving}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="crud-add-btn"
+                                style={{ padding: "0.6rem 1.4rem", fontSize: "0.95rem", fontWeight: 600 }}
+                                disabled={saving}
+                            >
+                                {saving ? "Saving GRN..." : (isEditMode ? "Update Stock Purchase / GRN" : "Submit GRN & Update PO")}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </form> : null}
