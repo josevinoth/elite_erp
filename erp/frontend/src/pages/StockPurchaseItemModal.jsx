@@ -57,6 +57,9 @@ function StockPurchaseItemModal({
             const tat = itemToEdit.total_after_tax || computeRowTotalAfterTax(tp, taxVal);
 
             setForm({
+                po_item_id: itemToEdit.po_item_id || null,
+                po_order_qty: itemToEdit.po_order_qty || "",
+                combined_label: itemToEdit.combined_label || "",
                 item_code_id: String(itemToEdit.item_code_id || itemToEdit.item_master_id || ""),
                 item_code: itemToEdit.item_code || "",
                 item_master_id: String(itemToEdit.item_master_id || itemToEdit.item_code_id || ""),
@@ -278,6 +281,9 @@ function StockPurchaseItemModal({
             tax: String(form.tax),
             total_after_tax: form.total_after_tax,
             lce_estimate_id: itemToEdit?.lce_estimate_id || null,
+            po_item_id: itemToEdit?.po_item_id || form.po_item_id || null,
+            po_order_qty: itemToEdit?.po_order_qty || form.po_order_qty || "",
+            combined_label: itemToEdit?.combined_label || form.combined_label || "",
         });
 
         onClose();

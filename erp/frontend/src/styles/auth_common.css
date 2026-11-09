@@ -2762,8 +2762,109 @@ select.auth-input option {
 
 .stock-purchase-add-form__purchase-details-row {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem 1rem;
+}
+
+/* Consistent label height & typography in purchase details */
+.purchase-details-card .modal-form__label,
+.stock-purchase-add-form .modal-form__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.25rem;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  line-height: 1.25;
+}
+
+/* Standardized input height and font size across stock purchase add/edit page */
+.purchase-details-card input.auth-input,
+.purchase-details-card select.auth-input,
+.stock-purchase-add-form input.auth-input,
+.stock-purchase-add-form select.auth-input,
+.modal-field-row__control input.auth-input,
+.modal-field-row__control select.auth-input {
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #1e293b;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.purchase-details-card select.auth-input,
+.stock-purchase-add-form select.auth-input,
+.modal-field-row__control select.auth-input {
+  padding-right: 2rem;
+  background-position: right 0.65rem center;
+}
+
+.purchase-details-card input.auth-input:focus,
+.purchase-details-card select.auth-input:focus,
+.stock-purchase-add-form input.auth-input:focus,
+.stock-purchase-add-form select.auth-input:focus,
+.modal-field-row__control input.auth-input:focus,
+.modal-field-row__control select.auth-input:focus {
+  background-color: #ffffff;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  outline: none;
+}
+
+.purchase-details-card .auth-input--readonly,
+.stock-purchase-add-form .auth-input--readonly {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  border-color: #e2e8f0 !important;
+  font-weight: 600;
+  cursor: not-allowed;
+}
+
+.purchase-details-card textarea.auth-input,
+.stock-purchase-add-form textarea.auth-input,
+.modal-field-row__control textarea.auth-input {
+  height: auto !important;
+  min-height: 68px;
+  max-height: none !important;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  font-family: inherit !important;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: #1e293b;
+  resize: vertical;
+}
+
+.purchase-details-vendor-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.purchase-details-vendor-row .crud-add-btn {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 0.85rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  border-radius: 6px;
 }
 
 @media (max-width: 1200px) {

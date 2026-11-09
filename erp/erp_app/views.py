@@ -136,6 +136,11 @@ from .sub_views import (
     items_to_order_api_view,
     place_stock_order_api_view,
     place_stock_order_meta_api_view,
+    list_placed_stock_orders_api_view,
+    placed_stock_order_detail_api_view,
+    place_stock_order_vendors_api_view,
+    create_place_stock_order_api_view,
+    cancel_placed_stock_order_api_view,
 )
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
