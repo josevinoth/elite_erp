@@ -21,7 +21,6 @@ db.sqlite3-journal
 
 # ── Local DB backups / dumps ────────────────────────────────────────
 /erp/erp_app/sub_db/*.backup
-/erp/erp_app/sub_db/*.sql
 
 # ── Virtual environment ──────────────────────────────────────────────
 .venv/
