@@ -1058,6 +1058,17 @@ export async function deleteLabFurnitureItem(id) {
   return parseJson(res);
 }
 
+export async function getLabFurnitureItemRequestedProjects(id) {
+  const res = await fetch(`/api/lab-furniture-items/${id}/requested-projects/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getLabFurnitureItemOrderedPos(id) {
+  const res = await fetch(`/api/lab-furniture-items/${id}/ordered-pos/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+
 export async function listLabFurnitureItemCategories() {
   const res = await fetch("/api/lab-furniture-item-categories/", { credentials: "include" });
   return parseJson(res);
@@ -1170,9 +1181,34 @@ export async function listPlaceStockOrderMeta() {
   return parseJson(res);
 }
 
+export async function listPlaceStockOrderVendors() {
+  const res = await fetch("/api/stock-purchase/place-order/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listPlacedStockOrders() {
+  const res = await fetch("/api/stock-purchase/place-order/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getPlacedStockOrderDetail(id) {
+  const res = await fetch(`/api/stock-purchase/place-order/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function cancelPlacedStockOrder(id) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/stock-purchase/place-order/${id}/cancel/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
 export async function createPlaceStockOrder(payload) {
   const headers = await csrfHeaders();
-  const res = await fetch("/api/stock-purchase/place-order/", {
+  const res = await fetch("/api/stock-purchase/place-order/create/", {
     method: "POST",
     credentials: "include",
     headers,

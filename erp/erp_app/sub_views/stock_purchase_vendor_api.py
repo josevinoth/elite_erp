@@ -32,6 +32,7 @@ def _to_decimal(value, fallback="0"):
 
 
 def _serialize(obj):
+    po = getattr(obj, "purchase_order", None)
     return {
         "id": obj.pk,
         "vendor_id": obj.vendor.pk,
@@ -41,6 +42,8 @@ def _serialize(obj):
         "tax": str(obj.tax),
         "total_value": str(obj.total_value),
         "total_after_tax": str(getattr(obj, "total_after_tax", 0)),
+        "purchase_order_id": po.id if po else None,
+        "purchase_order_code": po.order_code if po else "",
     }
 
 
@@ -83,8 +86,15 @@ def create_stock_purchase_vendor_detail_api_view(request):
     if _invoice_number_exists(invoice_number):
         return JsonResponse({"message": "Invoice number already exists."}, status=400)
 
+    po_id = payload.get("purchase_order_id")
+    po = None
+    if po_id:
+        from ..sub_models.place_stock_order_mod import PlaceStockOrderInfo
+        po = PlaceStockOrderInfo.objects.filter(pk=po_id).first()
+
     obj = StockPurchaseVendorDetail.objects.create(
         vendor=vendor,
+        purchase_order=po,
         invoice_number=invoice_number,
         invoice_date=invoice_date,
         tax=_to_decimal(payload.get("tax"), "0"),

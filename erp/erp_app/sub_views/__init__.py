@@ -126,7 +126,15 @@ from .project_costing_api import (
     stock_return_item_detail_api_view,
 )
 from .items_to_order_api import items_to_order_api_view
-from .place_stock_order_api import place_stock_order_api_view, place_stock_order_meta_api_view
+from .place_stock_order_api import (
+    place_stock_order_api_view,
+    place_stock_order_meta_api_view,
+    list_placed_stock_orders_api_view,
+    placed_stock_order_detail_api_view,
+    place_stock_order_vendors_api_view,
+    create_place_stock_order_api_view,
+    cancel_placed_stock_order_api_view,
+)
 from .register_view import RegisterView
 from .stock_maintenance_api import (
     create_stock_maintenance_type_option_api_view,
@@ -225,6 +233,11 @@ __all__ = [
     "items_to_order_api_view",
     "place_stock_order_api_view",
     "place_stock_order_meta_api_view",
+    "list_placed_stock_orders_api_view",
+    "placed_stock_order_detail_api_view",
+    "place_stock_order_vendors_api_view",
+    "create_place_stock_order_api_view",
+    "cancel_placed_stock_order_api_view",
     "list_project_layout_drawings_api_view", "save_project_layout_drawings_api_view",
     "list_layout_drawing_approvals_api_view",
     "list_stock_purchases_api_view", "create_stock_purchase_api_view", "stock_purchase_detail_api_view",
