@@ -87,125 +87,100 @@ def items_to_order_api_view(request):
         .select_related("order", "item_code_ref", "item_code_ref__item_code_ref")
     )
 
-    # 1. Pull missing stock from Completed Quotations
-    if not stage_filter or stage_filter == "quotation":
-        quotation_items = (
-            ProjectQuotationItemInfo.objects.filter(
-                quotation_number__status__status_name__iexact="Completed",
-                cost_type__name__iexact="MATERIAL",
-            )
-            .select_related(
-                "quotation_number",
-                "quotation_number__project",
-                "quotation_number__project__project_owner",
-                "quotation_number__project__updated_by",
-                "item_code",
-                "item_code__item_type",
-                "item_code",
-                "item_category",
-                "item_type",
-                "stock_status",
-            )
-            .order_by("-quotation_number__updated_at", "id")
+    received_by_po_item = dict(
+        StockPurchaseItem.objects.filter(po_item__isnull=False)
+        .values("po_item_id")
+        .annotate(tot=Sum("quantity"))
+        .values_list("po_item_id", "tot")
+    )
+
+    po_by_code = defaultdict(Decimal)
+    for p in active_po_items:
+        rec = received_by_po_item.get(p.id) or Decimal("0")
+        bal = max(Decimal("0"), p.order_qty - rec)
+        if bal <= 0:
+            continue
+
+        code = (p.item_code or "").strip().upper()
+        if not code and p.item_code_ref and getattr(p.item_code_ref, "item_code_ref", None):
+            code = p.item_code_ref.item_code_ref.item_code.strip().upper()
+
+        if code:
+            po_by_code[code] += bal
+
+    # 2. Master item physical stock per item_code (including GRN / StockPurchase intake)
+    sp_totals_by_code = dict(
+        StockPurchaseItem.objects.filter(item_code__item_code_ref__isnull=False)
+        .values("item_code__item_code_ref__item_code")
+        .annotate(tot=Sum("quantity"))
+        .values_list("item_code__item_code_ref__item_code", "tot")
+    )
+
+    master_items = LabFurnitureItem.objects.select_related(
+        "item_code_ref", "item_name_ref", "item_category", "item_type"
+    )
+    physical_by_code = {}
+    master_by_code = {}
+    for m in master_items:
+        if m.item_code_ref:
+            code = m.item_code_ref.item_code.strip().upper()
+            phys = Decimal(str(m.physical_qty or 0))
+            sp_tot = Decimal(str(sp_totals_by_code.get(code) or 0))
+            physical_by_code[code] = max(phys, sp_tot)
+            master_by_code[code] = m
+
+    # 3. Pull missing stock from Work In Progress Costings (Item Requested, Material)
+    costing_items = (
+        ProjectCostingItemInfo.objects.filter(
+            costing_id__status__status_name__iexact="Work In Progress",
+            cost_type__name__iexact="MATERIAL",
+            retrieval_status__status_name__iexact="Item Requested",
+            requested_qty__gt=0,
         )
-        if project_id:
-            quotation_items = quotation_items.filter(quotation_number__project_id=project_id)
+        .select_related(
+            "costing_id",
+            "costing_id__quotation_number",
+            "costing_id__project",
+            "item_code",
+            "item_code__item_code_ref",
+            "item_code__item_type",
+            "item_code__item_category",
+            "item_category",
+            "item_type",
+        )
+        .order_by("-costing_id__updated_at", "id")
+    )
+    if project_id:
+        costing_items = costing_items.filter(costing_id__project_id=project_id)
 
-        for item in quotation_items:
-            req_qty = Decimal(str(item.requested_qty or 0))
-            pur_qty = Decimal(str(item.purchase_qty or 0))
-            missing_qty = req_qty - pur_qty if pur_qty > 0 else req_qty
-            status_name = str(getattr(item.stock_status, "status_name", "") or "")
-            is_missing = (
-                missing_qty > 0
-                or status_name.lower() in {"no stock", "partial stock", "not purchased"}
-                or pur_qty <= 0
-            )
-            if is_missing and missing_qty > 0:
-                project = getattr(item.quotation_number, "project", None) if getattr(item, "quotation_number", None) else None
-                req_by = _resolve_requested_by(item, project)
-                req_date = (
-                    item.created_at.strftime("%Y-%m-%d %H:%M")
-                    if getattr(item, "created_at", None)
-                    else (
-                        item.quotation_number.created_at.strftime("%Y-%m-%d %H:%M")
-                        if getattr(item, "quotation_number", None) and getattr(item.quotation_number, "created_at", None)
-                        else "—"
-                    )
-                )
-                project = getattr(item.quotation_number, "project", None)
-                owner = getattr(project, "project_owner", None)
-                req_by = (
-                    f"{owner.first_name} {owner.last_name}".strip() or owner.username
-                    if owner
-                    else "—"
-                )
-                req_date = (
-                    item.created_at.strftime("%Y-%m-%d %H:%M")
-                    if getattr(item, "created_at", None)
-                    else (
-                        item.quotation_number.created_at.strftime("%Y-%m-%d %H:%M")
-                        if getattr(item, "quotation_number", None) and getattr(item.quotation_number, "created_at", None)
-                        else "—"
-                    )
-                )
-                cat_name = getattr(item.item_category, "name", "") or getattr(item.item_code, "item_category_name", "") or "—"
-                code_name = getattr(item.item_code, "item_code", "") or "—"
-                item_name = item.item_name or getattr(item.item_code, "item_name", "") or "—"
-                type_name = _resolve_item_type_name(item)
-                quo_num = getattr(item.quotation_number, "quotation_number", "") or (f"Q-{item.quotation_number_id}" if getattr(item, "quotation_number_id", None) else "—")
-                proj_id = getattr(project, "project_id", "") or (str(project.id) if project else "") or "—"
-                proj_name = getattr(project, "project_name", "") or getattr(item.quotation_number, "project_name", "") or "—"
-                type_name = getattr(getattr(item, "item_type", None), "name", "") or getattr(getattr(item.item_code, "item_type", None), "name", "") or "—"
+    costing_by_code = defaultdict(lambda: {
+        "requested_qty": Decimal("0"),
+        "item_code_ref_id": None,
+        "item_name": "",
+        "item_category": "",
+        "item_type": "",
+        "count": 0,
+        "stage": "Costing",
+    })
 
-                results.append({
-                    "id": f"quo-{item.id}",
-                    "item_id": item.id,
-                    "stage": "Quotation",
-                    "quotation_number": quo_num,
-                    "costing_number": "—",
-                    "reference_number": quo_num,
-                    "project_id": proj_id,
-                    "project_name": proj_name,
-                    "quotation_number": item.quotation_number.quotation_number or f"Q-{item.quotation_number_id}",
-                    "costing_number": "—",
-                    "reference_number": item.quotation_number.quotation_number or f"Q-{item.quotation_number_id}",
-                    "project_id": getattr(project, "project_id", "") or str(project.id),
-                    "project_name": getattr(project, "project_name", "") or item.quotation_number.project_name or "—",
-                    "item_category": cat_name,
-                    "item_name": item_name,
-                    "item_code": code_name,
-                    "item_type": type_name,
-                    "requested_qty": str(req_qty),
-                    "purchase_qty": str(pur_qty),
-                    "order_qty": str(missing_qty),
-                    "stock_status": status_name or ("Partial Stock" if pur_qty > 0 else "No Stock"),
-                    "requested_by": req_by,
-                    "requested_date": req_date,
-                    "updated_by": req_by,
-                    "updated_on": req_date,
-                })
-
-    # 2. Pull missing stock from Completed Costings
-    if not stage_filter or stage_filter == "costing":
-        costing_items = (
-            ProjectCostingItemInfo.objects.filter(
-                costing_id__status__status_name__iexact="Completed",
-                cost_type__name__iexact="MATERIAL",
-            )
-            .select_related(
-                "costing_id",
-                "costing_id__quotation_number",
-                "costing_id__project",
-                "costing_id__project__project_owner",
-                "costing_id__project__updated_by",
-                "item_code",
-                "item_code__item_type",
-                "item_code",
-                "item_category",
-                "item_type",
-                "stock_status",
-                "requested_by",
+    costing_project_ids = set()
+    for c in costing_items:
+        if c.costing_id and c.costing_id.project_id:
+            costing_project_ids.add(c.costing_id.project_id)
+        code = getattr(c.item_code, "item_code", "") or ""
+        code = code.strip().upper()
+        if not code:
+            continue
+        entry = costing_by_code[code]
+        entry["requested_qty"] += Decimal(str(c.requested_qty or 0))
+        entry["count"] += 1
+        if not entry["item_code_ref_id"]:
+            entry["item_code_ref_id"] = getattr(c, "item_code_id", None)
+            entry["item_name"] = c.item_name or getattr(c.item_code, "item_name", "") or ""
+            entry["item_category"] = (
+                getattr(c.item_category, "name", "")
+                or getattr(getattr(c.item_code, "item_category", None), "name", "")
+                or ""
             )
             entry["item_type"] = _resolve_item_type_name(c)
 
@@ -258,83 +233,67 @@ def items_to_order_api_view(request):
                 or getattr(getattr(q.item_code, "item_category", None), "name", "")
                 or ""
             )
-            if is_missing and missing_qty > 0:
-                project = getattr(item.costing_id, "project", None) if getattr(item, "costing_id", None) else None
-                req_by = _resolve_requested_by(item, project)
-                req_date = (
-                    item.requested_on.strftime("%Y-%m-%d %H:%M")
-                    if getattr(item, "requested_on", None)
-                    else (
-                        item.created_at.strftime("%Y-%m-%d %H:%M")
-                        if getattr(item, "created_at", None)
-                        else (
-                            item.costing_id.created_at.strftime("%Y-%m-%d %H:%M")
-                            if getattr(item, "costing_id", None) and getattr(item.costing_id, "created_at", None)
-                            else "—"
-                        )
-                    )
-                )
-                project = getattr(item.costing_id, "project", None)
-                owner = item.requested_by or getattr(project, "project_owner", None)
-                req_by = (
-                    f"{owner.first_name} {owner.last_name}".strip() or owner.username
-                    if owner
-                    else "—"
-                )
-                req_date = (
-                    item.requested_on.strftime("%Y-%m-%d %H:%M")
-                    if getattr(item, "requested_on", None)
-                    else (
-                        item.created_at.strftime("%Y-%m-%d %H:%M")
-                        if getattr(item, "created_at", None)
-                        else (
-                            item.costing_id.created_at.strftime("%Y-%m-%d %H:%M")
-                            if getattr(item, "costing_id", None) and getattr(item.costing_id, "created_at", None)
-                            else "—"
-                        )
-                    )
-                )
-                cat_name = getattr(item.item_category, "name", "") or getattr(item.item_code, "item_category_name", "") or "—"
-                code_name = getattr(item.item_code, "item_code", "") or "—"
-                item_name = item.item_name or getattr(item.item_code, "item_name", "") or "—"
-                type_name = _resolve_item_type_name(item)
-                costing_ref = getattr(item.costing_id, "costing_id", "") or (f"C-{item.costing_id_id}" if getattr(item, "costing_id_id", None) else "—")
-                quotation_no = getattr(getattr(item.costing_id, "quotation_number", None), "quotation_number", "") or "—"
-                proj_id = getattr(project, "project_id", "") or (str(project.id) if project else "") or "—"
-                proj_name = getattr(project, "project_name", "") or getattr(item.costing_id, "project_name", "") or "—"
-                type_name = getattr(getattr(item, "item_type", None), "name", "") or getattr(getattr(item.item_code, "item_type", None), "name", "") or "—"
-                quotation_no = getattr(item.costing_id.quotation_number, "quotation_number", "") or "—"
+            entry["item_type"] = _resolve_item_type_name(q)
 
-                results.append({
-                    "id": f"cost-{item.id}",
-                    "item_id": item.id,
-                    "stage": "Costing",
-                    "quotation_number": str(quotation_no),
-                    "costing_number": costing_ref,
-                    "reference_number": costing_ref,
-                    "project_id": proj_id,
-                    "project_name": proj_name,
-                    "costing_number": item.costing_id.costing_id or f"C-{item.costing_id_id}",
-                    "reference_number": item.costing_id.costing_id or f"C-{item.costing_id_id}",
-                    "project_id": getattr(project, "project_id", "") or str(project.id),
-                    "project_name": getattr(project, "project_name", "") or item.costing_id.project_name or "—",
-                    "item_category": cat_name,
-                    "item_name": item_name,
-                    "item_code": code_name,
-                    "item_type": type_name,
-                    "requested_qty": str(req_qty),
-                    "purchase_qty": str(pur_qty),
-                    "order_qty": str(missing_qty),
-                    "stock_status": status_name or ("Partial Stock" if pur_qty > 0 else "No Stock"),
-                    "requested_by": req_by,
-                    "requested_date": req_date,
-                    "updated_by": req_by,
-                    "updated_on": req_date,
-                })
+    # Select codes based on stage_filter
+    if stage_filter == "costing":
+        combined_codes = list(costing_by_code.keys())
+    elif stage_filter == "quotation":
+        combined_codes = list(quotation_by_code.keys())
+    else:
+        combined_codes = list(costing_by_code.keys()) + [
+            k for k in quotation_by_code.keys() if k not in costing_by_code
+        ]
+
+    results = []
+    for code in sorted(combined_codes):
+        info = costing_by_code.get(code) or quotation_by_code.get(code)
+        req_qty = info["requested_qty"]
+        avail_phys = physical_by_code.get(code, Decimal("0"))
+        avail_ord = po_by_code.get(code, Decimal("0"))
+
+        # Physical stock available
+        alloc_phys = min(req_qty, avail_phys)
+        rem = req_qty - alloc_phys
+
+        # Active POs placed
+        alloc_ord = min(rem, avail_ord)
+        to_order = rem - alloc_ord
+
+        # Only include in Items to Order if to_order > 0
+        if to_order > 0:
+            if alloc_ord > 0:
+                stock_status = "Partially Ordered"
+            elif alloc_phys > 0:
+                stock_status = "Partial Stock"
+            else:
+                stock_status = "No Stock"
+
+            m = master_by_code.get(code)
+            cat = info["item_category"] or (m.item_category.name if m and m.item_category else "") or "—"
+            name = info["item_name"] or (m.item_name if m else "") or "—"
+            combined = f"{code} _ {cat} _ {name}"
+
+            results.append({
+                "id": f"item-{code}",
+                "item_id": info["item_code_ref_id"] or (m.pk if m else None),
+                "item_code": code,
+                "item_name": name,
+                "item_category": cat,
+                "item_type": info["item_type"] or "MATERIAL",
+                "combined_label": combined,
+                "item_code_ref_id": info["item_code_ref_id"] or (m.pk if m else None),
+                "stage": info["stage"],
+                "requested_qty": f"{req_qty:.2f}",
+                "purchase_qty": f"{alloc_phys:.2f}",
+                "already_ordered_qty": f"{alloc_ord:.2f}",
+                "order_qty": f"{to_order:.2f}",
+                "stock_status": stock_status,
+                "requests_count": info["count"],
+            })
 
     return Response({
         "status": "success",
         "items": results,
         "total_items": len(results),
-        "message": "Items to order retrieved successfully.",
     }, status=status.HTTP_200_OK)

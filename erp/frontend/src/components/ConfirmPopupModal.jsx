@@ -61,7 +61,6 @@ function ConfirmPopupModal({
         aria-label={title}
         style={{
           width: maxWidth ? `min(${maxWidth}, 94vw)` : "min(520px, 94vw)",
-          width: "min(520px, 94vw)",
           borderRadius: "10px",
           overflow: "hidden",
           boxShadow: "0 20px 45px rgba(0, 0, 0, 0.35)",
@@ -152,14 +151,6 @@ function ConfirmPopupModal({
                 {confirmLabel}
               </button>
             ) : null}
-            <button
-              type="button"
-              className="modal-btn modal-btn--save"
-              onClick={onConfirm}
-              disabled={confirmDisabled}
-            >
-              {confirmLabel}
-            </button>
           </div>
         </CardBody>
       </div>

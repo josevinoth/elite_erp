@@ -130,15 +130,100 @@
 }
 
 .stock-retrieval-table {
-  width: max-content;
-  min-width: 100%;
-  min-width: 1900px;
-  table-layout: auto;
+  width: 100%;
+  min-width: 1300px;
+  table-layout: fixed;
 }
 
 .stock-retrieval-table th,
 .stock-retrieval-table td {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+
+.stock-retrieval-table th {
+  line-height: 1.25;
+}
+
+.stock-retrieval-table td {
+  text-overflow: ellipsis;
+}
+
+.stock-retrieval-table th:nth-child(1),
+.stock-retrieval-table td:nth-child(1) { width: 6%; }
+.stock-retrieval-table th:nth-child(2),
+.stock-retrieval-table td:nth-child(2) { width: 9%; }
+.stock-retrieval-table th:nth-child(3),
+.stock-retrieval-table td:nth-child(3) { width: 14%; }
+.stock-retrieval-table th:nth-child(4),
+.stock-retrieval-table td:nth-child(4) { width: 6%; }
+.stock-retrieval-table th:nth-child(5),
+.stock-retrieval-table td:nth-child(5) { width: 7%; }
+.stock-retrieval-table th:nth-child(6),
+.stock-retrieval-table td:nth-child(6) { width: 5%; }
+.stock-retrieval-table th:nth-child(7),
+.stock-retrieval-table td:nth-child(7) { width: 5%; }
+.stock-retrieval-table th:nth-child(8),
+.stock-retrieval-table td:nth-child(8) { width: 7%; }
+.stock-retrieval-table th:nth-child(9),
+.stock-retrieval-table td:nth-child(9) { width: 7%; }
+.stock-retrieval-table th:nth-child(10),
+.stock-retrieval-table td:nth-child(10) { width: 6%; }
+.stock-retrieval-table th:nth-child(11),
+.stock-retrieval-table td:nth-child(11) { width: 7%; }
+.stock-retrieval-table th:nth-child(12),
+.stock-retrieval-table td:nth-child(12) { width: 8%; }
+.stock-retrieval-table th:nth-child(13),
+.stock-retrieval-table td:nth-child(13) { width: 6%; }
+.stock-retrieval-table th:nth-child(14),
+.stock-retrieval-table td:nth-child(14) { width: 7%; }
+
+.stock-retrieval-table .users-table__filter-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.stock-retrieval-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  max-width: 100%;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
   white-space: nowrap;
+}
+
+.stock-retrieval-badge--in-stock,
+.stock-retrieval-badge--success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #166534;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.stock-retrieval-badge--partial,
+.stock-retrieval-badge--pending {
+  background: rgba(255, 193, 7, 0.15);
+  color: #92400e;
+  border-color: rgba(255, 193, 7, 0.45);
+}
+
+.stock-retrieval-badge--no-stock,
+.stock-retrieval-badge--danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.stock-retrieval-badge--neutral {
+  background: rgba(100, 116, 139, 0.14);
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.35);
 }
 
 .stock-retrieval-table__right {
@@ -147,12 +232,56 @@
 
 .stock-retrieval-actions {
   display: flex;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 0.25rem;
 }
 
 .stock-retrieval-action-btn {
-  min-width: 88px;
-  padding: 0.35rem 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stock-retrieval-action-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.stock-retrieval-action-btn--accept {
+  color: #fff;
+  background: #16a34a;
+  border-color: #15803d;
+}
+
+.stock-retrieval-action-btn--accept:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.stock-retrieval-action-btn--reject {
+  color: #fff;
+  background: #dc2626;
+  border-color: #b91c1c;
+}
+
+.stock-retrieval-action-btn--reject:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.stock-retrieval-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .stock-retrieval-empty {
@@ -244,4 +373,3 @@
   gap: 1rem;
   justify-content: flex-end;
 }
-

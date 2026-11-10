@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BsArrowLeft,
+  BsArrowRight,
   BsCartCheck,
+  BsCartPlus,
   BsBoxes,
   BsClipboardData,
   BsCheckCircleFill,

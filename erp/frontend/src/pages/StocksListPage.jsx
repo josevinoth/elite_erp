@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { BsBoxArrowUpRight } from "react-icons/bs";
 import StandardListPage from "../components/StandardListPage";
-import { getStockItemSummary, listStockPurchases } from "../services/crudApi";
+import { listStockPurchases } from "../services/crudApi";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -27,56 +27,22 @@ function StocksListPage() {
     const data = await listStockPurchases();
     const purchases = Array.isArray(data?.stock_purchases) ? data.stock_purchases : [];
 
-    const uniqueItemCodes = Array.from(
-      new Set(
-        purchases
-          .flatMap((purchase) => (Array.isArray(purchase?.items) ? purchase.items : []))
-          .map((item) => String(item?.item_code || "").trim())
-          .filter(Boolean)
-      )
-    );
-
-    const summaryByItemAndGrn = new Map();
-    const summaryByPurchaseItemId = new Map();
-    await Promise.all(
-      uniqueItemCodes.map(async (code) => {
-        try {
-          const summaryRes = await getStockItemSummary(code);
-          const rows = Array.isArray(summaryRes?.summary) ? summaryRes.summary : [];
-          rows.forEach((row) => {
-            const key = `${String(code).toLowerCase()}::${String(row.grn_number || "").toUpperCase()}`;
-            summaryByItemAndGrn.set(key, row);
-            if (row?.id != null) {
-              summaryByPurchaseItemId.set(String(row.id), row);
-            }
-          });
-        } catch (_error) {
-          // Keep list page resilient when a summary call fails for one item code.
-        }
-      })
-    );
-
     const flattened = [];
 
     purchases.forEach((purchase) => {
       const items = Array.isArray(purchase?.items) ? purchase.items : [];
       items.forEach((item) => {
-        const itemCodeKey = String(item.item_code || "").trim().toLowerCase();
-        const itemGrnKey = String(item.grn_number || "").trim().toUpperCase();
-        const summaryById = summaryByPurchaseItemId.get(String(item.id || ""));
-        const summaryByCodeAndGrn = summaryByItemAndGrn.get(`${itemCodeKey}::${itemGrnKey}`);
-        const summaryRow = summaryById || summaryByCodeAndGrn;
         flattened.push({
           key: `${purchase.id}-${item.id || item.item_code || item.item_name}`,
           purchase_id: purchase.id,
-          grn_number: item.grn_number || summaryRow?.grn_number || "-",
+          grn_number: item.grn_number || "-",
           vendor: purchase.vendor_name || "",
           item_category: item.item_category || "",
           item_name: item.item_name || "",
           item_code: item.item_code || "",
           purchased_qty: item.purchase_qty || item.quantity || "0",
-          consumed_qty: summaryRow?.consumed_qty || "0",
-          balance_qty: summaryRow?.balance_qty || (item.purchase_qty || item.quantity || "0"),
+          consumed_qty: item.consumed_qty || "0",
+          balance_qty: item.balance_qty || (item.purchase_qty || item.quantity || "0"),
           unit_price: item.unit_price || "0",
           total_price: item.total_price || "0",
           lce_cost: item.lce_cost || "0",

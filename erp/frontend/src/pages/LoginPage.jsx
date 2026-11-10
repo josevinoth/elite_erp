@@ -52,6 +52,7 @@ function LoginPage({ onLoginSuccess }) {
         username: data?.user?.username || submittedValues.username || "Guest",
         role: data?.user?.role || "User",
         team: data?.user?.team || "",
+        is_superuser: Boolean(data?.user?.is_superuser),
       };
 
       setSessionUser(resolvedUser);
@@ -152,4 +153,3 @@ function LoginPage({ onLoginSuccess }) {
 }
 
 export default LoginPage;
-

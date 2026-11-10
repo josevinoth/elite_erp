@@ -28,7 +28,7 @@ class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    grn_number = SafeSourceCharField(source="purchase_item.grn_number", read_only=True)
+    grn_number = serializers.SerializerMethodField(read_only=True)
     vendor_name = SafeSourceCharField(source="purchase_item.vendor_detail.vendor.name", read_only=True)
     purchase_qty = serializers.SerializerMethodField(read_only=True)
     unit_price = SafeSourceCharField(source="purchase_item.unit_price", read_only=True)
@@ -57,6 +57,12 @@ class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
         if not purchase_item:
             return "0"
         return str(getattr(purchase_item, "purchase_qty", None) or getattr(purchase_item, "quantity", 0) or 0)
+
+    def get_grn_number(self, obj):
+        purchase_item = getattr(obj, "purchase_item", None)
+        if not purchase_item:
+            return ""
+        return str(getattr(purchase_item, "grn_number", "") or f"GRN{purchase_item.pk:04d}")
 
     def get_remaining_accepted_qty(self, obj):
         allocated_qty = Decimal(str(getattr(obj, "allocated_qty", 0) or 0))
@@ -107,6 +113,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     stock_status = serializers.SerializerMethodField(read_only=True)
+    available_stock_qty = serializers.SerializerMethodField(read_only=True)
     stock_status_id = serializers.PrimaryKeyRelatedField(
         source="stock_status",
         queryset=StockStatusInfo.objects.all(),
@@ -168,6 +175,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             "actual_cost",
             "total_cost",
             "stock_status",
+            "available_stock_qty",
             "stock_status_id",
             "retrieval_status",
             "retrieval_status_id",
@@ -208,7 +216,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             return None
         return {
             "id": purchase_item.pk,
-            "grn_number": purchase_item.grn_number,
+            "grn_number": str(getattr(purchase_item, "grn_number", "") or f"GRN{purchase_item.pk:04d}"),
             "vendor_name": getattr(getattr(purchase_item, "vendor_detail", None), "vendor", None).name
             if getattr(getattr(purchase_item, "vendor_detail", None), "vendor", None)
             else "",
@@ -226,6 +234,10 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         if not status_obj:
             return None
         return {"id": status_obj.pk, "status_name": status_obj.status_name}
+
+    def get_available_stock_qty(self, obj):
+        item_code = getattr(obj, "item_code", None)
+        return str(getattr(item_code, "physical_qty", 0) or 0)
 
     def get_project_owner_id(self, obj):
         costing = getattr(obj, "costing_id", None)
@@ -356,6 +368,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
                 consumed_qs = ProjectCostingItemAllocation.objects.select_related("costing_item__retrieval_status").filter(
                     purchase_item=pi,
                     costing_item__retrieval_status__status_name__in=[
+                        RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
                         RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
                         RetrievalStatusInfo.STATUS_ITEM_RETURN,
                         RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
@@ -433,6 +446,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             consumed_qs = ProjectCostingItemAllocation.objects.select_related("retrieval_status", "costing_item__retrieval_status").filter(
                 purchase_item=purchase_item,
                 costing_item__retrieval_status__status_name__in=[
+                    RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
                     RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
                     RetrievalStatusInfo.STATUS_ITEM_RETURN,
                     RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,

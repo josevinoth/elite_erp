@@ -2,7 +2,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -273,25 +273,30 @@ def _purchase_items_for_item_master(item_master):
 
 
 def _allocation_totals_for_purchase_items(purchase_item_ids):
+    purchase_item_ids = list(purchase_item_ids)
+    if not purchase_item_ids:
+        return {}
+
     consumed_rows = ProjectCostingItemAllocation.objects.filter(
         purchase_item_id__in=purchase_item_ids,
         retrieval_status__status_name__in=[
+            RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
             RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
             RetrievalStatusInfo.STATUS_ITEM_RETURN,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
         ],
-        costing_item__retrieval_status__status_name__in=[
-            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
-            RetrievalStatusInfo.STATUS_ITEM_RETURN,
-        ],
+    ).values("purchase_item_id").annotate(
+        allocated_total=Sum("allocated_qty"),
+        returned_total=Sum("returned_qty"),
     )
 
     consumed_by_id = {}
-    for row in consumed_rows.values("purchase_item_id", "allocated_qty", "returned_qty"):
+    for row in consumed_rows:
         pid = row["purchase_item_id"]
-        net_qty = Decimal(str(row["allocated_qty"] or 0)) - Decimal(str(row.get("returned_qty") or 0))
+        net_qty = Decimal(str(row["allocated_total"] or 0)) - Decimal(str(row["returned_total"] or 0))
         if net_qty < 0:
             net_qty = Decimal("0")
-        consumed_by_id[pid] = consumed_by_id.get(pid, Decimal("0")) + net_qty
+        consumed_by_id[pid] = net_qty
     for pid in purchase_item_ids:
         consumed_by_id.setdefault(pid, Decimal("0"))
     return consumed_by_id
@@ -700,7 +705,22 @@ def list_stock_purchases_api_view(request):
         "items__item_code__uom",
         "items__item_code__item_type",
     ).order_by("-id")
-    return JsonResponse({"stock_purchases": [_serialize(o) for o in rows]})
+    purchases = [_serialize(row) for row in rows]
+    purchase_item_ids = [
+        item["id"]
+        for purchase in purchases
+        for item in purchase["items"]
+    ]
+    consumed_by_id = _allocation_totals_for_purchase_items(purchase_item_ids)
+
+    for purchase in purchases:
+        for item in purchase["items"]:
+            purchased_qty = Decimal(str(item.get("purchase_qty") or item.get("quantity") or 0))
+            consumed_qty = consumed_by_id.get(item["id"], Decimal("0"))
+            item["consumed_qty"] = str(consumed_qty)
+            item["balance_qty"] = str(max(purchased_qty - consumed_qty, Decimal("0")))
+
+    return JsonResponse({"stock_purchases": purchases})
 
 
 @require_POST
@@ -953,4 +973,3 @@ def stock_purchase_item_trace_api_view(request, item_id):
             }
         }
     )
-

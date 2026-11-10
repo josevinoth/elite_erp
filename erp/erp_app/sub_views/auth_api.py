@@ -69,11 +69,14 @@ def _mask_email(email: str) -> str:
 
 
 def _resolve_user_role(user):
+    group_names = user.groups.values_list("name", flat=True)
+    if user.is_superuser or any(
+        str(name).strip().lower() in {"super admin", "superadmin"} for name in group_names
+    ):
+        return ROLE_SUPER_ADMIN
     first_group = user.groups.order_by("name").first()
     if first_group:
         return _canonical_role_label(first_group.name)
-    if user.is_superuser:
-        return ROLE_SUPER_ADMIN
     if user.is_staff:
         return ROLE_ADMIN
     return ROLE_USER
