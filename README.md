@@ -147,6 +147,34 @@ Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
 cmd /c erp_control.bat status 8010
 ```
 
+## GitHub Actions Remote Deploy (prod branch)
+
+This repo includes `.github/workflows/deploy-prod.yml` for Windows-server deployment via SSH.
+
+It runs automatically on push to `prod` and performs:
+
+- `git pull` on server (`prod`)
+- Python dependency install
+- Frontend `npm ci && npm run build`
+- `manage.py migrate` + `collectstatic`
+- backend restart (`serve.py`) and health check
+
+### Required GitHub repository secrets
+
+- `DEPLOY_HOST` (server public IP / DNS)
+- `DEPLOY_PORT` (usually `22`)
+- `DEPLOY_USER` (SSH user)
+- `DEPLOY_SSH_KEY` (private key content for the SSH user)
+- `DEPLOY_PATH` (absolute path of repo on server, e.g. `C:\deploy\elite_erp_v1.0`)
+- `APP_PORT` (optional, defaults to `8010`)
+
+### One-time server prerequisites
+
+- OpenSSH server enabled
+- repo already cloned at `DEPLOY_PATH`
+- Git, Python, pip, Node/npm installed
+- `.env` present on server with production values
+
 ---
 
 ## Stock Manufacture Module

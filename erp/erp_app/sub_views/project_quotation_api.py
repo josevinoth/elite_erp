@@ -53,7 +53,7 @@ def _serializer_error_response(serializer):
                         message = str(nested[0])
                         break
     lowered = message.lower()
-    if "requested qty cannot be greater than purchase qty" in lowered:
+    if "requested qty is greater" in lowered or "requested qty cannot be greater" in lowered:
         response_status = "warning"
     response_payload = {"status": response_status, "message": message, "errors": errors}
     if response_status == "warning":
@@ -301,7 +301,8 @@ def _safe_serializer_save(serializer, fallback_message):
                         message = str(nested_values[0][0])
                         break
         lowered = message.lower()
-        response_status = "warning" if "requested qty cannot be greater than purchase qty" in lowered else "error"
+        is_qty_warning = "requested qty is greater" in lowered or "requested qty cannot be greater" in lowered
+        response_status = "warning" if is_qty_warning else "error"
         payload = {
             "status": response_status,
             "message": message,

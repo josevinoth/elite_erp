@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from ..utils import normalize_text
@@ -5,6 +6,18 @@ from .item_category import ItemCategory
 
 
 class ItemCodeName(models.Model):
+    PROCUREMENT_CLASSIFICATION_CHOICES = [
+        ("OMAN", "OMAN"),
+        ("UAE", "UAE"),
+        ("IMP", "IMP"),
+    ]
+    BUSINESS_CRITICALITY_CHOICES = [
+        ("VIP", "VIP"),
+        ("CRITICAL", "CRITICAL"),
+        ("NON CRITICAL", "NON CRITICAL"),
+        ("UNDESIRED", "UNDESIRED"),
+    ]
+
     item_code = models.CharField(max_length=20, unique=True)
     item_name = models.CharField(max_length=255, unique=True)
     item_category = models.ForeignKey(
@@ -14,6 +27,27 @@ class ItemCodeName(models.Model):
         null=True,
         blank=True,
     )
+    procurement_classification = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        choices=PROCUREMENT_CLASSIFICATION_CHOICES,
+    )
+    business_criticality = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        choices=BUSINESS_CRITICALITY_CHOICES,
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_item_code_names",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     class Meta:
         ordering = ["item_code"]
@@ -24,5 +58,8 @@ class ItemCodeName(models.Model):
     def save(self, *args, **kwargs):
         self.item_code = normalize_text(self.item_code).upper()
         self.item_name = normalize_text(self.item_name)
+        if self.procurement_classification:
+            self.procurement_classification = normalize_text(self.procurement_classification).upper()
+        if self.business_criticality:
+            self.business_criticality = normalize_text(self.business_criticality).upper()
         super().save(*args, **kwargs)
-

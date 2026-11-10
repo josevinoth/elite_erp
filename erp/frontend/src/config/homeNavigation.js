@@ -86,6 +86,11 @@ export const homeNavItems = [
         superAdminOnly: true,
       },
       {
+        label: "Items to Order",
+        to: "/items-to-order",
+        icon: "itemsToOrder",
+      },
+      {
         label: "Stock Maintenance",
         to: "/stock-maintenance",
         icon: "stockMaintenance",

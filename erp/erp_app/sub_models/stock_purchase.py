@@ -10,6 +10,13 @@ from .cut_optimiser import UOM
 
 class StockPurchaseVendorDetail(models.Model):
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name="stock_purchase_details")
+    purchase_order = models.ForeignKey(
+        "erp_app.PlaceStockOrderInfo",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="stock_purchases",
+    )
     invoice_number = models.CharField(max_length=100, blank=True)
     invoice_date = models.DateField(null=True, blank=True)
     tax = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -45,6 +52,13 @@ class StockPurchaseVendorDetail(models.Model):
 
 class StockPurchaseItem(models.Model):
     vendor_detail = models.ForeignKey(StockPurchaseVendorDetail, on_delete=models.CASCADE, related_name="items")
+    po_item = models.ForeignKey(
+        "erp_app.PlaceStockOrderItem",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="stock_purchase_items",
+    )
     lce_estimate = models.ForeignKey(
         "erp_app.LCEEstimate",
         null=True,

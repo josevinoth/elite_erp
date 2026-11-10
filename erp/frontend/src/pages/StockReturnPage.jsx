@@ -322,6 +322,8 @@ function StockReturnPage() {
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_qty: e.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.return_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, return_qty: e.target.value }))} /></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.return_allocation ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, return_allocation: e.target.value }))} /></th>
+                   <th></th>
+                   <th></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.retrieval_status ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, retrieval_status: e.target.value }))} /></th>
                   <th></th>
                   <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.rejection_comment ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, rejection_comment: e.target.value }))} /></th>
@@ -330,7 +332,7 @@ function StockReturnPage() {
               <tbody>
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="stock-retrieval-empty">No return items found.</td>
+                    <td colSpan={13} className="stock-retrieval-empty">No return items found.</td>
                   </tr>
                 ) : filteredItems.map((row) => {
                   const canEdit = isAdmin || isStockRole || String(row?.project_owner_id || "") === currentUserId;
@@ -344,6 +346,8 @@ function StockReturnPage() {
                       <td className="stock-retrieval-table__right">{row.requested_qty}</td>
                       <td className="stock-retrieval-table__right">{row.return_qty || "0"}</td>
                       <td>{row.return_allocation}</td>
+                      <td>{row?.updated_by || "—"}</td>
+                      <td>{row?.updated_on || (row?.updated_at ? new Date(row?.updated_at).toLocaleString() : "—")}</td>
                       <td>{row?.retrieval_status?.status_name || "Item Return"}</td>
                       <td>
                         <div className="stock-retrieval-actions">

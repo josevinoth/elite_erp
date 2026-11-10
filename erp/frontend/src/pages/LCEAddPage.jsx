@@ -10,8 +10,10 @@ import {
   BsTrashFill,
 } from "react-icons/bs";
 import {
+  checkLceItemUsage,
   createLceChargeTypeOption,
   createLceEstimate,
+  deleteLceItem,
   getLceEstimateById,
   getLceItemsCostDetails,
   getLcePurchaseHistory,
@@ -21,6 +23,8 @@ import {
 } from "../services/crudApi";
 import { getSessionUser } from "../services/sessionUser";
 import { Card, CardHeader, CardBody } from "../components/Card";
+import ConfirmPopupModal from "../components/ConfirmPopupModal";
+import AlertMessage from "../components/AlertMessage";
 import "../styles/LCEAddPage.css";
 
 const OTHER_CHARGE_FIELDS = [
@@ -266,7 +270,7 @@ function PurchaseHistoryModal({ itemCode, itemName, itemCategory, onClose }) {
       <div
         className="costing-modal-card"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: "880px", width: "95%" }}
+        style={{ maxWidth: "1000px", width: "95%" }}
       >
         <div className="costing-modal-card__header">
           <div>
@@ -315,6 +319,7 @@ function PurchaseHistoryModal({ itemCode, itemName, itemCategory, onClose }) {
                     <th>Item Category</th>
                     <th>Item Name</th>
                     <th>Item Code</th>
+                    <th>Supplier Name</th>
                     <th>Cost</th>
                     <th>Purchase No.</th>
                     <th>Invoice No.</th>
@@ -328,6 +333,7 @@ function PurchaseHistoryModal({ itemCode, itemName, itemCategory, onClose }) {
                       <td>{p.item_category || itemCategory || "-"}</td>
                       <td>{p.item_name || itemName || "-"}</td>
                       <td><strong>{p.item_code || itemCode}</strong></td>
+                      <td>{p.supplier_name || p.vendor_name || "-"}</td>
                       <td>
                         <strong style={{ color: "#0f766e" }}>{p.cost}</strong>
                       </td>
@@ -390,6 +396,21 @@ function LCEAddPage() {
   const [historyModalItem, setHistoryModalItem] = useState(null);
   const [itemSearchText, setItemSearchText] = useState("");
 
+  const [deleteModal, setDeleteModal] = useState({
+    open: false,
+    checking: false,
+    deleting: false,
+    row: null,
+    canDelete: true,
+    wipProjects: [],
+    errorMessage: "",
+  });
+
+  const [settlementDeleteModal, setSettlementDeleteModal] = useState({
+    open: false,
+    row: null,
+  });
+
   const [balanceSettlements, setBalanceSettlements] = useState([emptySettlementRow(1)]);
   const [nextSettlementRowId, setNextSettlementRowId] = useState(2);
 
@@ -404,7 +425,7 @@ function LCEAddPage() {
 
     const resolveAndLoad = async () => {
       try {
-        const metaData = await listLceEstimateMeta();
+        const metaData = await listLceEstimateMeta(lceId);
         if (!alive) return;
 
         const metaChargeTypes = Array.isArray(metaData?.charge_types)
@@ -455,6 +476,7 @@ function LCEAddPage() {
               item_name: row.item_name,
               item_category: row.item_category_name || (row.item_category?.name || ""),
               label: `${row.item_code} - ${row.item_name}`,
+              linked_lce_id: null,
             }));
           } catch (e) {
             console.error("Failed to load item options fallback:", e);
@@ -467,6 +489,7 @@ function LCEAddPage() {
             item_name: row.item_name,
             item_category: row.item_category || "",
             label: row.label || `${row.item_code} - ${row.item_name}`,
+            linked_lce_id: row.linked_lce_id || null,
           }))
         );
       } catch (metaErr) {
@@ -617,8 +640,81 @@ function LCEAddPage() {
     setNextItemRowId((prev) => prev + 1);
   };
 
-  const handleRemoveItemRow = (rowId) => {
-    setItems((prev) => prev.filter((r) => r.rowId !== rowId));
+  const handleRequestDeleteItem = async (rowItem) => {
+    const itemCode = rowItem.item_code || "";
+    const itemCodeId = rowItem.item_code_id || "";
+
+    setDeleteModal({
+      open: true,
+      checking: true,
+      deleting: false,
+      row: rowItem,
+      canDelete: true,
+      wipProjects: [],
+      errorMessage: "",
+    });
+
+    try {
+      const res = await checkLceItemUsage({ item_code: itemCode, item_id: itemCodeId });
+      const wipProjects = Array.isArray(res?.wip_projects) ? res.wip_projects : [];
+      const canDelete = res?.can_delete !== false && wipProjects.length === 0;
+      setDeleteModal((prev) => ({
+        ...prev,
+        checking: false,
+        canDelete,
+        wipProjects,
+      }));
+    } catch (err) {
+      setDeleteModal((prev) => ({
+        ...prev,
+        checking: false,
+        errorMessage: err.message || "Failed to verify item usage in projects.",
+      }));
+    }
+  };
+
+  const handleConfirmDeleteItem = async () => {
+    if (!deleteModal.row) return;
+    setDeleteModal((prev) => ({ ...prev, deleting: true, errorMessage: "" }));
+    try {
+      if (lceId) {
+        await deleteLceItem({
+          lce_id: lceId,
+          item_code: deleteModal.row.item_code,
+          item_code_id: deleteModal.row.item_code_id,
+        });
+      }
+      setItems((prev) => prev.filter((r) => r.rowId !== deleteModal.row.rowId));
+      setStatus(`Item "${deleteModal.row.item_code || "selected item"}" removed from LCE table.`);
+      setDeleteModal({
+        open: false,
+        checking: false,
+        deleting: false,
+        row: null,
+        canDelete: true,
+        wipProjects: [],
+        errorMessage: "",
+      });
+    } catch (err) {
+      setDeleteModal((prev) => ({
+        ...prev,
+        deleting: false,
+        errorMessage: err.message || "Failed to delete item from LCE table.",
+      }));
+    }
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleteModal.deleting) return;
+    setDeleteModal({
+      open: false,
+      checking: false,
+      deleting: false,
+      row: null,
+      canDelete: true,
+      wipProjects: [],
+      errorMessage: "",
+    });
   };
 
   const handleMinCostChange = (rowId, value) => {
@@ -755,6 +851,18 @@ function LCEAddPage() {
   };
 
   const toggleItemCodeKey = (codeKey) => {
+    const master = itemMasterOptions.find((o) => String(o.value) === String(codeKey));
+    if (master?.linked_lce_id && String(master.linked_lce_id) !== String(lceId || "")) {
+      return;
+    }
+    const alreadyInList = items.some(
+      (it) =>
+        (it.item_code_id && String(it.item_code_id) === String(codeKey)) ||
+        (master && it.item_code === master.item_code)
+    );
+    if (alreadyInList) {
+      return;
+    }
     setSelectedItemCodeKeys((prev) => {
       if (prev.includes(codeKey)) {
         return prev.filter((id) => id !== codeKey);
@@ -777,12 +885,31 @@ function LCEAddPage() {
   const handleAddMultiSelectedItems = async () => {
     if (!selectedItemCodeKeys.length) return;
     try {
-      const data = await getLceItemsCostDetails(selectedItemCodeKeys);
+      const validCodeKeys = selectedItemCodeKeys.filter((keyVal) => {
+        const master = itemMasterOptions.find((o) => String(o.value) === String(keyVal));
+        if (master?.linked_lce_id && String(master.linked_lce_id) !== String(lceId || "")) {
+          return false;
+        }
+        const alreadyInList = items.some(
+          (it) =>
+            (it.item_code_id && String(it.item_code_id) === String(keyVal)) ||
+            (master && it.item_code === master.item_code)
+        );
+        return !alreadyInList;
+      });
+
+      if (!validCodeKeys.length) {
+        setStatus("Selected item(s) are already added or linked to another LCE.");
+        setSelectedItemCodeKeys([]);
+        return;
+      }
+
+      const data = await getLceItemsCostDetails(validCodeKeys);
       const fetchedItems = Array.isArray(data?.items) ? data.items : [];
       let curId = nextItemRowId;
       const newRows = [];
 
-      selectedItemCodeKeys.forEach((keyVal) => {
+      validCodeKeys.forEach((keyVal) => {
         const master = itemMasterOptions.find(
           (o) => String(o.value) === String(keyVal)
         );
@@ -846,11 +973,26 @@ function LCEAddPage() {
     setBalanceSettlements((prev) => [...prev, nextRow]);
   };
 
-  const removeSettlementRow = (rowId) => {
+  const handleRequestRemoveSettlement = (row) => {
+    setSettlementDeleteModal({
+      open: true,
+      row,
+    });
+  };
+
+  const handleConfirmRemoveSettlement = () => {
+    if (!settlementDeleteModal.row) return;
+    const targetRowId = settlementDeleteModal.row.rowId;
     setBalanceSettlements((prev) => {
-      const filtered = prev.filter((row) => row.rowId !== rowId);
+      const filtered = prev.filter((r) => r.rowId !== targetRowId);
       return filtered.length ? filtered : [emptySettlementRow(1, form.foreign_currency_id || "")];
     });
+    setStatus("Payment settlement record removed.");
+    setSettlementDeleteModal({ open: false, row: null });
+  };
+
+  const handleCloseSettlementDeleteModal = () => {
+    setSettlementDeleteModal({ open: false, row: null });
   };
 
   const handleSettlementChange = (rowId, key, value) => {
@@ -883,27 +1025,20 @@ function LCEAddPage() {
     setSaving(true);
     setStatus("");
 
+    // Settlement details are optional
     const settlementPayload = settlementRowsWithValue
       .filter(
         (row) =>
-          String(row.settlement_date || "").trim() ||
-          toNumber(row.payment_amount) !== 0 ||
-          toNumber(row.factor) !== 0 ||
-          String(row.foreign_currency_id || "").trim()
+          (String(row.settlement_date || "").trim() && (toNumber(row.payment_amount) !== 0 || toNumber(row.factor) !== 0)) ||
+          (toNumber(row.payment_amount) !== 0 && toNumber(row.factor) !== 0)
       )
       .map((row) => ({
-        settlement_date: String(row.settlement_date || "").trim(),
-        foreign_currency_id: String(row.foreign_currency_id || "").trim(),
+        settlement_date: String(row.settlement_date || "").trim() || new Date().toISOString().slice(0, 10),
+        foreign_currency_id: String(row.foreign_currency_id || form.foreign_currency_id || "").trim(),
         payment_amount: row.payment_amount,
         factor: row.factor,
         amount: String(toNumber(row.payment_amount) * toNumber(row.factor)),
       }));
-
-    if (settlementPayload.some((row) => !row.settlement_date)) {
-      setStatus("Settlement date is required for each balance settlement row.");
-      setSaving(false);
-      return;
-    }
 
     const itemsPayload = items
       .filter((r) => r.item_code_id || r.item_code)
@@ -1575,7 +1710,7 @@ function LCEAddPage() {
                             type="button"
                             className="crud-add-btn crud-add-btn--neutral"
                             style={{ padding: "0.25rem 0.65rem", fontSize: "0.78rem" }}
-                            onClick={() => removeSettlementRow(row.rowId)}
+                            onClick={() => handleRequestRemoveSettlement(row)}
                             disabled={settlementRowsWithValue.length <= 1}
                           >
                             Remove
@@ -1689,13 +1824,23 @@ function LCEAddPage() {
                               onClick={() =>
                                 setSelectedItemCodeKeys(
                                   itemMasterOptions
-                                    .filter(
-                                      (o) =>
-                                        !itemSearchText ||
-                                        o.label
-                                          .toLowerCase()
-                                          .includes(itemSearchText.toLowerCase())
-                                    )
+                                    .filter((o) => {
+                                      if (
+                                        itemSearchText &&
+                                        !o.label.toLowerCase().includes(itemSearchText.toLowerCase())
+                                      ) {
+                                        return false;
+                                      }
+                                      const isLinkedOther = Boolean(
+                                        o.linked_lce_id && String(o.linked_lce_id) !== String(lceId || "")
+                                      );
+                                      const isAlreadyInTable = items.some(
+                                        (it) =>
+                                          (it.item_code_id && String(it.item_code_id) === String(o.value)) ||
+                                          (it.item_code && it.item_code === o.item_code)
+                                      );
+                                      return !isLinkedOther && !isAlreadyInTable;
+                                    })
                                     .map((o) => o.value)
                                 )
                               }
@@ -1719,26 +1864,93 @@ function LCEAddPage() {
                                 .toLowerCase()
                                 .includes(itemSearchText.toLowerCase())
                           )
-                          .map((o) => (
-                            <label
-                              key={o.value}
-                              className="costing-selector-option"
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                                padding: "0.4rem 0.6rem",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedItemCodeKeys.includes(o.value)}
-                                onChange={() => toggleItemCodeKey(o.value)}
-                              />
-                              <span style={{ fontSize: "0.85rem" }}>{o.label}</span>
-                            </label>
-                          ))}
+                          .map((o) => {
+                            const isLinkedOther = Boolean(
+                              o.linked_lce_id && String(o.linked_lce_id) !== String(lceId || "")
+                            );
+                            const isAlreadyInTable = items.some(
+                              (it) =>
+                                (it.item_code_id && String(it.item_code_id) === String(o.value)) ||
+                                (it.item_code && it.item_code === o.item_code)
+                            );
+                            const isDisabled = isLinkedOther || isAlreadyInTable;
+
+                            return (
+                              <label
+                                key={o.value}
+                                className="costing-selector-option"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: "0.5rem",
+                                  padding: "0.4rem 0.6rem",
+                                  cursor: isDisabled ? "not-allowed" : "pointer",
+                                  backgroundColor: isLinkedOther
+                                    ? "#fef2f2"
+                                    : isAlreadyInTable
+                                    ? "#f8fafc"
+                                    : undefined,
+                                  opacity: isDisabled ? 0.72 : 1,
+                                }}
+                                title={
+                                  isLinkedOther
+                                    ? `Already linked to LCE #${o.linked_lce_id}. An item code can only be linked to one LCE.`
+                                    : isAlreadyInTable
+                                    ? "Already added to this LCE table."
+                                    : ""
+                                }
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedItemCodeKeys.includes(o.value)}
+                                    disabled={isDisabled}
+                                    onChange={() => !isDisabled && toggleItemCodeKey(o.value)}
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: "0.85rem",
+                                      color: isLinkedOther ? "#991b1b" : "#1e293b",
+                                    }}
+                                  >
+                                    {o.label}
+                                  </span>
+                                </div>
+                                {isLinkedOther ? (
+                                  <span
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      fontWeight: 600,
+                                      color: "#b91c1c",
+                                      backgroundColor: "#fee2e2",
+                                      border: "1px solid #fecaca",
+                                      padding: "0.1rem 0.45rem",
+                                      borderRadius: "4px",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    Linked in LCE #{o.linked_lce_id}
+                                  </span>
+                                ) : isAlreadyInTable ? (
+                                  <span
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      fontWeight: 600,
+                                      color: "#047857",
+                                      backgroundColor: "#d1fae5",
+                                      border: "1px solid #a7f3d0",
+                                      padding: "0.1rem 0.45rem",
+                                      borderRadius: "4px",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    Added
+                                  </span>
+                                ) : null}
+                              </label>
+                            );
+                          })}
                       </div>
                     </details>
                   </div>
@@ -1756,11 +1968,13 @@ function LCEAddPage() {
                   className="costing-inline-note"
                   style={{
                     display: "block",
-                    marginTop: "0.25rem",
+                    marginTop: "0.35rem",
                     color: "#64748b",
+                    fontSize: "0.8rem",
                   }}
                 >
-                  Select multiple item codes or add rows individually. Auto-fetches category, name, min &amp; max cost from purchases.
+                  <strong style={{ color: "#0f172a" }}>Policy:</strong> One item code can be linked to <strong>one LCE only</strong> (items already linked to another LCE cannot be selected). One item code may be linked across multiple LCAs.
+                  Select multiple item codes. Auto-fetches min &amp; max cost from purchases.
                 </small>
               </div>
 
@@ -1775,14 +1989,12 @@ function LCEAddPage() {
                       color: "#64748b",
                     }}
                   >
-                    No item codes linked yet. Use the selector above or click &ldquo;+ Add Item Row&rdquo;.
+                    No item codes linked yet. Use the selector above to add items.
                   </p>
                 ) : (
                   <table className="users-table">
                     <thead>
                       <tr>
-                        <th style={{ minWidth: "140px" }}>Item Category</th>
-                        <th style={{ minWidth: "160px" }}>Item Name</th>
                         <th style={{ minWidth: "220px" }}>Item Code</th>
                         <th style={{ minWidth: "100px" }}>Min Cost</th>
                         <th style={{ minWidth: "100px" }}>Max Cost</th>
@@ -1806,50 +2018,39 @@ function LCEAddPage() {
                             </span>
                           </span>
                         </th>
-                        <th style={{ minWidth: "180px" }}>Actions</th>
+                        <th style={{ minWidth: "140px" }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((row) => (
-                        <tr key={row.rowId}>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              value={row.item_category || ""}
-                              readOnly
-                              disabled
-                              placeholder="Auto"
-                              title={row.item_category || "Auto-fetched category"}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              value={row.item_name || ""}
-                              readOnly
-                              disabled
-                              placeholder="Auto"
-                              title={row.item_name || "Auto-fetched name"}
-                            />
-                          </td>
-                          <td>
-                            <select
-                              className="form-control"
-                              value={row.item_code_id || ""}
-                              onChange={(e) =>
-                                handleItemCodeChange(row.rowId, e.target.value)
-                              }
-                            >
-                              <option value="">Select Item Code</option>
-                              {itemMasterOptions.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
+                      {items.map((row) => {
+                        const master = itemMasterOptions.find(
+                          (o) =>
+                            (row.item_code_id && String(o.value) === String(row.item_code_id)) ||
+                            (row.item_code && o.item_code === row.item_code)
+                        );
+                        const itemName = row.item_name || master?.item_name || "";
+                        const itemCategory = row.item_category || master?.item_category || "";
+                        const itemCode = row.item_code || master?.item_code || "";
+                        const concatenatedItemCode = itemCode
+                          ? `${itemCode}${itemName ? ` - ${itemName}` : ""}${itemCategory ? ` (${itemCategory})` : ""}`
+                          : (itemName || "—");
+
+                        return (
+                          <tr key={row.rowId}>
+                            <td>
+                              <span
+                                style={{
+                                  fontWeight: 600,
+                                  color: "#1e293b",
+                                  fontSize: "0.875rem",
+                                  display: "inline-block",
+                                  padding: "0.25rem 0",
+                                }}
+                                title={concatenatedItemCode}
+                              >
+                                {concatenatedItemCode}
+                              </span>
+                            </td>
                           <td>
                             <input
                               type="number"
@@ -1911,9 +2112,9 @@ function LCEAddPage() {
                                 style={{ background: "#1e3a5f", color: "#93c5fd" }}
                                 onClick={() =>
                                   setHistoryModalItem({
-                                    itemCode: row.item_code,
-                                    itemName: row.item_name,
-                                    itemCategory: row.item_category,
+                                    itemCode: itemCode || row.item_code,
+                                    itemName: itemName || row.item_name,
+                                    itemCategory: itemCategory || row.item_category,
                                   })
                                 }
                                 disabled={!row.item_code}
@@ -1925,7 +2126,15 @@ function LCEAddPage() {
                               <button
                                 type="button"
                                 className="users-action users-action--delete"
-                                onClick={() => handleRemoveItemRow(row.rowId)}
+                                onClick={() =>
+                                  handleRequestDeleteItem({
+                                    ...row,
+                                    item_code: itemCode,
+                                    item_name: itemName,
+                                    item_category: itemCategory,
+                                    item_code_id: row.item_code_id || master?.value || "",
+                                  })
+                                }
                                 title="Remove item"
                                 aria-label="Remove item"
                               >
@@ -1934,7 +2143,8 @@ function LCEAddPage() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                 )}
@@ -2016,6 +2226,298 @@ function LCEAddPage() {
           onClose={() => setHistoryModalItem(null)}
         />
       ) : null}
+
+      {/* ------------------- Item Deletion Confirmation Modal ------------------- */}
+      {deleteModal.open && (
+        <ConfirmPopupModal
+          open={deleteModal.open}
+          type={deleteModal.checking ? "info" : !deleteModal.canDelete ? "danger" : "warning"}
+          title={
+            deleteModal.checking
+              ? "Checking Item Usage..."
+              : !deleteModal.canDelete
+              ? "Cannot Delete Item from LCE"
+              : "Confirm Delete Item"
+          }
+          maxWidth={!deleteModal.canDelete ? "780px" : "560px"}
+          confirmLabel={
+            deleteModal.checking || !deleteModal.canDelete
+              ? null
+              : deleteModal.deleting
+              ? "Deleting..."
+              : "Delete Item"
+          }
+          confirmDisabled={deleteModal.deleting}
+          cancelLabel={!deleteModal.canDelete ? "Close" : "Cancel"}
+          cancelDisabled={deleteModal.deleting}
+          onConfirm={handleConfirmDeleteItem}
+          onCancel={handleCloseDeleteModal}
+        >
+          {deleteModal.checking ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "2rem 1rem",
+                gap: "1rem",
+                color: "#475569",
+              }}
+            >
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  border: "3px solid #cbd5e1",
+                  borderTopColor: "#2563eb",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+              <p style={{ margin: 0, fontSize: "0.95rem" }}>
+                Checking if item <strong>{deleteModal.row?.item_code}</strong> is used in any WIP project quotations or costings...
+              </p>
+            </div>
+          ) : !deleteModal.canDelete ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <AlertMessage
+                type="error"
+                message={
+                  deleteModal.errorMessage ||
+                  "This item cannot be removed from LCE because its LCE cost is currently used in the Work In Progress (WIP) project(s) listed below. You cannot delete this item until those projects are updated or completed."
+                }
+              />
+
+              <div
+                style={{
+                  padding: "0.75rem 1rem",
+                  backgroundColor: "#f8fafc",
+                  borderRadius: "6px",
+                  border: "1px solid #e2e8f0",
+                  fontSize: "0.9rem",
+                  display: "flex",
+                  gap: "1.5rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <span style={{ color: "#64748b" }}>Item Code:</span>{" "}
+                  <strong style={{ color: "#0f172a" }}>{deleteModal.row?.item_code || "—"}</strong>
+                </div>
+                {deleteModal.row?.item_name && (
+                  <div>
+                    <span style={{ color: "#64748b" }}>Item Name:</span>{" "}
+                    <strong>{deleteModal.row?.item_name}</strong>
+                  </div>
+                )}
+                {deleteModal.row?.item_category && (
+                  <div>
+                    <span style={{ color: "#64748b" }}>Category:</span>{" "}
+                    <span>{deleteModal.row?.item_category}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "0.5rem",
+                  }}
+                >
+                  <span style={{ fontWeight: 600, fontSize: "0.9rem", color: "#b91c1c" }}>
+                    Active WIP Projects ({deleteModal.wipProjects.length})
+                  </span>
+                  <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                    Deletion blocked while in Work In Progress
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    maxHeight: "260px",
+                    overflowY: "auto",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "6px",
+                  }}
+                >
+                  <table className="table table-bordered table-sm mb-0" style={{ fontSize: "0.85rem", width: "100%" }}>
+                    <thead style={{ position: "sticky", top: 0, backgroundColor: "#f1f5f9", zIndex: 1 }}>
+                      <tr>
+                        <th style={{ padding: "0.5rem 0.75rem", color: "#334155" }}>Stage</th>
+                        <th style={{ padding: "0.5rem 0.75rem", color: "#334155" }}>Ref. Number</th>
+                        <th style={{ padding: "0.5rem 0.75rem", color: "#334155" }}>Project ID</th>
+                        <th style={{ padding: "0.5rem 0.75rem", color: "#334155" }}>Project Name</th>
+                        <th style={{ padding: "0.5rem 0.75rem", color: "#334155", textAlign: "center" }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deleteModal.wipProjects.map((p, idx) => {
+                        const isCosting = p.stage?.toLowerCase().includes("costing");
+                        return (
+                          <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+                            <td style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "0.15rem 0.5rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  backgroundColor: isCosting ? "#fef3c7" : "#e0e7ff",
+                                  color: isCosting ? "#92400e" : "#3730a3",
+                                }}
+                              >
+                                {p.stage}
+                              </span>
+                            </td>
+                            <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap" }}>
+                              {p.reference || "—"}
+                            </td>
+                            <td style={{ padding: "0.5rem 0.75rem", color: "#475569", whiteSpace: "nowrap" }}>
+                              {p.project_code || "—"}
+                            </td>
+                            <td style={{ padding: "0.5rem 0.75rem", color: "#1e293b" }}>
+                              {p.project_name || "—"}
+                            </td>
+                            <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", whiteSpace: "nowrap" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "0.15rem 0.55rem",
+                                  borderRadius: "9999px",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  backgroundColor: "#fed7aa",
+                                  color: "#9a3412",
+                                }}
+                              >
+                                {p.status || "Work In Progress"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {deleteModal.errorMessage ? (
+                <AlertMessage type="error" message={deleteModal.errorMessage} />
+              ) : null}
+              <p style={{ margin: 0, fontSize: "0.95rem", color: "#1e293b", lineHeight: 1.5 }}>
+                Are you sure you want to remove item <strong>{deleteModal.row?.item_code}</strong>
+                {deleteModal.row?.item_name ? ` (${deleteModal.row?.item_name})` : ""} from the LCE table?
+              </p>
+              <div
+                style={{
+                  padding: "0.6rem 0.85rem",
+                  backgroundColor: "#ecfdf5",
+                  borderRadius: "6px",
+                  border: "1px solid #a7f3d0",
+                  color: "#065f46",
+                  fontSize: "0.85rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                }}
+              >
+                <span>✓ Verified: This item is not used in any Work In Progress (WIP) Project Quotations or Costings.</span>
+              </div>
+            </div>
+          )}
+        </ConfirmPopupModal>
+      )}
+
+      {/* ------------------- Settlement Removal Confirmation Modal ------------------- */}
+      {settlementDeleteModal.open && (
+        <ConfirmPopupModal
+          open={settlementDeleteModal.open}
+          type="warning"
+          title="Confirm Remove Settlement"
+          maxWidth="560px"
+          confirmLabel="Remove Settlement"
+          cancelLabel="Cancel"
+          onConfirm={handleConfirmRemoveSettlement}
+          onCancel={handleCloseSettlementDeleteModal}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <p style={{ margin: 0, fontSize: "0.95rem", color: "#1e293b", lineHeight: 1.5 }}>
+              Are you sure you want to remove this payment settlement record from Payment History?
+            </p>
+
+            <div
+              style={{
+                padding: "0.85rem 1rem",
+                backgroundColor: "#f8fafc",
+                borderRadius: "8px",
+                border: "1px solid #e2e8f0",
+                fontSize: "0.88rem",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "0.75rem",
+              }}
+            >
+              <div>
+                <span style={{ color: "#64748b", display: "block", fontSize: "0.78rem", marginBottom: "2px" }}>
+                  Payment Date
+                </span>
+                <strong style={{ color: "#0f172a" }}>
+                  {settlementDeleteModal.row?.settlement_date || "—"}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748b", display: "block", fontSize: "0.78rem", marginBottom: "2px" }}>
+                  Payment Amount ({selectedForeignCurrencyCode})
+                </span>
+                <strong style={{ color: "#0f172a" }}>
+                  {settlementDeleteModal.row?.payment_amount || "0"} {selectedForeignCurrencyCode}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748b", display: "block", fontSize: "0.78rem", marginBottom: "2px" }}>
+                  Bank Exchange Rate
+                </span>
+                <strong style={{ color: "#0f172a" }}>
+                  {settlementDeleteModal.row?.factor || "0"}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748b", display: "block", fontSize: "0.78rem", marginBottom: "2px" }}>
+                  Amount (OMR)
+                </span>
+                <strong style={{ color: "#0f766e" }}>
+                  {toFixed(
+                    toNumber(settlementDeleteModal.row?.payment_amount) *
+                      toNumber(settlementDeleteModal.row?.factor),
+                    2
+                  )}{" "}
+                  OMR
+                </strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                fontSize: "0.82rem",
+                color: "#64748b",
+                backgroundColor: "#fffbeb",
+                border: "1px solid #fef3c7",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "6px",
+              }}
+            >
+              Note: Removing this settlement will update the balance calculation upon save.
+            </div>
+          </div>
+        </ConfirmPopupModal>
+      )}
     </section>
   );
 }

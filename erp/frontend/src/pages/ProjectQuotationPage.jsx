@@ -244,7 +244,7 @@ const isSummaryRelatedMessage = (message) => {
   return summaryHints.some((hint) => normalized.includes(hint));
 };
 
-function ProjectQuotationPage({ projectId = null, embedded = false, onSummaryStatusChange = null }) {
+function ProjectQuotationPage({ projectId = null, embedded = false, onSummaryStatusChange = null, initialQuotationId = null, onClose = null }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryQuotationId = searchParams.get("quotationId");
@@ -255,7 +255,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const [selectedProjectIdForCreate, setSelectedProjectIdForCreate] = useState(() => (
     embedded && projectId ? String(projectId) : ""
   ));
-  const [selectedQuotationId, setSelectedQuotationId] = useState(() => queryQuotationId || "");
+  const [selectedQuotationId, setSelectedQuotationId] = useState(() => initialQuotationId ? String(initialQuotationId) : (queryQuotationId || ""));
   const [summary, setSummary] = useState(null);
   const [savedSummaryStatus, setSavedSummaryStatus] = useState("");
   const [items, setItems] = useState([]);
@@ -439,7 +439,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       return { type: "warning", message: "Requested Qty is greater than Purchase Qty." };
     }
 
-    return { type: "success", message: "Requested Qty is within Purchase Qty." };
+    return { type: "", message: "" };
   }, [isMaterialCostType]);
 
   const isAdminReadonlyWarning = useCallback((message) => {
@@ -464,7 +464,9 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   const itemValidationMessages = useMemo(
     () => validationMessages
       .filter((entry) => !isSummaryRelatedMessage(entry.message))
-      .filter((entry) => !isAdminReadonlyWarning(entry.message)),
+      .filter((entry) => !isAdminReadonlyWarning(entry.message))
+      .filter((entry) => entry.type === "error" || entry.type === "warning")
+      .filter((entry) => !String(entry.message || "").toLowerCase().includes("requested qty is within purchase qty")),
     [isAdminReadonlyWarning, validationMessages]
   );
 
@@ -584,7 +586,9 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       setLabFurnitureItems(labItems);
 
       let nextSelectedId = "";
-      if (embedded && projectId) {
+      if (initialQuotationId) {
+        nextSelectedId = String(initialQuotationId);
+      } else if (embedded && projectId) {
         nextSelectedId = summaryIdFromEmbedded || String(refreshedSummaryRows[0]?.id || "");
       } else if (selectedQuotationId) {
         nextSelectedId = String(selectedQuotationId);
@@ -726,6 +730,14 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (initialQuotationId) {
+      setSelectedQuotationId(String(initialQuotationId));
+      refreshSelectedSummary(String(initialQuotationId));
+      loadItemsForSummary(initialQuotationId);
+    }
+  }, [initialQuotationId, refreshSelectedSummary, loadItemsForSummary]);
 
   useEffect(() => {
     if (!embedded) {
@@ -1011,6 +1023,9 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       } catch (_refreshError) {
         // Keep save successful even if the follow-up refresh request intermittently fails.
       }
+      if (onClose) {
+        onClose();
+      }
     } catch (error) {
       setSummarySaveFeedback({
         type: error.payload?.status || "error",
@@ -1097,6 +1112,24 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
     await loadItemsForSummary(selected.id);
   }, [clearStatus, closeStatusConfirmation, embedded, loadItemsForSummary, quotations, setSearchParams]);
 
+  const handleCancelQuotation = useCallback(() => {
+    if (onClose) {
+      onClose();
+      return;
+    }
+    if (embedded && projectId) {
+      navigate("/projects");
+      return;
+    }
+    setSelectedQuotationId("");
+    setSummary(null);
+    setSavedSummaryStatus("");
+    setItems([]);
+    setValidationMessages([]);
+    clearStatus();
+    setSearchParams({});
+  }, [clearStatus, embedded, navigate, projectId, setSearchParams]);
+
   const quotationTitle = summary?.quotation_number
     ? `Project Quotation - ${summary.quotation_number}`
     : (embedded ? "Quotation" : "Project Quotation");
@@ -1145,8 +1178,6 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
 
     if (hasNoPurchaseData) {
       showStatus("No stock available. Please enter Actual Cost manually.", "warning");
-    } else {
-      showStatus("Requested Qty is within Purchase Qty.", "success");
     }
 
     if (!hasNoPurchaseData) {
@@ -1197,7 +1228,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
       } catch (error) {
         if (error.payload?.status === "warning" && error.payload?.requires_confirmation) {
           const proceed = window.confirm(
-            error.message || "Requested Qty is higher than Purchase Qty. Do you want to proceed?"
+            error.message || "Requested qty is greater that available qty. still you liek to add this for quotation?"
           );
           if (!proceed) {
             showStatus("Save cancelled by user.", "warning");
@@ -1414,14 +1445,24 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
             <span className="project-costing-title__text">{quotationTitle}</span>
           </h1>
         </div>
-        {!embedded ? (
+        {onClose ? (
           <div className="pq-header-actions">
             <button
               type="button"
               className="crud-add-btn"
-              onClick={goBackToQuotationList}
+              onClick={onClose}
             >
-              {selectedQuotationId ? "Back to Quotation List" : "Back to Projects"}
+              Back to Project
+            </button>
+          </div>
+        ) : !embedded && !selectedQuotationId ? (
+          <div className="pq-header-actions">
+            <button
+              type="button"
+              className="crud-add-btn"
+              onClick={() => navigate("/projects")}
+            >
+              Back to Projects
             </button>
           </div>
         ) : null}
@@ -1478,6 +1519,8 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                 <th>Revision Code</th>
                 <th>Total Quotation Cost</th>
                 <th>Status</th>
+                <th>Updated By</th>
+                <th>Updated On</th>
                 <th className="pq-text-center">Actions</th>
               </tr>
               <tr>
@@ -1565,25 +1608,34 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                     }
                   />
                 </th>
+                <th></th>
+                <th></th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {filteredQuotations.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="pq-empty-cell">
+                  <td colSpan={9} className="pq-empty-cell">
                     No quotations found.
                   </td>
                 </tr>
               ) : filteredQuotations.map((row) => (
-                <tr key={row.id}>
-                  <td className="pq-cell-link" onClick={() => openSummary(row.id)}>{row.quotation_number || "Auto"}</td>
+                <tr
+                  key={row.id}
+                  className="pq-clickable-row"
+                  onClick={() => openSummary(row.id)}
+                  title="Click to open quotation"
+                >
+                  <td className="pq-cell-link">{row.quotation_number || "Auto"}</td>
                   <td>{row.project_code || row.project_id}</td>
                   <td>{row.project_name || "-"}</td>
                   <td>{row.revision_code || `R${row.revision_number || 1}`}</td>
                   <td className="pq-text-right">{row.total_quotation_cost}</td>
                   <td>{getQuotationStatus(row)}</td>
-                  <td className="pq-text-center">
+                  <td>{row.updated_by || "—"}</td>
+                  <td>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
+                  <td className="pq-text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="pq-inline-actions">
                       <button type="button" className="users-action users-action--edit" onClick={() => openSummary(row.id)} title="Edit">
                         <BsPencilSquare aria-hidden="true" />
@@ -1623,16 +1675,6 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                   </span>
                 ) : null}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <button
-                  type="button"
-                  className="crud-add-btn"
-                  onClick={saveSummary}
-                  disabled={isSummaryBusy || isQuotationReadOnly || statusConfirmation.open || saveNoItemsConfirmationOpen}
-                >
-                  {savingSummary ? "Saving..." : "Save Summary"}
-                </button>
-              </div>
             </CardHeader>
             <CardBody className="pq-card-body">
               {isQuotationReadOnly ? (
@@ -1669,6 +1711,35 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               ) : null}
 
               {renderSummaryGrid()}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  marginTop: "1.5rem",
+                  paddingTop: "1rem",
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
+                <button
+                  type="button"
+                  className="modal-btn modal-btn--cancel"
+                  onClick={handleCancelQuotation}
+                  disabled={savingSummary}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="crud-add-btn"
+                  onClick={saveSummary}
+                  disabled={isSummaryBusy || isQuotationReadOnly || statusConfirmation.open || saveNoItemsConfirmationOpen}
+                >
+                  {savingSummary ? "Saving..." : "Save Summary"}
+                </button>
+              </div>
             </CardBody>
           </Card>
 
@@ -1762,10 +1833,7 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                       <th>Item Category</th>
                       <th>Item Name</th>
                       <th>Item Code</th>
-                      <th>Item Type</th>
-                      <th className="project-costing-table__right">Purchase Qty</th>
                       <th className="project-costing-table__right">Requested Qty</th>
-                      <th>Stock Status</th>
                       <th className="project-costing-table__center">Actions</th>
                     </tr>
                     <tr>
@@ -1774,36 +1842,31 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_category} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_category: event.target.value }))} /></th>
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_name} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_name: event.target.value }))} /></th>
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_code} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_code: event.target.value }))} /></th>
-                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.item_type} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, item_type: event.target.value }))} /></th>
-                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.purchase_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, purchase_qty: event.target.value }))} /></th>
                       <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.requested_qty} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, requested_qty: event.target.value }))} /></th>
-                      <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={itemColumnFilters.stock_status} onChange={(event) => setItemColumnFilters((prev) => ({ ...prev, stock_status: event.target.value }))} /></th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredItems.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="project-costing-empty">No quotation items found.</td>
+                        <td colSpan={7} className="project-costing-empty">No quotation items found.</td>
                       </tr>
                     ) : filteredItems.map((row) => {
                       const rowCostType = row.cost_type?.name || row.cost_type_name || row.cost_type || "-";
                       return (
-                        <tr key={row.id}>
+                        <tr
+                          key={row.id}
+                          className="pq-clickable-row"
+                          onClick={() => openEditItemModal(row)}
+                          title={isQuotationReadOnly ? "View item" : "Click row to edit item"}
+                        >
                           <td>{row.room_name?.room_name || "-"}</td>
                           <td>{rowCostType}</td>
                           <td>{row.item_category || "-"}</td>
                           <td>{row.item_name || "-"}</td>
                           <td>{row.item_code || "-"}</td>
-                          <td>{row.item_type || "-"}</td>
-                          <td className="project-costing-table__right">{row.purchase_qty}</td>
                           <td className="project-costing-table__right">{row.requested_qty}</td>
-                          <td>
-                            <span className={`project-costing-stock-badge ${getStockStatusBadgeClassName(getStockStatusName(row))}`}>
-                              {getStockStatusName(row)}
-                            </span>
-                          </td>
-                          <td className="project-costing-table__center">
+                          <td className="project-costing-table__center" onClick={(e) => e.stopPropagation()}>
                             <div className="project-costing-inline-actions">
                               <button
                                 type="button"

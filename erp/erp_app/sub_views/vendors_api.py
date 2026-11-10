@@ -19,16 +19,54 @@ def _read_json(request):
         return {}
 
 
+def _clean_user_display(val):
+    if not val:
+        return ""
+    if isinstance(val, dict):
+        return val.get("username") or val.get("name") or str(val.get("id") or "")
+    val_str = str(val).strip()
+    if val_str.startswith("{") and ("username" in val_str or "name" in val_str):
+        import re
+        m = re.search(r"['\"]username['\"]\s*:\s*['\"]([^'\"]+)['\"]", val_str)
+        if m:
+            return m.group(1)
+        m2 = re.search(r"['\"](?:name|label)['\"]\s*:\s*['\"]([^'\"]+)['\"]", val_str)
+        if m2:
+            return m2.group(1)
+    return val_str
+
+
+def _resolve_request_user(request, payload=None):
+    if payload:
+        user_val = payload.get("updated_by") or payload.get("created_by")
+        if user_val:
+            cleaned = _clean_user_display(user_val)
+            if cleaned:
+                return cleaned
+    if request and request.user and request.user.is_authenticated:
+        return request.user.username or "Jose"
+    return "Jose"
+
+
 def _serialize(vendor):
+    updated_by = _clean_user_display(getattr(vendor, 'updated_by', '')) or 'Jose'
     return {
         'id': vendor.id,
+        'vendor_code': vendor.vendor_code or '',
+        'vendor_name': vendor.name,
         'name': vendor.name,
         'category_id': vendor.category_id,
         'category_name': vendor.category.name if vendor.category else '',
         'contact_person': vendor.contact_person,
-        'email': vendor.email,
+        'phone_number': vendor.phone,
         'phone': vendor.phone,
+        'email_id': vendor.email,
+        'email': vendor.email,
         'address': vendor.address,
+        'updated_at': vendor.updated_at.isoformat() if vendor.updated_at else '',
+        'updated_on': vendor.updated_at.strftime("%Y-%m-%d %H:%M:%S") if vendor.updated_at else '',
+        'updated_by': updated_by,
+        'updated_by': getattr(vendor, 'updated_by', '') or '',
     }
 
 
@@ -64,6 +102,7 @@ def create_vendor_api_view(request):
         else:
             category = VendorCategory.objects.filter(name__iexact=str(category_id).strip()).first()
 
+    updated_by = _resolve_request_user(request, payload)
     vendor = Vendor.objects.create(
         name=name,
         category=category,
@@ -71,6 +110,7 @@ def create_vendor_api_view(request):
         email=normalize_text(payload.get('email', '')),
         phone=normalize_text(payload.get('phone', '')),
         address=normalize_text(payload.get('address', '')),
+        updated_by=updated_by,
     )
     return JsonResponse({'success': True, 'vendor': _serialize(vendor)}, status=201)
 
@@ -110,6 +150,7 @@ def vendor_detail_api_view(request, vendor_id):
     vendor.email = normalize_text(payload.get('email', vendor.email))
     vendor.phone = normalize_text(payload.get('phone', vendor.phone))
     vendor.address = normalize_text(payload.get('address', vendor.address))
+    vendor.updated_by = _resolve_request_user(request, payload)
     vendor.save()
     return JsonResponse({'success': True, 'vendor': _serialize(vendor)})
 

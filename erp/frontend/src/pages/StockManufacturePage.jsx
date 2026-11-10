@@ -44,7 +44,7 @@ const calcRow = (row) => ({
 });
 
 // ─── shared table header ──────────────────────────────────────────────────────
-function TableHead({ showAction }) {
+function TableHead({ showAction, showAudit, columnFilters, setColumnFilters }) {
   return (
     <thead>
       <tr>
@@ -61,8 +61,30 @@ function TableHead({ showAction }) {
         <th style={{ width: "100px" }}>Width</th>
         <th style={{ width: "110px" }}>Height / Thk</th>
         <th style={{ width: "100px" }}>Volume</th>
+        {showAudit && <th style={{ width: "120px" }}>Updated By</th>}
+        {showAudit && <th style={{ width: "150px" }}>Updated On</th>}
         {showAction && <th style={{ width: "110px", textAlign: "center" }}>Action</th>}
       </tr>
+      {showAudit && setColumnFilters && (
+        <tr>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.item_category ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_category: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.item_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_name: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.item_code ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_code: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.item_type ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_type: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.grn_no ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, grn_no: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.uom ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, uom: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.quantity ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, quantity: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.unit_price ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, unit_price: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.total_price ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, total_price: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.length ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, length: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.width ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, width: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.height ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, height: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.volume ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, volume: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.updated_by ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, updated_by: e.target.value }))} /></th>
+          <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters?.updated_on ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, updated_on: e.target.value }))} /></th>
+          <th />
+        </tr>
+      )}
     </thead>
   );
 }
@@ -390,8 +412,23 @@ function StockManufacturePage() {
       <td style={{ width: "100px" }}>
         <input className="auth-input auth-input--readonly" value={row.volume} readOnly disabled />
       </td>
+      {showAudit && <td style={{ width: "120px" }}>—</td>}
+      {showAudit && <td style={{ width: "150px" }}>—</td>}
     </>
   );
+
+  const filteredListRows = useMemo(() => {
+    const activeFilters = Object.entries(columnFilters).filter(([, val]) => String(val || "").trim());
+    if (!activeFilters.length) return listRows;
+    return listRows.filter((row) =>
+      activeFilters.every(([key, filterVal]) => {
+        const val = key === "updated_on"
+          ? (row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : ""))
+          : row[key];
+        return String(val ?? "").toLowerCase().includes(String(filterVal).trim().toLowerCase());
+      })
+    );
+  }, [listRows, columnFilters]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -461,15 +498,16 @@ function StockManufacturePage() {
       {/* ── LIST TABLE ──────────────────────────────────────────────────── */}
       <div className="users-table-wrap" style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}>
         <table className="users-table users-table--sp-items">
-          <TableHead showAction />
+          <TableHead showAction showAudit columnFilters={columnFilters} setColumnFilters={setColumnFilters} />
+          <TableHead showAction showAudit />
           <tbody>
             {loading && (
-              <tr><td colSpan={14} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
+              <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
             )}
-            {!loading && listRows.length === 0 && (
-              <tr><td colSpan={14} style={{ textAlign: "center", padding: "1rem", color: "#888" }}>No records found.</td></tr>
+            {!loading && filteredListRows.length === 0 && (
+              <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem", color: "#888" }}>No records found.</td></tr>
             )}
-            {listRows.map((row) => (
+            {!loading && filteredListRows.map((row) => (
               <tr key={row.id}>
                 {editId === row.id && editForm ? (
                   <>
@@ -478,6 +516,7 @@ function StockManufacturePage() {
                       onCategoryChange={handleEditCategory}
                       onItemNameChange={handleEditItemName}
                       onFieldChange={(k, v) => patchEdit({ [k]: v })}
+                      showAudit
                     />
                     <td style={{ width: "110px", verticalAlign: "middle", textAlign: "center" }}>
                       <div style={{ display: "flex", gap: "0.3rem", justifyContent: "center" }}>
@@ -511,6 +550,8 @@ function StockManufacturePage() {
                     <td style={{ width: "100px", textAlign: "right" }}>{row.width}</td>
                     <td style={{ width: "110px", textAlign: "right" }}>{row.height}</td>
                     <td style={{ width: "100px", textAlign: "right" }}>{row.volume}</td>
+                    <td style={{ width: "120px" }}>{row.updated_by || "—"}</td>
+                    <td style={{ width: "150px" }}>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
                     <td style={{ width: "110px", verticalAlign: "middle", textAlign: "center" }}>
                       <div style={{ display: "flex", gap: "0.3rem", justifyContent: "center" }}>
                         <button type="button" className="users-action users-action--edit"

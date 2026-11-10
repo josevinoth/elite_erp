@@ -199,13 +199,20 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'erp_002'),
+        'NAME': os.getenv('DB_NAME', 'erp_006'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', '244613'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
+
+PUBLIC_SELF_REGISTRATION = os.getenv('ALLOW_PUBLIC_REGISTRATION', '0').strip().lower() in {'1', 'true', 'yes', 'on'}
+APPROVED_EMAIL_DOMAINS = tuple(
+    domain.strip().lower()
+    for domain in os.getenv('APPROVED_EMAIL_DOMAINS', '').split(',')
+    if domain.strip()
+)
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators

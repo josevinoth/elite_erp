@@ -125,6 +125,8 @@ function StockAcceptancePage() {
      { key: "supplied_qty", label: "Supplied Qty" },
      { key: "size", label: "Size (L x W x H)", exportValue: formatSize },
      { key: "volume", label: "Volume" },
+     { key: "updated_by", label: "Updated By", exportValue: (row) => row?.updated_by || "—" },
+     { key: "updated_on", label: "Updated On", exportValue: (row) => row?.updated_on || (row?.updated_at ? new Date(row.updated_at).toLocaleString() : "—") },
      { key: "retrieval_status", label: "Retrieval Status", exportValue: (row) => row?.retrieval_status?.status_name || STATUS_ITEM_SUPPLIED },
    ];
 
@@ -267,6 +269,8 @@ function StockAcceptancePage() {
                 <th className="project-costing-table__right">Supplied Qty</th>
                 <th>Size (L x W x H)</th>
                 <th className="project-costing-table__right">Volume</th>
+                 <th>Updated By</th>
+                 <th>Updated On</th>
                  <th>Retrieval Status</th>
                  <th>Update Status</th>
                </tr>
@@ -283,14 +287,16 @@ function StockAcceptancePage() {
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.supplied_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, supplied_qty: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.size ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, size: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.volume ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, volume: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.retrieval_status ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, retrieval_status: e.target.value }))} /></th>
+                 <th></th>
+                  <th></th>
+                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.retrieval_status ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, retrieval_status: e.target.value }))} /></th>
                  <th></th>
                </tr>
              </thead>
               <tbody>
                 {filteredItems.length === 0 ? (
                  <tr>
-                   <td colSpan={14} className="project-costing-empty">No item supplied rows found.</td>
+                   <td colSpan={16} className="project-costing-empty">No item supplied rows found.</td>
                  </tr>
                ) : filteredItems.map((row) => (
                 <tr key={row.id}>
@@ -306,6 +312,8 @@ function StockAcceptancePage() {
                   <td className="project-costing-table__right">{row.supplied_qty}</td>
                   <td>{formatSize(row)}</td>
                   <td className="project-costing-table__right">{row.volume}</td>
+                  <td>{row?.updated_by || "—"}</td>
+                  <td>{row?.updated_on || (row?.updated_at ? new Date(row?.updated_at).toLocaleString() : "—")}</td>
                   <td>{row?.retrieval_status?.status_name || STATUS_ITEM_SUPPLIED}</td>
                   <td>
                     <div className="stock-acceptance-actions">

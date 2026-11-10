@@ -288,9 +288,8 @@ function PurchaseItemModal({
                 <th style={{ width: "40px" }}></th>
                 <th>GRN No.</th>
                 <th>Purchase No.</th>
+                <th>Purchase Date</th>
                 <th>Invoice No.</th>
-                <th>Item Category</th>
-                <th>Item Name</th>
                 <th>Item Code</th>
                 <th>Total Price ({selectedForeignCurrencyCode})</th>
                 <th>Total Price After Tax / Unit ({selectedForeignCurrencyCode})</th>
@@ -321,10 +320,15 @@ function PurchaseItemModal({
                     </td>
                     <td>{item.grn_number}</td>
                     <td>{item.purchase_number || "-"}</td>
+                    <td>{item.purchase_date || "-"}</td>
                     <td>{item.invoice_number || "-"}</td>
-                    <td>{item.item_category}</td>
-                    <td>{item.item_name}</td>
-                    <td>{item.item_code}</td>
+                    <td>
+                      <div style={{ fontWeight: 600, color: "#0f172a" }}>{item.item_code || "—"}</div>
+                      <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "0.15rem", lineHeight: "1.3" }}>
+                        {item.item_name || ""}
+                        {item.item_category && item.item_category !== "—" ? ` • ${item.item_category}` : ""}
+                      </div>
+                    </td>
                     <td>{item.total_price}</td>
                     <td>{calculatePriceAfterTaxPerUnit(item)}</td>
                     <td>
@@ -635,13 +639,19 @@ function LCAAddPage() {
     const payload = {
       ...form,
       item_ids: selectedItemIds,
-      balance_settlements: settlementRowsWithValue.map((r) => ({
-        settlement_date: r.settlement_date,
-        foreign_currency_id: r.foreign_currency_id || form.foreign_currency_id,
-        payment_amount: r.payment_amount,
-        factor: r.factor,
-      })),
-      created_by: getSessionUser() || "System",
+      balance_settlements: settlementRowsWithValue
+        .filter(
+          (r) =>
+            (String(r.settlement_date || "").trim() && (toNumber(r.payment_amount) !== 0 || toNumber(r.factor) !== 0)) ||
+            (toNumber(r.payment_amount) !== 0 && toNumber(r.factor) !== 0)
+        )
+        .map((r) => ({
+          settlement_date: String(r.settlement_date || "").trim() || new Date().toISOString().slice(0, 10),
+          foreign_currency_id: r.foreign_currency_id || form.foreign_currency_id,
+          payment_amount: r.payment_amount,
+          factor: r.factor,
+        })),
+      created_by: getSessionUser()?.username || "System",
     };
 
     try {
@@ -1485,9 +1495,8 @@ function LCAAddPage() {
                         <tr>
                           <th>GRN No.</th>
                           <th>Purchase No.</th>
+                          <th>Purchase Date</th>
                           <th>Invoice No.</th>
-                          <th>Item Category</th>
-                          <th>Item Name</th>
                           <th>Item Code</th>
                           <th>Total Price</th>
                           <th>Total Price After Tax / Unit</th>
@@ -1508,10 +1517,15 @@ function LCAAddPage() {
                             <tr key={item.id}>
                               <td>{item.grn_number}</td>
                               <td>{item.purchase_number || "-"}</td>
+                              <td>{item.purchase_date || "-"}</td>
                               <td>{item.invoice_number || "-"}</td>
-                              <td>{item.item_category}</td>
-                              <td>{item.item_name}</td>
-                              <td>{item.item_code}</td>
+                              <td>
+                                <div style={{ fontWeight: 600, color: "#0f172a" }}>{item.item_code || "—"}</div>
+                                <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "0.15rem", lineHeight: "1.3" }}>
+                                  {item.item_name || ""}
+                                  {item.item_category && item.item_category !== "—" ? ` • ${item.item_category}` : ""}
+                                </div>
+                              </td>
                               <td>
                                 {item.total_price} {selectedForeignCurrencyCode}
                               </td>
