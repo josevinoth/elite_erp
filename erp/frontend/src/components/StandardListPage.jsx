@@ -15,6 +15,7 @@ async function noopDelete() {
 
 function StandardListPage({
   title,
+  titleIcon = null,
   description = null,
   columns,
   fetchRows,
@@ -50,6 +51,7 @@ function StandardListPage({
   return (
     <CrudPage
       title={title}
+      titleIcon={titleIcon}
       description={description}
       columns={columns}
       fields={[]}

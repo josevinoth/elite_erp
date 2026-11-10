@@ -1,12 +1,60 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
+import {
+  BsDownload,
+  BsPencilSquare,
+  BsPlusCircleFill,
+  BsTrashFill,
+  BsXCircle,
+  BsSearch,
+  BsTruck,
+  BsBoxes,
+  BsBuilding,
+  BsPeople,
+  BsFolder2,
+  BsCartCheck,
+  BsCartPlus,
+  BsCheckCircle,
+  BsClock,
+  BsBoxSeam,
+} from "react-icons/bs";
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import PaginationControls from "./PaginationControls";
 import ConfirmPopupModal from "./ConfirmPopupModal";
 
 const AUDIT_COLUMN_KEYS = ["updated_by", "updated_on"];
+
+
+function getTitleIcon(title, customIcon) {
+  if (customIcon) return customIcon;
+  const normalized = String(title || "").toLowerCase();
+  if (normalized.includes("receive") || normalized.includes("purchase") || normalized.includes("goods") || normalized.includes("grn")) {
+    return <BsTruck />;
+  }
+  if (normalized.includes("procurement") || normalized.includes("place stock order")) {
+    return <BsCartCheck />;
+  }
+  if (normalized.includes("item to order") || normalized.includes("items to order")) {
+    return <BsCartPlus />;
+  }
+  if (normalized.includes("user")) return <BsPeople />;
+  if (normalized.includes("vendor")) return <BsBuilding />;
+  if (
+    normalized.includes("project") ||
+    normalized.includes("lca") ||
+    normalized.includes("lce") ||
+    normalized.includes("landing") ||
+    normalized.includes("quotation") ||
+    normalized.includes("costing")
+  ) {
+    return <BsFolder2 />;
+  }
+  if (normalized.includes("stock") || normalized.includes("item")) return <BsBoxes />;
+  if (normalized.includes("task")) return <BsCheckCircle />;
+  if (normalized.includes("timesheet")) return <BsClock />;
+  return <BsBoxSeam />;
+}
 
 function getTitleVariant(title) {
   const normalized = String(title || "").toLowerCase();
@@ -150,6 +198,7 @@ function withAuditFields(row) {
  */
 function CrudPage({
   title,
+  titleIcon = null,
   columns,
   fields,
   fetchFn,
@@ -804,27 +853,36 @@ function CrudPage({
 
   return (
     <section className="module-page crud-page">
-      <div className="crud-page__header">
+      <div className="crud-page__header pq-header project-costing-toolbar">
         <div>
-          <h1 className={`module-page__title module-page__title--${titleVariant}`}>{title}</h1>
+          <h1 className="module-page__title project-costing-title">
+            <span className="project-costing-title__icon" aria-hidden="true">
+              {getTitleIcon(title, titleIcon)}
+            </span>
+            <span className="project-costing-title__text">{title}</span>
+          </h1>
           {description ? (
-            <p className="module-page__description" style={{ margin: "0.25rem 0 0 0" }}>
+            <p className="module-page__description project-costing-description" style={{ margin: "0.25rem 0 0 0" }}>
               {description}
             </p>
           ) : null}
         </div>
         <div className="crud-page__header-tools">
-          <input
-            type="search"
-            className="crud-page__search-input"
-            placeholder="Search all columns"
-            value={globalSearch}
-            onChange={(e) => {
-              setGlobalSearch(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Search all columns"
-          />
+          <div className="crud-search-wrap" style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <BsSearch style={{ position: "absolute", left: "0.75rem", color: "#94a3b8", fontSize: "0.82rem", pointerEvents: "none" }} aria-hidden="true" />
+            <input
+              type="search"
+              className="crud-page__search-input"
+              style={{ paddingLeft: "2.1rem" }}
+              placeholder="Search all columns"
+              value={globalSearch}
+              onChange={(e) => {
+                setGlobalSearch(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Search all columns"
+            />
+          </div>
           {renderHeaderActions
             ? renderHeaderActions({ rows, loading, reloadRows })
             : null}

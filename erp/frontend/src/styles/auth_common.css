@@ -1099,6 +1099,42 @@ select.auth-input option {
   border-color: #94a3b8;
 }
 
+.project-costing-title {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.48rem 0.85rem;
+  border-radius: 12px;
+  background: var(--list-header-bg);
+  color: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+}
+
+.project-costing-title::before {
+  content: none !important;
+}
+
+.project-costing-title__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.18);
+  color: #f8fafc;
+  flex-shrink: 0;
+  font-size: 0.88rem;
+}
+
+.project-costing-title__text {
+  line-height: 1.1;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
 .module-page__title {
   margin: 0;
   font-size: 1.2rem;
@@ -1441,17 +1477,36 @@ select.auth-input option {
   min-width: 74px;
 }
 
+.users-table__filter-input,
 .crud-page .users-table__filter-input {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  padding: 0.28rem 0.3rem;
-  font-size: 0.72rem;
-  line-height: 1.15;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
   box-sizing: border-box;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background-color: #ffffff;
+  color: #1e293b;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.users-table__filter-input:focus,
+.crud-page .users-table__filter-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.users-table__filter-input::placeholder,
+.crud-page .users-table__filter-input::placeholder {
+  color: #94a3b8;
+  font-size: 0.75rem;
 }
 
 .crud-page .users-table td .auth-input,
@@ -2734,6 +2789,24 @@ select.auth-input option {
 .users-table--sp-items th:nth-child(3) {
   white-space: normal;
   word-break: break-word;
+}
+
+/* ── StockPurchaseAddPage Purchase Items table ── */
+.users-table--sp-purchase-items {
+  width: 100%;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.users-table--sp-purchase-items th,
+.users-table--sp-purchase-items td {
+  padding: 0.55rem 0.45rem;
+  vertical-align: middle;
+}
+
+.users-table--sp-purchase-items td input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* ── end Purchase Items table overrides ── */
