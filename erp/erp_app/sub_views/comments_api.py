@@ -3,8 +3,7 @@ import json
 import os
 import mimetypes
 
-from django.http import JsonResponse
-from django.http import FileResponse
+from django.http import JsonResponse, FileResponse
 from django.utils import timezone
 from django.db import ProgrammingError, OperationalError, transaction
 from django.views.decorators.csrf import csrf_protect
@@ -26,7 +25,7 @@ IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"}
 
 
 def _ensure_authenticated(request):
-    if not request.user.is_authenticated:
+    if not request.user or not getattr(request.user, "is_authenticated", False):
         return JsonResponse({"message": "Authentication required."}, status=401)
     return None
 
@@ -39,10 +38,15 @@ def _read_json(request):
 
 
 def _is_admin_user(user):
-    if user.is_superuser or user.is_staff:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
         return True
-    group_names = {g.name.strip().lower() for g in user.groups.all()}
-    return bool(group_names.intersection({"admin", "super admin", "staff"}))
+    groups = getattr(user, "groups", None)
+    if groups is not None and hasattr(groups, "all"):
+        group_names = {g.name.strip().lower() for g in groups.all()}
+        return bool(group_names.intersection({"admin", "super admin", "staff"}))
+    return False
 
 
 def _normalize_module(value):
@@ -81,19 +85,22 @@ def _can_access_task(user, task_id):
 
 
 def _ensure_record_access(request, module_name, record_id):
-    if module_name == MODULE_TASK:
+    if module_name in (MODULE_TASK, "tasks"):
         _, denied = _can_access_task(request.user, record_id)
         return denied
-    return JsonResponse({"message": "Unsupported module for comments."}, status=400)
+    # Support for all other modules when user is authenticated
+    return None
 
 
 def _can_modify_comment(request, comment_obj):
     if _is_admin_user(request.user):
         return True
-    return str(comment_obj.updated_by or "").strip().lower() == str(request.user.username or "").strip().lower()
+    return str(comment_obj.updated_by or "").strip().lower() == str(getattr(request.user, "username", "") or "").strip().lower()
 
 
 def _safe_file_name(file_field):
+    if not file_field:
+        return ""
     try:
         return str(getattr(file_field, "name", "") or "")
     except (FileNotFoundError, OSError, ValueError):
@@ -105,23 +112,28 @@ def _safe_file_exists(file_field):
     if not name:
         return False
     try:
-        return bool(file_field.storage.exists(name))
-    except (FileNotFoundError, OSError, ValueError):
+        storage = getattr(file_field, "storage", None)
+        if storage and hasattr(storage, "exists"):
+            return bool(storage.exists(name))
+        return False
+    except (FileNotFoundError, OSError, ValueError, PermissionError):
         return False
 
 
 def _safe_file_size(file_field):
+    if not file_field:
+        return 0
     try:
         return int(getattr(file_field, "size", 0) or 0)
-    except (FileNotFoundError, OSError, ValueError):
+    except (FileNotFoundError, OSError, ValueError, PermissionError):
         return 0
 
 
-def _serialize(comment_obj, request):
+def _serialize(comment_obj, request=None):
     attachments = []
     for a in comment_obj.attachments.all():
         file_name = _safe_file_name(a.file)
-        display_name = a.original_name or file_name.split("/")[-1]
+        display_name = a.original_name or os.path.basename(file_name.replace("\\", "/"))
         ext = display_name.split(".")[-1].lower() if "." in display_name else ""
         file_exists = _safe_file_exists(a.file)
         attachments.append(
@@ -136,6 +148,14 @@ def _serialize(comment_obj, request):
                 "is_missing": not file_exists,
             }
         )
+
+    can_edit = False
+    if request and hasattr(request, "user") and getattr(request.user, "is_authenticated", False):
+        can_edit = _can_modify_comment(request, comment_obj)
+
+    created_at_dt = getattr(comment_obj, "created_at", None)
+    updated_at_dt = getattr(comment_obj, "updated_at", None)
+
     return {
         "id": comment_obj.id,
         "module_name": comment_obj.module_name,
@@ -145,7 +165,10 @@ def _serialize(comment_obj, request):
         "comments": comment_obj.comments,
         "reference_link": comment_obj.reference_link,
         "attachments": attachments,
-        "can_edit": _can_modify_comment(request, comment_obj),
+        "can_edit": can_edit,
+        "created_at": created_at_dt.isoformat() if created_at_dt else "",
+        "updated_at": updated_at_dt.isoformat() if updated_at_dt else "",
+        "updated_on": updated_at_dt.strftime("%Y-%m-%d %H:%M:%S") if updated_at_dt else "",
     }
 
 
@@ -207,7 +230,7 @@ def create_comment_api_view(request):
     if denied:
         return denied
 
-    if module_name == MODULE_TASK:
+    if module_name in (MODULE_TASK, "tasks"):
         task, task_denied = _can_access_task(request.user, record_id)
         if task_denied:
             return task_denied
@@ -249,7 +272,7 @@ def create_comment_api_view(request):
                 module_name=module_name,
                 record_id=record_id,
                 comment_datetime=comment_datetime,
-                updated_by=normalize_text(request.user.username),
+                updated_by=normalize_text(getattr(request.user, "username", "") or ""),
                 comments=comments,
                 reference_link=reference_link,
             )
@@ -268,6 +291,8 @@ def create_comment_api_view(request):
             },
             status=503,
         )
+    except Exception as exc:
+        return JsonResponse({"message": f"Failed to save comment: {str(exc)}"}, status=500)
 
     obj = Comment.objects.prefetch_related("attachments").get(id=obj.id)
     return JsonResponse({"success": True, "comment": _serialize(obj, request)}, status=201)
@@ -300,6 +325,16 @@ def comment_detail_api_view(request, pk):
     if request.method == "DELETE":
         if not _can_modify_comment(request, obj):
             return JsonResponse({"message": "Only comment owner or admin can delete."}, status=403)
+        for att in obj.attachments.all():
+            if att.file:
+                try:
+                    att.file.close()
+                except Exception:
+                    pass
+                try:
+                    att.file.delete(save=False)
+                except (PermissionError, OSError, FileNotFoundError):
+                    pass
         obj.delete()
         return JsonResponse({"success": True, "message": "Comment deleted."})
 
@@ -319,7 +354,7 @@ def comment_detail_api_view(request, pk):
     obj.comments = comments
     obj.reference_link = reference_link
     obj.comment_datetime = comment_datetime
-    obj.updated_by = normalize_text(request.user.username)
+    obj.updated_by = normalize_text(getattr(request.user, "username", "") or "")
     obj.save()
 
     return JsonResponse({"success": True, "comment": _serialize(obj, request)})
@@ -355,11 +390,12 @@ def download_comment_attachment_api_view(request, pk):
     if not attachment.file or not _safe_file_exists(attachment.file):
         return JsonResponse({"message": "Attachment file is missing."}, status=404)
 
-    filename = attachment.original_name or _safe_file_name(attachment.file).split("/")[-1]
+    filename = attachment.original_name or os.path.basename(_safe_file_name(attachment.file).replace("\\", "/"))
     try:
-        return FileResponse(attachment.file.open("rb"), as_attachment=True, filename=filename)
-    except (FileNotFoundError, OSError):
-        return JsonResponse({"message": "Attachment file is missing."}, status=404)
+        f = attachment.file.open("rb")
+        return FileResponse(f, as_attachment=True, filename=filename)
+    except (FileNotFoundError, OSError, PermissionError):
+        return JsonResponse({"message": "Attachment file is missing or inaccessible."}, status=404)
 
 
 @require_GET
@@ -392,7 +428,7 @@ def view_comment_attachment_api_view(request, pk):
     if not attachment.file or not _safe_file_exists(attachment.file):
         return JsonResponse({"message": "Attachment file is missing."}, status=404)
 
-    filename = attachment.original_name or _safe_file_name(attachment.file).split("/")[-1]
+    filename = attachment.original_name or os.path.basename(_safe_file_name(attachment.file).replace("\\", "/"))
     ext = filename.split(".")[-1].lower() if "." in filename else ""
     content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
@@ -401,14 +437,15 @@ def view_comment_attachment_api_view(request, pk):
     as_attachment = ext not in inline_ext
 
     try:
+        f = attachment.file.open("rb")
         return FileResponse(
-            attachment.file.open("rb"),
+            f,
             as_attachment=as_attachment,
             filename=filename,
             content_type=content_type,
         )
-    except (FileNotFoundError, OSError):
-        return JsonResponse({"message": "Attachment file is missing."}, status=404)
+    except (FileNotFoundError, OSError, PermissionError):
+        return JsonResponse({"message": "Attachment file is missing or inaccessible."}, status=404)
 
 
 @require_http_methods(["DELETE"])
@@ -442,10 +479,15 @@ def delete_comment_attachment_api_view(request, pk):
     if not _can_modify_comment(request, attachment.comment):
         return JsonResponse({"message": "Only comment owner or admin can delete attachment."}, status=403)
 
-    # Remove storage file first, then DB row.
+    # Safely close and delete file from storage first, then remove DB record
     if attachment.file:
-        attachment.file.delete(save=False)
+        try:
+            attachment.file.close()
+        except Exception:
+            pass
+        try:
+            attachment.file.delete(save=False)
+        except (PermissionError, OSError, FileNotFoundError):
+            pass
     attachment.delete()
     return JsonResponse({"success": True, "message": "Attachment deleted."})
-
-

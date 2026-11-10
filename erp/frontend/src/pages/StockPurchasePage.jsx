@@ -34,7 +34,7 @@ function StockPurchasePage() {
 
   return (
     <StandardListPage
-      title="Stock Purchase"
+      title="Received Goods"
       columns={COLUMNS}
       fetchRows={fetchRows}
       deleteFn={deleteStockPurchase}
@@ -43,9 +43,8 @@ function StockPurchasePage() {
       showAddButton
       addButtonTo="/stock-purchase/add"
       editButtonTo={(row) => `/stock-purchase/record/${row.id}`}
-      showDefaultEdit
       showDefaultDelete
-      includeAuditColumns={false}
+      includeAuditColumns={true}
     />
   );
 }

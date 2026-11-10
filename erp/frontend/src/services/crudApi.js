@@ -222,6 +222,13 @@ export async function deleteProject(id) {
   return parseJson(res);
 }
 
+export async function checkProjectDownstream(id) {
+  const res = await fetch(`/api/projects/${id}/downstream-check/`, {
+    credentials: "include",
+  });
+  return parseJson(res);
+}
+
 export async function listProjectsMeta() {
   const res = await fetch("/api/projects/meta/", { credentials: "include" });
   return parseJson(res);
@@ -256,6 +263,15 @@ export async function listStockPlanningItems(projectId = null) {
     ? `?project_id=${encodeURIComponent(String(projectId).trim())}`
     : "";
   const res = await fetch(`/api/quotations/stock-planning/${query}`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listItemsToOrder(projectId = null, stage = null) {
+  const params = new URLSearchParams();
+  if (projectId) params.append("project_id", String(projectId).trim());
+  if (stage) params.append("stage", String(stage).trim());
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`/api/stocks/items-to-order/${query}`, { credentials: "include" });
   return parseJson(res);
 }
 
@@ -465,6 +481,13 @@ export async function deleteProjectCosting(id) {
     method: "DELETE",
     credentials: "include",
     headers,
+  });
+  return parseJson(res);
+}
+
+export async function checkProjectCostingDownstream(id) {
+  const res = await fetch(`/api/project-costing/${id}/downstream-check/`, {
+    credentials: "include",
   });
   return parseJson(res);
 }
@@ -792,8 +815,9 @@ export async function listLceEstimates() {
   return parseJson(res);
 }
 
-export async function listLceEstimateMeta() {
-  const res = await fetch("/api/lce-estimates/meta/", { credentials: "include" });
+export async function listLceEstimateMeta(lceId = null) {
+  const query = lceId ? `?lce_id=${encodeURIComponent(lceId)}` : "";
+  const res = await fetch(`/api/lce-estimates/meta/${query}`, { credentials: "include" });
   return parseJson(res);
 }
 
@@ -865,6 +889,27 @@ export async function getLceItemsCostDetails(itemCodes) {
 export async function getLcePurchaseHistory(itemCode) {
   const res = await fetch(`/api/lce/purchase-history/${encodeURIComponent(itemCode)}/`, {
     credentials: "include",
+  });
+  return parseJson(res);
+}
+
+export async function checkLceItemUsage({ item_code = "", item_id = "" } = {}) {
+  const params = new URLSearchParams();
+  if (item_code) params.set("item_code", item_code);
+  if (item_id) params.set("item_id", item_id);
+  const res = await fetch(`/api/lce/check-item-usage/?${params.toString()}`, {
+    credentials: "include",
+  });
+  return parseJson(res);
+}
+
+export async function deleteLceItem({ lce_id, item_code = "", item_code_id = "" } = {}) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/lce/delete-item/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ lce_id, item_code, item_code_id }),
   });
   return parseJson(res);
 }
@@ -1013,6 +1058,17 @@ export async function deleteLabFurnitureItem(id) {
   return parseJson(res);
 }
 
+export async function getLabFurnitureItemRequestedProjects(id) {
+  const res = await fetch(`/api/lab-furniture-items/${id}/requested-projects/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getLabFurnitureItemOrderedPos(id) {
+  const res = await fetch(`/api/lab-furniture-items/${id}/ordered-pos/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+
 export async function listLabFurnitureItemCategories() {
   const res = await fetch("/api/lab-furniture-item-categories/", { credentials: "include" });
   return parseJson(res);
@@ -1125,9 +1181,34 @@ export async function listPlaceStockOrderMeta() {
   return parseJson(res);
 }
 
+export async function listPlaceStockOrderVendors() {
+  const res = await fetch("/api/stock-purchase/place-order/meta/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listPlacedStockOrders() {
+  const res = await fetch("/api/stock-purchase/place-order/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getPlacedStockOrderDetail(id) {
+  const res = await fetch(`/api/stock-purchase/place-order/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function cancelPlacedStockOrder(id) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/stock-purchase/place-order/${id}/cancel/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
 export async function createPlaceStockOrder(payload) {
   const headers = await csrfHeaders();
-  const res = await fetch("/api/stock-purchase/place-order/", {
+  const res = await fetch("/api/stock-purchase/place-order/create/", {
     method: "POST",
     credentials: "include",
     headers,

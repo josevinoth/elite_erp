@@ -69,31 +69,36 @@ export const homeNavItems = [
     disableParentNavigation: true,
     children: [
       {
+        label: "Item Master",
+        to: "/stock-items",
+        icon: "itemMaster",
+      },
+      {
+        label: "Item Code",
+        to: "/stock-item-code-names",
+        icon: "itemCodeNames",
+      },
+      {
         label: "Stocks List",
         to: "/stocks",
         icon: "stocksList",
       },
       {
-        label: "Stock Purchase",
+        label: "Received Goods",
         to: "/stock-purchase",
         icon: "stockPurchase",
         superAdminOnly: true,
       },
       {
-        label: "Place Stock Order",
+        label: "Procurement Orders",
         to: "/stock-purchase/place-order",
         icon: "placeStockOrder",
         superAdminOnly: true,
       },
       {
-        label: "Stock Maintenance",
-        to: "/stock-maintenance",
-        icon: "stockMaintenance",
-      },
-      {
-        label: "Stock Manufacture",
-        to: "/stock-manufacture",
-        icon: "stockManufacture",
+        label: "Items to Order",
+        to: "/items-to-order",
+        icon: "itemsToOrder",
       },
       {
         label: "Stock Retrieval",
@@ -109,16 +114,6 @@ export const homeNavItems = [
         label: "Stock Return",
         to: "/stock-return",
         icon: "stockReturn",
-      },
-      {
-        label: "Item Master",
-        to: "/stock-items",
-        icon: "itemMaster",
-      },
-      {
-        label: "Item Code",
-        to: "/stock-item-code-names",
-        icon: "itemCodeNames",
       },
     ],
   },

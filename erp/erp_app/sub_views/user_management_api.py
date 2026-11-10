@@ -99,6 +99,9 @@ def _serialize_user(user):
         "status": status,
         "team": team,
         "date_joined": user.date_joined.strftime("%d %b %Y") if user.date_joined else "",
+        "updated_at": user.last_login.isoformat() if user.last_login else (user.date_joined.isoformat() if user.date_joined else ""),
+        "updated_on": user.last_login.strftime("%Y-%m-%d %H:%M:%S") if user.last_login else (user.date_joined.strftime("%Y-%m-%d %H:%M:%S") if user.date_joined else ""),
+        "updated_by": user.username,
     }
 
 

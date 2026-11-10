@@ -1,4 +1,6 @@
+from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any, Optional
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -26,6 +28,47 @@ from .stock_status_mod import StockStatusInfo
 
 
 class ProjectCostingItemInfo(models.Model):
+    if TYPE_CHECKING:
+        costing_id: ProjectCostingSummaryInfo
+        costing_id_id: int
+        cost_type: Optional[CostTypeInfo]
+        cost_type_id: Optional[int]
+        item_category: Optional[ItemCategory]
+        item_category_id: Optional[int]
+        item_name: str
+        item_code: Optional[LabFurnitureItem]
+        item_code_id: Optional[int]
+        item_type: ItemType_info
+        item_type_id: int
+        room_name: Optional[RoomDataInfo]
+        room_name_id: Optional[int]
+        purchase_item: Optional[StockPurchaseItem]
+        purchase_item_id: Optional[int]
+        split_from: Optional["ProjectCostingItemInfo"]
+        split_from_id: Optional[int]
+        purchase_qty: Decimal
+        requested_qty: Decimal
+        accepted_qty: Decimal
+        cost_per_qty: Decimal
+        max_cost: Decimal
+        min_cost: Decimal
+        actual_cost: Decimal
+        total_cost: Decimal
+        length: Decimal
+        width: Decimal
+        height: Decimal
+        volume: Decimal
+        stock_status: Optional[StockStatusInfo]
+        stock_status_id: Optional[int]
+        retrieval_status: Optional[RetrievalStatusInfo]
+        retrieval_status_id: Optional[int]
+        requested_by: Any
+        requested_by_id: Optional[int]
+        requested_on: Optional[datetime]
+        rejection_comment: str
+        created_at: datetime
+        updated_at: datetime
+
     costing_id = models.ForeignKey(
         ProjectCostingSummaryInfo,
         on_delete=models.PROTECT,
@@ -180,7 +223,7 @@ class ProjectCostingItemInfo(models.Model):
             _sync_dimensions_from_item_master(self, resolved_master)
 
             if self.purchase_item_id:
-                if self.purchase_item.item_code_id != resolved_master.pk:
+                if self.purchase_item and self.purchase_item.item_code_id != resolved_master.pk:
                     raise ValidationError({"purchase_item": "Selected GRN does not belong to the chosen item code."})
                 self.purchase_qty = _as_decimal(
                     getattr(self.purchase_item, "purchase_qty", None) or getattr(self.purchase_item, "quantity", 0)
@@ -216,6 +259,19 @@ class ProjectCostingItemInfo(models.Model):
 
 
 class ProjectCostingItemAllocation(models.Model):
+    if TYPE_CHECKING:
+        costing_item: ProjectCostingItemInfo
+        costing_item_id: int
+        purchase_item: StockPurchaseItem
+        purchase_item_id: int
+        allocated_qty: Decimal
+        pending_return_qty: Decimal
+        returned_qty: Decimal
+        retrieval_status: Optional[RetrievalStatusInfo]
+        retrieval_status_id: Optional[int]
+        created_at: datetime
+        updated_at: datetime
+
     costing_item = models.ForeignKey(
         ProjectCostingItemInfo,
         on_delete=models.CASCADE,
@@ -264,8 +320,6 @@ class ProjectCostingItemAllocation(models.Model):
                 status_name__iexact=RetrievalStatusInfo.STATUS_ITEM_REQUESTED
             ).first()
 
-
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-

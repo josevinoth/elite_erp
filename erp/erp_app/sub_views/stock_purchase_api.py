@@ -134,6 +134,7 @@ def _serialize_vendor_detail(vendor_detail):
     if not vendor_detail:
         return None
     vendor = _safe_related(vendor_detail, "vendor")
+    po = _safe_related(vendor_detail, "purchase_order")
     return {
         "id": vendor_detail.id,
         "vendor_id": vendor_detail.vendor_id,
@@ -144,6 +145,8 @@ def _serialize_vendor_detail(vendor_detail):
         "total_value": str(vendor_detail.total_value),
         "total_after_tax": str(getattr(vendor_detail, "total_after_tax", 0)),
         "purchase_id": vendor_detail.purchase_id,
+        "purchase_order_id": po.id if po else None,
+        "purchase_order_code": po.order_code if po else "",
     }
 
 
@@ -195,6 +198,9 @@ def _serialize_item(item, item_master_by_code=None):
         "uom_id": getattr(resolved_uom, "pk", None),
         "uom_name": getattr(resolved_uom, "name", None),
         "uom_symbol": getattr(resolved_uom, "symbol", None),
+        "po_item_id": getattr(item, "po_item_id", None),
+        "po_order_qty": str(item.po_item.order_qty) if getattr(item, "po_item", None) else "",
+        "combined_label": getattr(item.po_item, "combined_label", "") if getattr(item, "po_item", None) else "",
     }
 
 
@@ -207,12 +213,15 @@ def _serialize(obj):
     vendor = _safe_related(obj, "vendor")
     first_item_category = _safe_related(first_item, "item_category") if first_item else None
 
+    po = _safe_related(obj, "purchase_order")
     return {
         "id": obj.pk,
         "purchase_number": obj.purchase_id,
         "vendor_detail": vendor_detail,
         "notes": obj.notes or "",
         "status_id": obj.status_id,
+        "purchase_order_id": po.id if po else None,
+        "purchase_order_code": po.order_code if po else "",
         "items": [_serialize_item(item) for item in items] if items else [],
         # Legacy/compatibility fields for lists view
         "purchase_id": getattr(obj, "purchase_id", obj.pk),
@@ -234,6 +243,9 @@ def _serialize(obj):
         "unit_price": str(first_item.unit_price) if first_item else "0",
         "total_price": str(first_item.total_price) if first_item else "0",
         "status": None,
+        "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
+        "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
+        "updated_by": getattr(obj, "updated_by", "") or "",
     }
 
 
@@ -626,6 +638,56 @@ def _first_duplicate_code_for_invoice(invoice_number, items_payload, exclude_pur
     return None
 
 
+def sync_all_master_item_physical_qty():
+    """
+    Recalculates physical_qty on all LabFurnitureItem records based on
+    total purchased quantity from StockPurchaseItem records (GRNs),
+    and updates physical_plus_ordered_qty, to_order_qty, and
+    to_order_qty_including_free_stock.
+    """
+    from django.db.models import Sum
+    purchased_by_item = dict(
+        StockPurchaseItem.objects.filter(item_code__isnull=False)
+        .values("item_code_id")
+        .annotate(tot=Sum("quantity"))
+        .values_list("item_code_id", "tot")
+    )
+    purchased_by_code = dict(
+        StockPurchaseItem.objects.filter(item_code__item_code_ref__isnull=False)
+        .values("item_code__item_code_ref__item_code")
+        .annotate(tot=Sum("quantity"))
+        .values_list("item_code__item_code_ref__item_code", "tot")
+    )
+
+    all_masters = LabFurnitureItem.objects.select_related("item_code_ref")
+    for m in all_masters:
+        code = m.item_code_ref.item_code.strip().upper() if m.item_code_ref else ""
+        new_phys = purchased_by_item.get(m.id) or (purchased_by_code.get(code) if code else None) or Decimal("0")
+
+        ord_qty = Decimal(str(m.ordered_qty or 0))
+        tot_req = Decimal(str(m.total_reqd or 0))
+        rec_free = Decimal(str(m.recommended_free_stock_qty or 0))
+
+        phys_plus_ord = new_phys + ord_qty
+        to_ord = tot_req - phys_plus_ord
+        to_ord_inc = tot_req + rec_free - phys_plus_ord
+
+        if (m.physical_qty != new_phys or
+            m.physical_plus_ordered_qty != phys_plus_ord or
+            m.to_order_qty != to_ord or
+            m.to_order_qty_including_free_stock != to_ord_inc):
+            m.physical_qty = new_phys
+            m.physical_plus_ordered_qty = phys_plus_ord
+            m.to_order_qty = to_ord
+            m.to_order_qty_including_free_stock = to_ord_inc
+            m.save(update_fields=[
+                "physical_qty",
+                "physical_plus_ordered_qty",
+                "to_order_qty",
+                "to_order_qty_including_free_stock",
+            ])
+
+
 @require_GET
 def list_stock_purchases_api_view(request):
     na = _ensure_authenticated(request)
@@ -659,8 +721,15 @@ def create_stock_purchase_api_view(request):
     if StockPurchaseVendorDetail.objects.filter(invoice_number=invoice_number, vendor=vendor).exists():
         return JsonResponse({"message": "Invoice number already exists for this vendor."}, status=400)
 
+    po_id = p.get("purchase_order_id")
+    po = None
+    if po_id:
+        from ..sub_models.place_stock_order_mod import PlaceStockOrderInfo
+        po = PlaceStockOrderInfo.objects.filter(pk=po_id).first()
+
     obj = StockPurchaseVendorDetail.objects.create(
         vendor=vendor,
+        purchase_order=po,
         invoice_number=invoice_number,
         invoice_date=p.get("invoice_date") or None,
         tax=_to_decimal(p.get("tax"), "0"),
@@ -674,8 +743,17 @@ def create_stock_purchase_api_view(request):
     try:
         for row in items_payload:
             item_category, item_master = _resolve_item_row_references(row)
+            po_item_id = row.get("po_item_id")
+            po_item = None
+            if po_item_id:
+                from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
+                po_item = PlaceStockOrderItem.objects.filter(pk=po_item_id).first()
+            elif po and item_master:
+                po_item = po.items.filter(item_code_ref=item_master).first()
+
             item = StockPurchaseItem(
                 vendor_detail=obj,
+                po_item=po_item,
                 item_category=item_category or (item_master.item_category if item_master else None),
                 item_name=item_master.item_name if item_master else normalize_text(row.get("item_name", "")),
                 item_code=item_master,
@@ -691,6 +769,11 @@ def create_stock_purchase_api_view(request):
         obj.total_value = sum((i.total_price for i in saved_items), Decimal("0"))
         obj.total_after_tax = sum((i.total_after_tax for i in saved_items), Decimal("0"))
         obj.save(update_fields=["total_value", "total_after_tax", "updated_at"])
+
+        if po:
+            from .place_stock_order_api import update_po_status_from_grn
+            update_po_status_from_grn(po)
+        sync_all_master_item_physical_qty()
     except ValueError as exc:
         obj.delete()
         return JsonResponse({"message": str(exc)}, status=400)
@@ -719,10 +802,24 @@ def stock_purchase_detail_api_view(request, pk):
         return JsonResponse({'stock_purchase': _serialize(obj)})
 
     if request.method == 'DELETE':
+        po = obj.purchase_order
         obj.delete()
+        if po:
+            from .place_stock_order_api import update_po_status_from_grn
+            update_po_status_from_grn(po)
+        sync_all_master_item_physical_qty()
         return JsonResponse({'success': True, 'message': 'Deleted.'})
 
     p = _read_json(request)
+
+    old_po = obj.purchase_order
+    if "purchase_order_id" in p:
+        new_po_id = p.get("purchase_order_id")
+        if new_po_id:
+            from ..sub_models.place_stock_order_mod import PlaceStockOrderInfo
+            obj.purchase_order = PlaceStockOrderInfo.objects.filter(pk=new_po_id).first()
+        else:
+            obj.purchase_order = None
 
     obj.invoice_number = normalize_text(p.get("invoice_number", obj.invoice_number))
     obj.invoice_date = p.get("invoice_date", obj.invoice_date)
@@ -759,6 +856,13 @@ def stock_purchase_detail_api_view(request, pk):
                 item.item_category = item_category or (item_master.item_category if item_master else None)
                 item.item_name = item_master.item_name if item_master else normalize_text(row.get("item_name", ""))
                 item.item_code = item_master
+                po_item_id = row.get("po_item_id")
+                if po_item_id:
+                    item.po_item_id = po_item_id
+                elif obj.purchase_order and item.item_code:
+                    matched = obj.purchase_order.items.filter(item_code_ref=item.item_code).first()
+                    if matched:
+                        item.po_item_id = matched.id
                 item.quantity = _to_decimal(row.get("quantity"), "0")
                 item.unit_price = _to_decimal(row.get("unit_price"), "0")
                 item.tax = _to_decimal(row.get("tax"), "0")
@@ -770,6 +874,13 @@ def stock_purchase_detail_api_view(request, pk):
             obj.total_value = sum((i.total_price for i in saved_items), Decimal("0"))
             obj.total_after_tax = sum((i.total_after_tax for i in saved_items), Decimal("0"))
             obj.save(update_fields=["total_value", "total_after_tax", "updated_at"])
+
+            from .place_stock_order_api import update_po_status_from_grn
+            if obj.purchase_order:
+                update_po_status_from_grn(obj.purchase_order)
+            if old_po and old_po != obj.purchase_order:
+                update_po_status_from_grn(old_po)
+            sync_all_master_item_physical_qty()
         except ValueError as exc:
             return JsonResponse({"message": str(exc)}, status=400)
 

@@ -21,7 +21,17 @@ from .sub_views.project_quotation_api import (
     stock_planning_api_view,
 )
 from .sub_views.project_costing_api import project_costing_quotations_api_view, project_costing_status_api_view
-from .sub_views.lab_furniture_item_api import create_item_code_name_api_view, item_code_name_detail_api_view
+from .sub_views.items_to_order_api import items_to_order_api_view
+from .sub_views.lce_estimate_api import (
+    check_lce_item_usage_api_view,
+    delete_lce_item_api_view,
+)
+from .sub_views.lab_furniture_item_api import (
+    create_item_code_name_api_view,
+    item_code_name_detail_api_view,
+    item_requested_projects_api_view,
+    item_ordered_pos_api_view,
+)
 from .sub_views.stock_purchase_api import (
     purchase_item_grns_api_view,
     stock_item_summary_api_view,
@@ -118,9 +128,15 @@ from .views import (
     list_layout_drawing_approvals_api_view,
     project_costing_api_view,
     project_costing_detail_api_view,
+    project_costing_downstream_check_api_view,
     project_costing_items_api_view,
     place_stock_order_api_view,
     place_stock_order_meta_api_view,
+    list_placed_stock_orders_api_view,
+    placed_stock_order_detail_api_view,
+    place_stock_order_vendors_api_view,
+    create_place_stock_order_api_view,
+    cancel_placed_stock_order_api_view,
     project_costing_item_detail_api_view,
     stock_retrieval_api_view,
     stock_retrieval_item_detail_api_view,
@@ -152,6 +168,7 @@ from .views import (
     mark_message_notifications_read_api_view,
     mark_task_notifications_read_api_view,
     project_detail_api_view,
+    project_downstream_check_api_view,
     project_edit_api_view,
     register_api_view,
     register_meta_api_view,
@@ -210,6 +227,7 @@ urlpatterns = [
     path("api/projects/create/", create_project_api_view, name="api-projects-create"),
     path("api/projects/<int:project_id>/", project_detail_api_view, name="api-projects-detail"),
     path("api/projects/<int:project_id>/edit/", project_edit_api_view, name="api-projects-edit"),
+    path("api/projects/<int:project_id>/downstream-check/", project_downstream_check_api_view, name="api-projects-downstream-check"),
     path("api/project-quotations/", list_project_quotations_api_view, name="api-project-quotations-list"),
     path("api/project-quotations/create/", create_project_quotation_item_api_view, name="api-project-quotations-create"),
     path("api/project-quotations/<int:pk>/", project_quotation_item_detail_api_view, name="api-project-quotations-detail"),
@@ -217,6 +235,7 @@ urlpatterns = [
     path("api/quotations/list/", quotations_list_api_view, name="api-quotations-list"),
     path("api/quotations/create/", quotation_create_api_view, name="api-quotations-create"),
     path("api/quotations/stock-planning/", stock_planning_api_view, name="api-quotations-stock-planning"),
+    path("api/stocks/items-to-order/", items_to_order_api_view, name="api-stocks-items-to-order"),
     path("api/quotations/<int:pk>/", quotation_detail_api_view, name="api-quotations-detail"),
     path("api/project-quotation/<int:pk>/summary/", project_quotation_summary_api_view, name="api-project-quotation-summary"),
     path("api/project-quotation/<int:pk>/status/", quotation_status_api_view, name="api-project-quotation-status"),
@@ -234,6 +253,7 @@ urlpatterns = [
     path("api/project-costing/quotations/", project_costing_quotations_api_view, name="api-project-costing-quotations"),
     path("api/project-costing/generate/", generate_project_costing_api_view, name="api-project-costing-generate"),
     path("api/project-costing/<int:pk>/", project_costing_detail_api_view, name="api-project-costing-detail"),
+    path("api/project-costing/<int:pk>/downstream-check/", project_costing_downstream_check_api_view, name="api-project-costing-downstream-check"),
     path("api/project-costing/<int:pk>/edit/", project_costing_edit_api_view, name="api-project-costing-edit"),
     path("api/project-costing/<int:pk>/status/", project_costing_status_api_view, name="api-project-costing-status"),
     path("api/project-costing/<int:pk>/items/", project_costing_items_api_view, name="api-project-costing-items"),
@@ -304,8 +324,11 @@ urlpatterns = [
         list_stock_purchase_status_options_api_view,
         name="list_stock_purchase_status_options_api_view",
     ),
-    path("api/stock-purchase/place-order/meta/", place_stock_order_meta_api_view, name="api-stock-purchase-place-order-meta"),
-    path("api/stock-purchase/place-order/", place_stock_order_api_view, name="api-stock-purchase-place-order"),
+    path("api/stock-purchase/place-order/meta/", place_stock_order_vendors_api_view, name="api-stock-purchase-place-order-meta"),
+    path("api/stock-purchase/place-order/create/", create_place_stock_order_api_view, name="api-stock-purchase-place-order-create"),
+    path("api/stock-purchase/place-order/<int:pk>/", placed_stock_order_detail_api_view, name="api-stock-purchase-place-order-detail"),
+    path("api/stock-purchase/place-order/<int:pk>/cancel/", cancel_placed_stock_order_api_view, name="api-stock-purchase-place-order-cancel"),
+    path("api/stock-purchase/place-order/", list_placed_stock_orders_api_view, name="api-stock-purchase-place-order"),
     # stock maintenance
     path("api/stock-maintenance/", list_stock_maintenance_api_view, name="api-stock-maintenance-list"),
     path("api/stock-maintenance/meta/", list_stock_maintenance_meta_api_view, name="api-stock-maintenance-meta"),
@@ -463,6 +486,26 @@ urlpatterns = [
         lce_purchase_history_api_view,
         name="lce-purchase-history",
     ),
+    path(
+        "api/lce/check-item-usage/",
+        check_lce_item_usage_api_view,
+        name="api-lce-check-item-usage",
+    ),
+    path(
+        "lce/check-item-usage/",
+        check_lce_item_usage_api_view,
+        name="lce-check-item-usage",
+    ),
+    path(
+        "api/lce/delete-item/",
+        delete_lce_item_api_view,
+        name="api-lce-delete-item",
+    ),
+    path(
+        "lce/delete-item/",
+        delete_lce_item_api_view,
+        name="lce-delete-item",
+    ),
     # Landing Cost Actuals (LCA)
     path("api/lca/", list_lca_actuals_api_view, name="api-lca-list"),
     path("api/lca/meta/", lca_actuals_meta_api_view, name="api-lca-meta"),
@@ -499,6 +542,8 @@ urlpatterns = [
     ),
     path("api/lab-furniture-items/create/", create_lab_furniture_item_api_view, name="api-lab-furniture-items-create"),
     path("api/lab-furniture-items/<int:pk>/", lab_furniture_item_detail_api_view, name="api-lab-furniture-items-detail"),
+    path("api/lab-furniture-items/<int:pk>/requested-projects/", item_requested_projects_api_view, name="api-lab-furniture-item-requested-projects"),
+    path("api/lab-furniture-items/<int:pk>/ordered-pos/", item_ordered_pos_api_view, name="api-lab-furniture-item-ordered-pos"),
     # item costing
     path("api/itemcosting/", list_item_costing_api_view, name="api-item-costing-list"),
     path("api/itemcosting/meta/", item_costing_meta_api_view, name="api-item-costing-meta"),

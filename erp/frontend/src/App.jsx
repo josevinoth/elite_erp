@@ -42,6 +42,7 @@ import {logoutUser} from "./services/authApi";
 import {listHeaderNotifications} from "./services/crudApi";
 import {clearSessionUser, getSessionUser} from "./services/sessionUser";
 import CutSheetOptimiser from "./pages/CutSheetOptimiser";
+import ItemsToOrderListPage from "./pages/ItemsToOrderListPage";
 
 const ProjectCostingPage = lazy(() => import("./pages/ProjectCostingPage"));
 
@@ -173,6 +174,7 @@ function App() {
                                element={superAdminRoute(<StockPurchaseItemTracePage/>)}/>
                         <Route path="/stock-purchase/place-order" element={superAdminRoute(<PlaceStockOrderPage/>)} />
                         <Route path="/stocks" element={secureRoute(<StocksListPage/>)}/>
+                        <Route path="/items-to-order" element={secureRoute(<ItemsToOrderListPage/>)}/>
                         <Route path="/stock-maintenance" element={secureRoute(<StockMaintenancePage/>)}/>
                         <Route path="/stock-items" element={secureRoute(<StockItemsPage/>)}/>
                         <Route path="/stock-item-code-names" element={secureRoute(<ItemCodeNamesPage/>)}/>

@@ -4,6 +4,7 @@ from io import BytesIO
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import ProtectedError
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
@@ -638,6 +639,93 @@ def project_costing_api_view(request):
     return Response({"success": True, **payload}, status=status.HTTP_201_CREATED)
 
 
+def get_costing_downstream_connections(costing):
+    """
+    Check all connected downstream models referencing this Project Costing or its items.
+    Returns a dict mapping readable downstream name to count of connected records.
+    """
+    connections = {}
+
+    # 1. Placed Stock Orders directly referencing this costing or its items
+    try:
+        from ..sub_models.place_stock_order_mod import PlaceStockOrderInfo, PlaceStockOrderItem
+        order_count = PlaceStockOrderInfo.objects.filter(costing=costing).count()
+        if order_count > 0:
+            connections["Placed Stock Order(s)"] = order_count
+
+        order_items_count = PlaceStockOrderItem.objects.filter(costing_item__costing_id=costing).count()
+        if order_items_count > 0:
+            connections["Placed Stock Order Item(s)"] = order_items_count
+    except Exception as e:
+        logger.exception("Error checking placed stock orders for costing %s: %s", getattr(costing, "pk", None), e)
+
+    # 2. GRN Stock Allocations
+    try:
+        from ..sub_models.project_costing_items_mod import ProjectCostingItemAllocation
+        allocation_count = ProjectCostingItemAllocation.objects.filter(costing_item__costing_id=costing).count()
+        if allocation_count > 0:
+            connections["GRN Stock Allocation(s)"] = allocation_count
+    except Exception as e:
+        logger.exception("Error checking allocations for costing %s: %s", getattr(costing, "pk", None), e)
+
+    # 3. Active Stock Retrieval / Stock Return transactions
+    try:
+        from ..sub_models.retrieval_status_mod import RetrievalStatusInfo
+        active_statuses = [
+            RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+            RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN,
+            RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+        ]
+        active_retrieval_count = costing.costing_items.filter(
+            retrieval_status__status_name__in=active_statuses
+        ).count()
+        if active_retrieval_count > 0:
+            connections["Active Stock Retrieval / Return Item(s)"] = active_retrieval_count
+    except Exception as e:
+        logger.exception("Error checking active retrieval items for costing %s: %s", getattr(costing, "pk", None), e)
+
+    return connections
+
+
+@api_view(["GET"])
+def project_costing_downstream_check_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    try:
+        costing = ProjectCostingSummaryInfo.objects.select_related("project", "quotation_number", "status").get(pk=pk)
+    except ProjectCostingSummaryInfo.DoesNotExist:
+        return _summary_not_found()
+
+    connections = get_costing_downstream_connections(costing)
+    has_downstream = bool(connections)
+    details = [f"{count} {name}" for name, count in connections.items()]
+
+    label = costing.project_name or costing.costing_id or f"Costing #{costing.pk}"
+
+    return Response(
+        {
+            "costing_id": costing.costing_id,
+            "costing_pk": costing.pk,
+            "project_id": costing.project_id,
+            "project_name": costing.project_name,
+            "quotation_number": getattr(costing.quotation_number, "quotation_number", str(costing.quotation_number or "")),
+            "has_downstream": has_downstream,
+            "can_delete": not has_downstream,
+            "connected_items": connections,
+            "details": details,
+            "message": (
+                f"Project Costing '{label}' cannot be deleted because it is connected to {', '.join(details)}."
+                if has_downstream
+                else f"Project Costing '{label}' has no connected downstream items and can be deleted."
+            ),
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
 @api_view(["GET", "PATCH", "DELETE"])
 @csrf_protect
 def project_costing_detail_api_view(request, pk):
@@ -655,9 +743,48 @@ def project_costing_detail_api_view(request, pk):
         return Response(payload, status=status.HTTP_200_OK)
 
     if request.method == "DELETE":
-        summary.delete()
-        payload = ProjectCostingSummaryView(request).list_payload()
-        return Response({"success": True, "message": "Project costing deleted.", **payload}, status=status.HTTP_200_OK)
+        connections = get_costing_downstream_connections(summary)
+        if connections:
+            parts = [f"{count} {name}" for name, count in connections.items()]
+            detail_str = ", ".join(parts)
+            label = summary.project_name or summary.costing_id or f"Costing #{summary.pk}"
+            return Response(
+                {
+                    "success": False,
+                    "status": "error",
+                    "message": (
+                        f"Cannot delete project costing '{label}': "
+                        f"It has connected downstream items ({detail_str}). "
+                        f"Please remove or unlink all connected downstream records before deleting this project costing."
+                    ),
+                    "connected_items": connections,
+                    "details": parts,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                summary.costing_items.all().delete()
+                summary.delete()
+            payload = ProjectCostingSummaryView(request).list_payload()
+            return Response({"success": True, "message": "Project costing deleted.", **payload}, status=status.HTTP_200_OK)
+        except ProtectedError as err:
+            logger.exception("ProtectedError deleting costing %s: %s", summary.pk, err)
+            return Response(
+                {
+                    "success": False,
+                    "status": "error",
+                    "message": "Cannot delete project costing because protected records reference it.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as err:
+            logger.exception("Error deleting costing %s: %s", summary.pk, err)
+            return Response(
+                {"success": False, "status": "error", "message": f"Failed to delete project costing: {err}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     current_status = _summary_status_name(summary)
     is_admin = _is_admin_user(request.user)
@@ -1040,6 +1167,7 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
         if item.retrieval_status and item.retrieval_status.status_name == RetrievalStatusInfo.STATUS_ITEM_ACCEPTED and not _is_admin_user(request.user):
             return Response({"status": "error", "message": "Accepted items can only be deleted by admin."}, status=403)
         item.delete()
+        ProjectCostingItemSerializer._sync_summary_material_cost(costing_pk)
         payload = ProjectCostingItemView(request).list_payload(summary)
         return Response({"success": True, "message": "Project costing item deleted.", **payload}, status=status.HTTP_200_OK)
 
@@ -1080,6 +1208,7 @@ def project_costing_item_detail_api_view(request, costing_pk, item_pk):
                 return_qty = _parse_return_qty(request.data.get("return_qty"))
                 with transaction.atomic():
                     return_item, _return_allocations = _request_fifo_return(item, return_qty)
+                    ProjectCostingItemSerializer._sync_summary_material_cost(summary.pk)
             except ValueError as exc:
                 return Response({"status": "error", "message": str(exc)}, status=400)
 
@@ -1477,6 +1606,7 @@ def stock_return_item_detail_api_view(request, item_pk):
                 refreshed_allocations = _get_item_allocations(item)
                 _save_item_from_allocations(item, refreshed_allocations, rejection_comment="")
                 breakdown = _build_return_breakdown(item, refreshed_allocations)
+            ProjectCostingItemSerializer._sync_summary_material_cost(item.costing_id_id)
     except ValueError as exc:
         return Response({"status": "error", "message": str(exc)}, status=400)
 

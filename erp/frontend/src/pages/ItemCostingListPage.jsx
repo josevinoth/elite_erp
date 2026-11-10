@@ -48,9 +48,8 @@ function ItemsCostingListPage() {
       showAddButton
       addButtonTo="/item-costing/add"
       editButtonTo={(row) => `/item-costing/${row.id}`}
-      showDefaultEdit
       showDefaultDelete
-      includeAuditColumns={false}
+      includeAuditColumns={true}
       exportFileName="Item Costing List"
       defaultPageSize={20}
       pageSizeOptions={[10, 20, 50, 100]}

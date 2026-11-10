@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import CrudPage from "../components/CrudPage";
 import {
   addProjectLifecycleStatusOption,
+  checkProjectDownstream,
   createProject,
   deleteProject,
   listProjectsMeta,
@@ -52,7 +53,8 @@ function ProjectsPage() {
 
   const fields = useMemo(
     () => [
-      { key: "project_id", label: "Project ID", required: true },      { key: "project_name", label: "Project Name", required: true },
+      { key: "project_id", label: "Project ID", required: true },
+      { key: "project_name", label: "Project Name", required: true },
       { key: "proposal_date", label: "Date of Proposal", type: "date", required: true },
       { key: "updated_by", label: "Updated By", default: loggedInUsername, required: true },
       { key: "order_value_omr", label: "Order Value (OMR)", type: "number" },
@@ -90,6 +92,28 @@ function ProjectsPage() {
     return data.project;
   }, []);
 
+  const checkDeleteAllowedFn = useCallback(async (row) => {
+    const data = await checkProjectDownstream(row.id);
+    if (data?.has_downstream) {
+      return {
+        allowed: false,
+        title: "Cannot Delete Project",
+        type: "warning",
+        message: `Project "${row.project_id}${row.project_name ? ` - ${row.project_name}` : ""}" cannot be deleted because it has connected downstream items.`,
+        details: data.details || [],
+        cancelLabel: "Close",
+      };
+    }
+    return {
+      allowed: true,
+      title: "Confirm Delete Project",
+      type: "danger",
+      message: `Are you sure you want to permanently delete project "${row.project_id}${row.project_name ? ` - ${row.project_name}` : ""}"? No downstream items are connected to this project. This action cannot be undone.`,
+      confirmLabel: "Delete Project",
+      cancelLabel: "Cancel",
+    };
+  }, []);
+
   return (
     <CrudPage
       title="Projects"
@@ -99,6 +123,7 @@ function ProjectsPage() {
       createFn={createFn}
       updateFn={updateFn}
       deleteFn={deleteProject}
+      checkDeleteAllowedFn={checkDeleteAllowedFn}
       addButtonTo="/projects/add"
       editButtonTo={(row) => `/projects/record/${row.id}`}
       tableMaxHeight="55vh"
@@ -117,4 +142,3 @@ function ProjectsPage() {
 }
 
 export default ProjectsPage;
-

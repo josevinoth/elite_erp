@@ -1,10 +1,46 @@
-import {useEffect, useMemo, useState} from "react";
-import {BsPencilSquare, BsTrashFill} from "react-icons/bs";
-import {Link, useNavigate} from "react-router-dom";
-import {deleteLceEstimateById, listLceEstimates} from "../services/crudApi";
-import TableSearchAndDownload from "../components/TableSearchAndDownload";
+import { useCallback } from "react";
+import StandardListPage from "../components/StandardListPage";
+import { deleteLceEstimateById, listLceEstimates } from "../services/crudApi";
+
+const COLUMNS = [
+  { key: "lce_id", label: "LCE ID", align: "center", headerAlign: "center" },
+  { key: "total_supplier_price", label: "Supplier Price", align: "center", headerAlign: "center" },
+  { key: "total_supplier_price_omr", label: "Supplier Price (OMR)", align: "center", headerAlign: "center" },
+  { key: "total", label: "Total", align: "center", headerAlign: "center" },
+  { key: "updated_by", label: "Updated By", align: "center", headerAlign: "center" },
+  { key: "updated_on", label: "Updated On", align: "center", headerAlign: "center" },
+];
 
 function LceListPage() {
+  const fetchRows = useCallback(async () => {
+    const data = await listLceEstimates();
+    const rows = Array.isArray(data?.lce_estimates) ? data.lce_estimates : [];
+    return rows.map((row) => ({
+      ...row,
+      lce_id: row.lce_id || `LCE_${String(row.id).padStart(3, "0")}`,
+    }));
+  }, []);
+
+  return (
+    <StandardListPage
+      title="Landing Cost Estimate (LCE) List"
+      columns={COLUMNS}
+      fetchRows={fetchRows}
+      rowKey="id"
+      showAddButton
+      addButtonTo="/projects/costing/add"
+      addButtonLabel="Add LCE"
+      editButtonTo={(row) => `/projects/costing/record/${row.id}`}
+      deleteFn={deleteLceEstimateById}
+      deleteConfirmFn={(row) => `Are you sure you want to delete LCE_${String(row.id).padStart(3, "0")}?`}
+      showDefaultDelete
+      includeAuditColumns={true}
+      exportFileName="Landing Cost Estimate (LCE) List"
+      defaultPageSize={20}
+      pageSizeOptions={[10, 20, 50, 100]}
+      tableMaxHeight="62vh"
+    />
+  );
     const navigate = useNavigate();
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -45,6 +81,8 @@ function LceListPage() {
       { key: "total_supplier_price", label: "Supplier Price" },
       { key: "total_supplier_price_omr", label: "Supplier Price (OMR)" },
       { key: "total", label: "Total" },
+      { key: "updated_by", label: "Updated By" },
+      { key: "updated_on", label: "Updated On" },
     ];
 
     const loadRows = () => {
@@ -121,6 +159,8 @@ function LceListPage() {
                             <th style={{textAlign: "right"}}>Supplier Price</th>
                             <th style={{textAlign: "right"}}>Supplier Price (OMR)</th>
                             <th style={{textAlign: "right"}}>Total</th>
+                            <th>Updated By</th>
+                            <th>Updated On</th>
                             <th/>
                         </tr>
                         <tr>
@@ -129,6 +169,8 @@ function LceListPage() {
                             <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.total_supplier_price ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, total_supplier_price: e.target.value }))} /></th>
                             <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.total_supplier_price_omr ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, total_supplier_price_omr: e.target.value }))} /></th>
                             <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.total ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, total: e.target.value }))} /></th>
+                            <th></th>
+                            <th></th>
                             <th></th>
                         </tr>
                         </thead>
@@ -140,6 +182,8 @@ function LceListPage() {
                                 <td style={{textAlign: "right"}}>{row.total_supplier_price}</td>
                                 <td style={{textAlign: "right"}}>{row.total_supplier_price_omr}</td>
                                 <td style={{textAlign: "right"}}>{row.total}</td>
+                                <td>{row.updated_by || "—"}</td>
+                                <td>{row.updated_on || (row.updated_at ? new Date(row.updated_at).toLocaleString() : "—")}</td>
                                 <td>
                                     <button
                                         type="button"
@@ -180,4 +224,3 @@ function LceListPage() {
 }
 
 export default LceListPage;
-
