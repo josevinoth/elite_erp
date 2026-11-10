@@ -66,6 +66,7 @@ def _serialize(vendor):
         'updated_at': vendor.updated_at.isoformat() if vendor.updated_at else '',
         'updated_on': vendor.updated_at.strftime("%Y-%m-%d %H:%M:%S") if vendor.updated_at else '',
         'updated_by': updated_by,
+        'updated_by': getattr(vendor, 'updated_by', '') or '',
     }
 
 
