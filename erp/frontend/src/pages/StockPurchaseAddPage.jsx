@@ -1206,7 +1206,7 @@ function StockPurchaseAddPage() {
         <section className="module-page">
             <div className="crud-page__header" style={{ marginBottom: "0.8rem" }}>
                 <h1 className="module-page__title module-page__title--stock" style={{ margin: 0 }}>
-                    {isEditMode ? "Stock Purchase Edit" : "Stock Purchase Add"}
+                    {isEditMode ? "Received Goods Edit" : "Received Goods Add"}
                     {spNumber ? <span style={{ marginLeft: "0.75rem", color: "#0ea5e9", fontWeight: 700, fontSize: "1rem" }}>[{spNumber}]</span> : null}
                 </h1>
             </div>
@@ -1562,7 +1562,7 @@ function StockPurchaseAddPage() {
                                 style={{ padding: "0.6rem 1.4rem", fontSize: "0.95rem", fontWeight: 600 }}
                                 disabled={saving}
                             >
-                                {saving ? "Saving GRN..." : (isEditMode ? "Update Stock Purchase / GRN" : "Submit GRN & Update PO")}
+                                {saving ? "Saving GRN..." : (isEditMode ? "Update Received Goods / GRN" : "Submit GRN & Update PO")}
                             </button>
                         </div>
                     </div>

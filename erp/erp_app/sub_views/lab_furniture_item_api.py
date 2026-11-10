@@ -138,7 +138,7 @@ def _format_qty_number(val):
         return 0
 
 
-def _serialize(obj, calculated_total_reqd=None, calculated_ordered_qty=None):
+def _serialize(obj, calculated_total_reqd=None, calculated_ordered_qty=None, calculated_physical_qty=None):
     item_category_id = getattr(obj, "item_category_id", None)
     uom_id = getattr(obj, "uom_id", None)
     item_type_id = getattr(obj, "item_type_id", None)
@@ -149,7 +149,10 @@ def _serialize(obj, calculated_total_reqd=None, calculated_ordered_qty=None):
     else:
         total_reqd_dec = _to_decimal(getattr(obj, "total_reqd", 0), "0")
 
-    physical_qty = _to_decimal(getattr(obj, "physical_qty", 0), "0")
+    if calculated_physical_qty is not None:
+        physical_qty = _to_decimal(calculated_physical_qty, "0")
+    else:
+        physical_qty = _to_decimal(getattr(obj, "physical_qty", 0), "0")
     if calculated_ordered_qty is not None:
         ordered_qty = _to_decimal(calculated_ordered_qty, "0")
     else:
@@ -614,6 +617,7 @@ def list_lab_furniture_items_api_view(request):
                     po_totals_by_id.get(row.pk)
                     or po_totals_by_code.get((row.item_code or "").strip().upper(), Decimal("0"))
                 ),
+                calculated_physical_qty=row.available_qty,
             )
             for row in rows
         ]
