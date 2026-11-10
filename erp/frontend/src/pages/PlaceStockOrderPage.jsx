@@ -243,7 +243,7 @@ export default function PlaceStockOrderPage() {
         <div>
           <h1 className="module-page__title project-costing-title">
             <span className="project-costing-title__icon" aria-hidden="true"><BsCartCheck /></span>
-            <span className="project-costing-title__text">Place Stock Order</span>
+            <span className="project-costing-title__text">Procurement Orders</span>
           </h1>
         </div>
         <div className="pq-header-actions" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -276,7 +276,7 @@ export default function PlaceStockOrderPage() {
             className="crud-add-btn"
             onClick={() => navigate("/stock-purchase")}
           >
-            <BsArrowLeft aria-hidden="true" /> Back to Stock Purchase
+            <BsArrowLeft aria-hidden="true" /> Back to Received Goods
           </button>
         </div>
       </div>
@@ -324,7 +324,7 @@ export default function PlaceStockOrderPage() {
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <BsFileEarmarkText aria-hidden="true" />
-              Placed Stock Orders
+              Procurement Orders
             </h2>
             <span className="vendor-card__badge">
               {filteredOrders.length} {filteredOrders.length === 1 ? "Order" : "Orders"}

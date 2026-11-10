@@ -306,7 +306,7 @@ export default function PlaceOrderModal({
                   }}
                   style={{ padding: "0.5rem 1.25rem" }}
                 >
-                  View in Place Stock Order List
+                  View in Procurement Orders List
                 </button>
                 <button
                   type="button"
