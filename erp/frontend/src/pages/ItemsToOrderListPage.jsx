@@ -157,7 +157,7 @@ function ItemsToOrderListPage() {
             style={{ background: "#475569" }}
             onClick={() => navigate("/stock-purchase/place-order")}
           >
-            View Placed Orders <BsArrowRight aria-hidden="true" />
+            View Procurement Orders <BsArrowRight aria-hidden="true" />
           </button>
           <button
             type="button"

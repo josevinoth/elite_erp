@@ -34,7 +34,7 @@ function StockPurchasePage() {
 
   return (
     <StandardListPage
-      title="Stock Purchase"
+      title="Received Goods"
       columns={COLUMNS}
       fetchRows={fetchRows}
       deleteFn={deleteStockPurchase}

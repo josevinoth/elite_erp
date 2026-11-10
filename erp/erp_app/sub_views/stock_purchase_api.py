@@ -638,6 +638,56 @@ def _first_duplicate_code_for_invoice(invoice_number, items_payload, exclude_pur
     return None
 
 
+def sync_all_master_item_physical_qty():
+    """
+    Recalculates physical_qty on all LabFurnitureItem records based on
+    total purchased quantity from StockPurchaseItem records (GRNs),
+    and updates physical_plus_ordered_qty, to_order_qty, and
+    to_order_qty_including_free_stock.
+    """
+    from django.db.models import Sum
+    purchased_by_item = dict(
+        StockPurchaseItem.objects.filter(item_code__isnull=False)
+        .values("item_code_id")
+        .annotate(tot=Sum("quantity"))
+        .values_list("item_code_id", "tot")
+    )
+    purchased_by_code = dict(
+        StockPurchaseItem.objects.filter(item_code__item_code_ref__isnull=False)
+        .values("item_code__item_code_ref__item_code")
+        .annotate(tot=Sum("quantity"))
+        .values_list("item_code__item_code_ref__item_code", "tot")
+    )
+
+    all_masters = LabFurnitureItem.objects.select_related("item_code_ref")
+    for m in all_masters:
+        code = m.item_code_ref.item_code.strip().upper() if m.item_code_ref else ""
+        new_phys = purchased_by_item.get(m.id) or (purchased_by_code.get(code) if code else None) or Decimal("0")
+
+        ord_qty = Decimal(str(m.ordered_qty or 0))
+        tot_req = Decimal(str(m.total_reqd or 0))
+        rec_free = Decimal(str(m.recommended_free_stock_qty or 0))
+
+        phys_plus_ord = new_phys + ord_qty
+        to_ord = tot_req - phys_plus_ord
+        to_ord_inc = tot_req + rec_free - phys_plus_ord
+
+        if (m.physical_qty != new_phys or
+            m.physical_plus_ordered_qty != phys_plus_ord or
+            m.to_order_qty != to_ord or
+            m.to_order_qty_including_free_stock != to_ord_inc):
+            m.physical_qty = new_phys
+            m.physical_plus_ordered_qty = phys_plus_ord
+            m.to_order_qty = to_ord
+            m.to_order_qty_including_free_stock = to_ord_inc
+            m.save(update_fields=[
+                "physical_qty",
+                "physical_plus_ordered_qty",
+                "to_order_qty",
+                "to_order_qty_including_free_stock",
+            ])
+
+
 @require_GET
 def list_stock_purchases_api_view(request):
     na = _ensure_authenticated(request)
@@ -723,6 +773,7 @@ def create_stock_purchase_api_view(request):
         if po:
             from .place_stock_order_api import update_po_status_from_grn
             update_po_status_from_grn(po)
+        sync_all_master_item_physical_qty()
     except ValueError as exc:
         obj.delete()
         return JsonResponse({"message": str(exc)}, status=400)
@@ -756,6 +807,7 @@ def stock_purchase_detail_api_view(request, pk):
         if po:
             from .place_stock_order_api import update_po_status_from_grn
             update_po_status_from_grn(po)
+        sync_all_master_item_physical_qty()
         return JsonResponse({'success': True, 'message': 'Deleted.'})
 
     p = _read_json(request)
@@ -828,6 +880,7 @@ def stock_purchase_detail_api_view(request, pk):
                 update_po_status_from_grn(obj.purchase_order)
             if old_po and old_po != obj.purchase_order:
                 update_po_status_from_grn(old_po)
+            sync_all_master_item_physical_qty()
         except ValueError as exc:
             return JsonResponse({"message": str(exc)}, status=400)
 

@@ -113,7 +113,7 @@ function StocksListPage() {
           Items to Order
         </button>
         <button type="button" className="crud-add-btn" onClick={() => navigate("/stock-purchase")}>
-          Stock Purchase
+          Received Goods
         </button>
       </div>
     ),
