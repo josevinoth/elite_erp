@@ -111,6 +111,9 @@ _default_csrf_origins = [
     "http://192.168.1.6:8000",
     "http://192.168.1.6:8010",
     "https://erp.erpeliteone.com",
+    "http://13.201.255.133:8000",
+    "https://13.201.255.133:8000"
+
 ]
 _csrf_ports = {"8000", "8010"}
 _erp_port = os.getenv("ERP_PORT", "").strip()
