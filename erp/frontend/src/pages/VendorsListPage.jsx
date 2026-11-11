@@ -219,6 +219,7 @@ function VendorsListPage() {
                 <th>Phone</th>
                 <th>Email</th>
                 <th className="vendor-table__col-address">Address</th>
+                <th>Address</th>
                 <th>Updated By</th>
                 <th>Updated On</th>
                 <th>Actions</th>

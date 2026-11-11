@@ -100,8 +100,9 @@ class LCEEstimate(models.Model):
                 costs.append(Decimal(str(r.unit_price)).quantize(Decimal("0.01")))
             elif r.unit_price not in (None, ""):
                 costs.append(Decimal(str(r.unit_price)).quantize(Decimal("0.01")))
-            elif r.total_price and r.quantity and r.quantity > 0:
-                costs.append((Decimal(str(r.total_price)) / Decimal(str(r.quantity))).quantize(Decimal("0.01")))
+            elif r.total_price and (r.purchase_qty or r.quantity) > 0:
+                received_qty = Decimal(str(r.purchase_qty or r.quantity))
+                costs.append((Decimal(str(r.total_price)) / received_qty).quantize(Decimal("0.01")))
         positive_costs = [c for c in costs if c > Decimal("0.00")]
         final_costs = positive_costs if positive_costs else costs
         if final_costs:
@@ -178,8 +179,9 @@ class LCEEstimateItem(models.Model):
                 costs.append(Decimal(str(r.unit_price)).quantize(Decimal("0.01")))
             elif r.unit_price not in (None, ""):
                 costs.append(Decimal(str(r.unit_price)).quantize(Decimal("0.01")))
-            elif r.total_price and r.quantity and r.quantity > 0:
-                costs.append((Decimal(str(r.total_price)) / Decimal(str(r.quantity))).quantize(Decimal("0.01")))
+            elif r.total_price and (r.purchase_qty or r.quantity) > 0:
+                received_qty = Decimal(str(r.purchase_qty or r.quantity))
+                costs.append((Decimal(str(r.total_price)) / received_qty).quantize(Decimal("0.01")))
         positive_costs = [c for c in costs if c > Decimal("0.00")]
         final_costs = positive_costs if positive_costs else costs
         if final_costs:
@@ -236,5 +238,3 @@ class LCEBalanceSettlement(models.Model):
 
     def __str__(self):
         return f"LCE Settlement #{self.pk}"
-
-

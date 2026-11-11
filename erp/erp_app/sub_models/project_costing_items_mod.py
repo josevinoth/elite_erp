@@ -225,8 +225,11 @@ class ProjectCostingItemInfo(models.Model):
             if self.purchase_item_id:
                 if self.purchase_item and self.purchase_item.item_code_id != resolved_master.pk:
                     raise ValidationError({"purchase_item": "Selected GRN does not belong to the chosen item code."})
+                stock_purchase_qty = getattr(self.purchase_item, "purchase_qty", None)
+                if stock_purchase_qty in (None, "") or _as_decimal(stock_purchase_qty) <= 0:
+                    stock_purchase_qty = getattr(self.purchase_item, "quantity", 0)
                 self.purchase_qty = _as_decimal(
-                    getattr(self.purchase_item, "purchase_qty", None) or getattr(self.purchase_item, "quantity", 0)
+                    stock_purchase_qty
                 )
 
             actual_override = None if self.actual_cost == 0 else self.actual_cost

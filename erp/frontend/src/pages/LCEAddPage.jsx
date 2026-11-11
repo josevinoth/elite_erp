@@ -1974,6 +1974,7 @@ function LCEAddPage() {
                   }}
                 >
                   <strong style={{ color: "#0f172a" }}>Policy:</strong> One item code can be linked to <strong>one LCE only</strong> (items already linked to another LCE cannot be selected). One item code may be linked across multiple LCAs.
+                  Select multiple item codes. Auto-fetches min &amp; max cost from purchases.
                 </small>
               </div>
 

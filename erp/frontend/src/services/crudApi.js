@@ -1068,6 +1068,11 @@ export async function getLabFurnitureItemOrderedPos(id) {
   return parseJson(res);
 }
 
+export async function getLabFurnitureItemConsumedProjects(id) {
+  const res = await fetch(`/api/lab-furniture-items/${id}/consumed-projects/`, { credentials: "include" });
+  return parseJson(res);
+}
+
 
 export async function listLabFurnitureItemCategories() {
   const res = await fetch("/api/lab-furniture-item-categories/", { credentials: "include" });
@@ -1093,6 +1098,16 @@ export async function listStockPurchases() {
 
 export async function getStockPurchaseById(id) {
   const res = await fetch(`/api/stock-purchases/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getStockPurchaseItemGrns(itemCodeOrId) {
+  const res = await fetch(`/api/purchase-items/${encodeURIComponent(itemCodeOrId)}/grns/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getStockPurchaseItemConsumedProjects(id) {
+  const res = await fetch(`/api/stock-purchase-items/${id}/consumed-projects/`, { credentials: "include" });
   return parseJson(res);
 }
 

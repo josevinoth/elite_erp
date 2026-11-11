@@ -24,6 +24,27 @@ ROLE_SUPER_ADMIN = "Super Admin"
 ROLE_SUPER_USER = "Super User"
 
 
+def _is_approved_email_domain(email: str) -> bool:
+    allowed_domains = getattr(settings, "APPROVED_EMAIL_DOMAINS", ())
+    if not allowed_domains:
+        return True
+    if "@" not in email:
+        return False
+    _, domain = email.rsplit("@", 1)
+    return domain.strip().lower() in {domain_name.lower() for domain_name in allowed_domains}
+
+
+def _registration_blocked_message(email: str) -> str:
+    if not email:
+        return "Email is required."
+    if not _is_approved_email_domain(email):
+        allowed = ", ".join(sorted({d for d in getattr(settings, "APPROVED_EMAIL_DOMAINS", ()) if d}))
+        if allowed:
+            return f"Only email addresses from approved domains are allowed: {allowed}."
+        return "Registration is disabled for this environment. Please contact an administrator."
+    return "Registration is disabled for this environment. Please contact an administrator."
+
+
 def _canonical_role_label(role_name):
     normalized = str(role_name or "").strip().lower()
     if normalized in {"user"}:
@@ -48,11 +69,14 @@ def _mask_email(email: str) -> str:
 
 
 def _resolve_user_role(user):
+    group_names = user.groups.values_list("name", flat=True)
+    if user.is_superuser or any(
+        str(name).strip().lower() in {"super admin", "superadmin"} for name in group_names
+    ):
+        return ROLE_SUPER_ADMIN
     first_group = user.groups.order_by("name").first()
     if first_group:
         return _canonical_role_label(first_group.name)
-    if user.is_superuser:
-        return ROLE_SUPER_ADMIN
     if user.is_staff:
         return ROLE_ADMIN
     return ROLE_USER
@@ -97,10 +121,24 @@ def register_meta_api_view(_request):
 @require_POST
 @csrf_protect
 def register_api_view(request):
+    if not getattr(settings, "PUBLIC_SELF_REGISTRATION", False):
+        email = str(request.POST.get("email", "")).strip()
+        return JsonResponse(
+            {"success": False, "message": _registration_blocked_message(email)},
+            status=403,
+        )
+
     form = RegistrationForm(request.POST)
 
     if not form.is_valid():
         return JsonResponse({"success": False, "errors": form.errors}, status=400)
+
+    email = str(form.cleaned_data.get("email", "")).strip()
+    if not _is_approved_email_domain(email):
+        return JsonResponse(
+            {"success": False, "message": _registration_blocked_message(email)},
+            status=403,
+        )
 
     user = form.save()
 

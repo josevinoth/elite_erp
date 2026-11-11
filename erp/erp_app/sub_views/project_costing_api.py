@@ -275,21 +275,110 @@ def _save_item_from_allocations(item, allocations, *, request_user=None, rejecti
     return item
 
 
-def _apply_allocation_status(item, target_status_name, *, purchase_item_id=None):
+def _apply_allocation_status(item, target_status_name, *, purchase_item_id=None, fifo=False):
     target_status = _status_obj(target_status_name)
     if not target_status:
         raise ValueError("Invalid retrieval status.")
 
     allocations = _get_item_allocations(item)
+    if not allocations:
+        if fifo and target_status_name == RetrievalStatusInfo.STATUS_ITEM_SUPPLIED:
+            if not item.item_code_id:
+                raise ValueError("No item code is linked to this request, so FIFO stock cannot be selected.")
+
+            from .stock_purchase_api import _purchase_items_for_item_master, _purchased_qty
+
+            purchase_items = _purchase_items_for_item_master(item.item_code)
+            remaining_qty = Decimal(str(item.requested_qty or 0))
+            if remaining_qty <= 0:
+                raise ValueError("The requested quantity must be greater than zero.")
+
+            consumed_statuses = [
+                RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+                RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN,
+                RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+            ]
+            for purchase_item in purchase_items:
+                if remaining_qty <= 0:
+                    break
+
+                purchase_qty = _purchased_qty(purchase_item)
+                consumed_allocations = ProjectCostingItemAllocation.objects.filter(
+                    purchase_item=purchase_item,
+                    costing_item__retrieval_status__status_name__in=consumed_statuses,
+                ).exclude(costing_item=item)
+                consumed_qty = sum(
+                    (
+                        max(
+                            Decimal(str(allocation.allocated_qty or 0))
+                            - Decimal(str(allocation.returned_qty or 0)),
+                            Decimal("0"),
+                        )
+                        for allocation in consumed_allocations
+                    ),
+                    Decimal("0"),
+                )
+                available_qty = max(purchase_qty - consumed_qty, Decimal("0"))
+                if available_qty <= 0:
+                    continue
+
+                allocated_qty = min(remaining_qty, available_qty)
+                allocations.append(
+                    ProjectCostingItemAllocation.objects.create(
+                        costing_item=item,
+                        purchase_item=purchase_item,
+                        allocated_qty=allocated_qty,
+                        retrieval_status=target_status,
+                    )
+                )
+                remaining_qty -= allocated_qty
+
+            if remaining_qty > 0:
+                raise ValueError(
+                    f"Insufficient FIFO stock to fulfill this request; {remaining_qty} units remain unallocated."
+                )
+        elif not item.purchase_item_id:
+            if not fifo or target_status_name != RetrievalStatusInfo.STATUS_NO_ACTION:
+                raise ValueError("No stock allocation is linked to this item.")
+            item.retrieval_status = target_status
+            item.save(update_fields=["retrieval_status", "updated_at"])
+            return target_status
+        else:
+            if purchase_item_id is not None and str(item.purchase_item_id) != str(purchase_item_id):
+                raise ValueError("Selected stock allocation does not match this item.")
+            item.retrieval_status = target_status
+            item.save(update_fields=["retrieval_status", "updated_at"])
+            from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+            sync_purchase_item_consumed_quantities([item.purchase_item_id])
+            return target_status
+
     if purchase_item_id is not None:
         allocations = [row for row in allocations if str(row.purchase_item_id) == str(purchase_item_id)]
         if not allocations:
             raise ValueError("Selected GRN allocation was not found for this item.")
+    elif fifo:
+        pending_allocations = [
+            row for row in allocations
+            if _allocation_status_name(row).lower() == RetrievalStatusInfo.STATUS_ITEM_REQUESTED.lower()
+        ]
+        if not pending_allocations:
+            pending_allocations = [
+                row for row in allocations
+                if _allocation_status_name(row).lower() in {"", RetrievalStatusInfo.STATUS_NO_ACTION.lower()}
+            ]
+        if not pending_allocations:
+            pending_allocations = allocations
+        allocations = sorted(pending_allocations, key=_allocation_fifo_sort_key)
 
     for allocation in allocations:
         if allocation.retrieval_status_id != target_status.pk:
             allocation.retrieval_status = target_status
             allocation.save(update_fields=["retrieval_status", "updated_at"])
+    from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+    sync_purchase_item_consumed_quantities(row.purchase_item_id for row in allocations)
     return target_status
 
 
@@ -343,8 +432,10 @@ def _save_costing_item_quantities(item, allocations, retrieval_status_name):
     item.accepted_qty = _calculate_item_accepted_qty(item, allocations)
     item.purchase_item = _first_purchase_item(allocations, fallback=getattr(item, "purchase_item", None))
     if item.purchase_item_id:
+        from .stock_purchase_api import _purchased_qty
+
         item.purchase_qty = Decimal(
-            str(getattr(item.purchase_item, "purchase_qty", None) or getattr(item.purchase_item, "quantity", 0) or 0)
+            str(_purchased_qty(item.purchase_item))
         )
     else:
         item.purchase_qty = Decimal("0")
@@ -387,6 +478,9 @@ def _create_return_split_item(source_item, return_allocations):
 
     allocations = _get_item_allocations(return_item)
     _save_costing_item_quantities(return_item, allocations, RetrievalStatusInfo.STATUS_ITEM_RETURN)
+    from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+    sync_purchase_item_consumed_quantities(row["purchase_item"].pk for row in return_allocations)
     return return_item
 
 
@@ -399,6 +493,9 @@ def _merge_return_item_back_to_source(return_item):
             allocation.retrieval_status = _status_obj(RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
             allocation.save(update_fields=["pending_return_qty", "retrieval_status", "updated_at"])
         _save_costing_item_quantities(return_item, allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
+        from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+        sync_purchase_item_consumed_quantities(row.purchase_item_id for row in allocations)
         return return_item
 
     source_allocations = {
@@ -428,6 +525,9 @@ def _merge_return_item_back_to_source(return_item):
     merged_allocations = list(source_allocations.values())
     _save_costing_item_quantities(source_item, merged_allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
     return_item.delete()
+    from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+    sync_purchase_item_consumed_quantities(row.purchase_item_id for row in merged_allocations)
     return source_item
 
 
@@ -470,6 +570,9 @@ def _request_fifo_return(item, return_qty):
             allocation.save(update_fields=["pending_return_qty", "retrieval_status", "updated_at"])
         refreshed_allocations = _get_item_allocations(item)
         _save_costing_item_quantities(item, refreshed_allocations, RetrievalStatusInfo.STATUS_ITEM_RETURN)
+        from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+        sync_purchase_item_consumed_quantities(row.purchase_item_id for row in refreshed_allocations)
         return item, refreshed_allocations
 
     source_updated = False
@@ -489,6 +592,9 @@ def _request_fifo_return(item, return_qty):
         _save_costing_item_quantities(item, refreshed_source_allocations, RetrievalStatusInfo.STATUS_ITEM_ACCEPTED)
 
     return_item = _create_return_split_item(item, fifo_breakdown)
+    from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+    sync_purchase_item_consumed_quantities(row["purchase_item"].pk for row in fifo_breakdown)
     return return_item, _get_item_allocations(return_item)
 
 
@@ -1265,7 +1371,7 @@ def stock_retrieval_api_view(request):
         "retrieval_status",
         "purchase_item",
         "purchase_item__vendor_detail__vendor",
-    ).prefetch_related("grn_allocations__retrieval_status")
+    ).prefetch_related("grn_allocations__purchase_item__vendor_detail__vendor", "grn_allocations__retrieval_status")
 
     if requested_status:
         queryset = queryset.filter(retrieval_status=requested_status)
@@ -1296,6 +1402,8 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
             "costing_id__project",
             "stock_status",
             "retrieval_status",
+            "item_code",
+            "purchase_item",
         ).get(pk=item_pk)
     except ProjectCostingItemInfo.DoesNotExist:
         return Response({"status": "error", "message": "Project costing item not found."}, status=404)
@@ -1313,6 +1421,13 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
         return Response(
             {"status": "error", "message": "Only project owner, admin, or stock team can update stock retrieval status."},
             status=403,
+        )
+
+    available_stock_qty = Decimal(str(getattr(item.item_code, "physical_qty", 0) or 0))
+    if available_stock_qty <= 0:
+        return Response(
+            {"status": "error", "message": "This item has no available stock to retrieve."},
+            status=400,
         )
 
     # Only allow actions from "Item Requested" status
@@ -1339,11 +1454,9 @@ def stock_retrieval_item_detail_api_view(request, item_pk):
         target_status_name = RetrievalStatusInfo.STATUS_NO_ACTION
         rejection_comment = request.data.get("rejection_comment", "")
 
-    purchase_item_id = request.data.get("purchase_item_id")
-
     try:
         with transaction.atomic():
-            _apply_allocation_status(item, target_status_name, purchase_item_id=purchase_item_id)
+            _apply_allocation_status(item, target_status_name, fifo=True)
             allocations = _get_item_allocations(item)
             _save_item_from_allocations(item, allocations, rejection_comment=rejection_comment)
     except ValueError as exc:
@@ -1606,6 +1719,12 @@ def stock_return_item_detail_api_view(request, item_pk):
                 refreshed_allocations = _get_item_allocations(item)
                 _save_item_from_allocations(item, refreshed_allocations, rejection_comment="")
                 breakdown = _build_return_breakdown(item, refreshed_allocations)
+            from .stock_purchase_api import sync_purchase_item_consumed_quantities
+
+            sync_purchase_item_consumed_quantities(
+                allocation.purchase_item_id
+                for allocation in _get_item_allocations(item)
+            )
             ProjectCostingItemSerializer._sync_summary_material_cost(item.costing_id_id)
     except ValueError as exc:
         return Response({"status": "error", "message": str(exc)}, status=400)

@@ -499,6 +499,7 @@ function StockManufacturePage() {
       <div className="users-table-wrap" style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}>
         <table className="users-table users-table--sp-items">
           <TableHead showAction showAudit columnFilters={columnFilters} setColumnFilters={setColumnFilters} />
+          <TableHead showAction showAudit />
           <tbody>
             {loading && (
               <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem" }}>Loading...</td></tr>
@@ -506,7 +507,7 @@ function StockManufacturePage() {
             {!loading && filteredListRows.length === 0 && (
               <tr><td colSpan={16} style={{ textAlign: "center", padding: "1rem", color: "#888" }}>No records found.</td></tr>
             )}
-            {filteredListRows.map((row) => (
+            {!loading && filteredListRows.map((row) => (
               <tr key={row.id}>
                 {editId === row.id && editForm ? (
                   <>

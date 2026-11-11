@@ -30,7 +30,7 @@ def resolve_lce_cost_for_item(item_code):
         .first()
     )
     if sp_item and sp_item.lce_cost > 0:
-        qty = _as_decimal(sp_item.quantity or 1)
+        qty = _as_decimal(sp_item.purchase_qty or sp_item.quantity or 1)
         unit_lce = (_as_decimal(sp_item.lce_cost) / qty) if qty > 0 else _as_decimal(sp_item.lce_cost)
         return _quantize(unit_lce, "0.01")
 
@@ -72,11 +72,12 @@ def calculate_costs(item_code, requested_qty, actual_cost=None):
         purchase_rows = StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code).only(
             "lce_cost",
             "unit_price",
+            "purchase_qty",
             "quantity",
         )
         for row in purchase_rows:
             if row.lce_cost not in (None, "") and _as_decimal(row.lce_cost) > 0:
-                q = _as_decimal(row.quantity or 1)
+                q = _as_decimal(row.purchase_qty or row.quantity or 1)
                 costs.append(_as_decimal(row.lce_cost) / q if q > 0 else _as_decimal(row.lce_cost))
             elif row.unit_price not in (None, "") and _as_decimal(row.unit_price) > 0:
                 costs.append(_as_decimal(row.unit_price))
@@ -159,5 +160,4 @@ def calculate_summary_totals(
         "undiscounted_quote_value": _quantize(undiscounted_quote_value, "0.01"),
         "factor": _quantize(factor, "0.0001"),
     }
-
 

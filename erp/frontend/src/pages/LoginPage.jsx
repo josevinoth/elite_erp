@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import AuthForm from "../components/AuthForm";
 import AuthLayout from "../components/AuthLayout";
 import useAuthForm from "../hooks/useAuthForm";
@@ -33,6 +33,8 @@ function LoginPage({ onLoginSuccess }) {
   const [forgotSuccess, setForgotSuccess] = useState("");
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const approvalNotice = location.state?.approvalMessage || "";
   const {
     values,
     errors,
@@ -50,6 +52,7 @@ function LoginPage({ onLoginSuccess }) {
         username: data?.user?.username || submittedValues.username || "Guest",
         role: data?.user?.role || "User",
         team: data?.user?.team || "",
+        is_superuser: Boolean(data?.user?.is_superuser),
       };
 
       setSessionUser(resolvedUser);
@@ -96,9 +99,10 @@ function LoginPage({ onLoginSuccess }) {
   return (
     <AuthLayout
       title="Login Into Your Account"
-      alternateText="Need an account? Register"
-      alternateTo="/register"
+      alternateText="Need an account? Contact admin"
+      alternateTo="/login"
     >
+      {approvalNotice ? <div className="auth-alert">{approvalNotice}</div> : null}
       {successMessage ? <div className="auth-alert">{successMessage}</div> : null}
       <AuthForm
         fields={loginFields}
@@ -149,4 +153,3 @@ function LoginPage({ onLoginSuccess }) {
 }
 
 export default LoginPage;
-

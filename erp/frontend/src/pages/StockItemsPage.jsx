@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CrudPage from "../components/CrudPage";
 import TotalReqdProjectsModal from "../components/TotalReqdProjectsModal";
 import OrderedQtyPosModal from "../components/OrderedQtyPosModal";
+import ConsumedQtyProjectsModal from "../components/ConsumedQtyProjectsModal";
 import {
   createLabFurnitureItem,
   deleteLabFurnitureItem,
@@ -39,6 +40,7 @@ const COLUMNS = [
   { key: "warning_alert_qty", label: "Warning Alert Qty" },
   { key: "physical_qty", label: "Physical Qty" },
   { key: "ordered_qty", label: "Ordered Qty" },
+  { key: "consumed_qty", label: "Consumed Qty" },
   { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty" },
   { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)" },
   { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)" },
@@ -111,6 +113,7 @@ function withQuantityDefaults(row = {}) {
 function StockItemsPage() {
   const [selectedRequestedItem, setSelectedRequestedItem] = useState(null);
   const [selectedOrderedItem, setSelectedOrderedItem] = useState(null);
+  const [selectedConsumedItem, setSelectedConsumedItem] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [itemCodeOptions, setItemCodeOptions] = useState([]);
   const [uomOptions, setUomOptions] = useState([]);
@@ -385,6 +388,42 @@ function StockItemsPage() {
           },
         };
       }
+      if (col.key === "consumed_qty") {
+        return {
+          ...col,
+          align: "right",
+          render: (row) => {
+            const val = Number(row.consumed_qty || 0);
+            const hasConsumed = val > 0;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedConsumedItem(row);
+                }}
+                style={{
+                  background: hasConsumed ? "#fef3c7" : "#f8fafc",
+                  color: hasConsumed ? "#b45309" : "#64748b",
+                  border: hasConsumed ? "1px solid #fcd34d" : "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+                title={`View consumed quantities by project for ${row.item_code}`}
+              >
+                <span>{val}</span>
+                {hasConsumed && <span style={{ fontSize: "0.75rem" }}>📋</span>}
+              </button>
+            );
+          },
+        };
+      }
       return col;
     });
   }, []);
@@ -415,6 +454,12 @@ function StockItemsPage() {
         <OrderedQtyPosModal
           item={selectedOrderedItem}
           onClose={() => setSelectedOrderedItem(null)}
+        />
+      )}
+      {selectedConsumedItem && (
+        <ConsumedQtyProjectsModal
+          item={selectedConsumedItem}
+          onClose={() => setSelectedConsumedItem(null)}
         />
       )}
     </>

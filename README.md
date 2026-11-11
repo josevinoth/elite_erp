@@ -4,6 +4,39 @@ Enterprise resource planning web portal for elite customer.
 
 ## Backend (Django)
 
+For a fresh Windows checkout, install Python, Node.js LTS (including npm),
+and PostgreSQL. From the repository root, install the dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Set-Location .\erp\frontend
+npm ci
+npm run build
+Set-Location ..\..
+```
+
+Create a local `.env` in the repository root (do not commit it) with
+`DJANGO_DEBUG=True` for local HTTP development and `DB_NAME`, `DB_USER`,
+`DB_PASSWORD`, `DB_HOST`, and `DB_PORT` for your PostgreSQL database.
+Create the database first, then initialize tables and start Django. This
+checkout has no `erp_app` migration files, so a fresh database needs
+`--run-syncdb` to create that app's tables; it does not upgrade existing tables.
+
+```powershell
+Set-Location .\erp
+..\.venv\Scripts\python.exe manage.py migrate
+..\.venv\Scripts\python.exe manage.py migrate --run-syncdb
+..\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+```
+
+In a second terminal, run `npm run dev -- --host 127.0.0.1` from
+`erp\frontend` and open `http://127.0.0.1:5173/static/`. Vite proxies API
+requests to Django on port 8000. These are local development servers, not
+an AWS production deployment; never enable `DJANGO_DEBUG` on a public server.
+
+If using an existing Python environment instead:
+
 ```powershell
 Set-Location "C:\Users\BVM\PycharmProjects\elite_erp_v1.0\erp"
 python manage.py runserver
@@ -49,6 +82,44 @@ A safe template is available in `.env.example`.
 
 ## Windows LAN Production Run
 
+### Scheduled local database backups
+
+From the repository root, register the backup schedule in an elevated PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\erp\register_backup_task.ps1
+```
+
+`EliteERP-DatabaseBackup` runs daily at **11:00 AM and 6:00 PM IST**
+(05:30 and 12:30 UTC), including when the registering user is logged out.
+The server must be powered on; a missed run starts when it is available again.
+Re-running registration updates the same task.
+
+The batch file `erp\erp_app\sub_db\erp_auto_backup.bat` uses `.venv` and
+the same database settings and `.env` files as Django. Set `PG_BIN` in `.env`
+if automatic PostgreSQL tool discovery needs overriding. Credentials are not
+stored in the batch file or task arguments.
+
+Custom-format archives are saved in `erp\erp_app\sub_db` with UTC filenames.
+Only the latest **three backups of the configured database** are retained;
+backups for other databases are untouched. Cleanup runs only after a successful
+dump and archive-list check. This is not a full restore test; periodically test
+restoring a backup into a separate database. Failures return a nonzero task
+result and are logged in `erp\logs\database_backup.log`.
+
+Run immediately using:
+
+```powershell
+Start-ScheduledTask -TaskName "EliteERP-DatabaseBackup"
+Get-ScheduledTaskInfo -TaskName "EliteERP-DatabaseBackup"
+```
+
+Backups stay local and are **not uploaded to Git**. Some legacy archives are
+already tracked in this repository; `.gitignore` does not untrack those files.
+Local backups alone do not protect against loss of this server.
+
+### Running the application
+
 Use Waitress + Django from the `erp` folder.
 
 ```powershell
@@ -76,6 +147,34 @@ Check status anytime:
 Set-Location "C:\Users\Admin\PycharmProjects\elite_erp_v1.0\erp"
 cmd /c erp_control.bat status 8010
 ```
+
+## GitHub Actions Remote Deploy (prod branch)
+
+This repo includes `.github/workflows/deploy-prod.yml` for Windows-server deployment via SSH.
+
+It runs automatically on push to `prod` and performs:
+
+- `git pull` on server (`prod`)
+- Python dependency install
+- Frontend `npm ci && npm run build`
+- `manage.py migrate` + `collectstatic`
+- backend restart (`serve.py`) and health check
+
+### Required GitHub repository secrets
+
+- `DEPLOY_HOST` (server public IP / DNS)
+- `DEPLOY_PORT` (usually `22`)
+- `DEPLOY_USER` (SSH user)
+- `DEPLOY_SSH_KEY` (private key content for the SSH user)
+- `DEPLOY_PATH` (absolute path of repo on server, e.g. `C:\deploy\elite_erp_v1.0`)
+- `APP_PORT` (optional, defaults to `8010`)
+
+### One-time server prerequisites
+
+- OpenSSH server enabled
+- repo already cloned at `DEPLOY_PATH`
+- Git, Python, pip, Node/npm installed
+- `.env` present on server with production values
 
 ---
 
@@ -771,5 +870,4 @@ The **Landing Cost Actuals (LCA)** module is cloned from the LCE (Landing Cost E
   - **Page Bottom Actions:** Save LCA Details and Cancel buttons at the bottom of the page.
 - **Navigation:**
   - Sidebar entry **Landing Cost Actuals** added under Projects in `homeNavigation.js` and `HomeSideNav.jsx`.
-
 

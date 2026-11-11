@@ -156,7 +156,10 @@ def _get_purchase_reference(item_code):
             uom_label = purchase_uom.symbol or purchase_uom.name or ""
 
     return {
-        "purchase_qty": str(purchase_item.quantity) if purchase_item else "0",
+        "purchase_qty": str(
+            (purchase_item.purchase_qty if purchase_item.purchase_qty > 0 else purchase_item.quantity)
+            if purchase_item else "0"
+        ),
         "purchase_uom": uom_label,
         "purchase_uom_id": purchase_uom_id,
         "purchase_length": str(item_master.length) if item_master else "0",
@@ -401,4 +404,3 @@ def item_costing_detail_api_view(request, pk):
         setattr(row, key, value)
     row.save()
     return JsonResponse({"success": True, "item": _serialize(row)})
-

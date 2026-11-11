@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BsArrowLeft,
-  BsCartCheck,
-  BsBoxes,
-  BsCartPlus,
   BsArrowRight,
+  BsCartCheck,
+  BsCartPlus,
+  BsBoxes,
+  BsClipboardData,
+  BsCheckCircleFill,
 } from "react-icons/bs";
 import { listItemsToOrder } from "../services/crudApi";
 import { Card, CardHeader, CardBody } from "../components/Card";
@@ -61,6 +63,9 @@ function ItemsToOrderListPage() {
     try {
       const data = await listItemsToOrder();
       setItems(Array.isArray(data?.items) ? data.items : []);
+      if (data?.message) {
+        setStatus({ type: "success", message: data.message });
+      }
     } catch (err) {
       setItems([]);
       setStatus({ type: "error", message: err.message || "Failed to load items to order." });
@@ -166,7 +171,7 @@ function ItemsToOrderListPage() {
         </div>
       </div>
 
-      {status.message && status.type === "error" ? (
+      {status.message ? (
         <p className={`users-status users-status--${status.type}`}>{status.message}</p>
       ) : null}
 
@@ -283,148 +288,84 @@ function ItemsToOrderListPage() {
               <table className="users-table project-costing-table">
                 <thead>
                   <tr>
-                    <th style={{ width: "42px", textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={allFilteredSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someFilteredSelected;
-                        }}
-                        onChange={toggleSelectAll}
-                        style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                        title="Select All Filtered Items"
-                      />
-                    </th>
-                    <th style={{ width: "95px" }}>Stage</th>
-                    <th>Item (Code _ Category _ Name)</th>
-                    <th className="project-costing-table__right" style={{ width: "110px" }}>Requested Qty</th>
-                    <th className="project-costing-table__right" style={{ width: "110px" }}>Available Qty</th>
-                    <th className="project-costing-table__right" style={{ width: "110px", color: "#b91c1c" }}>To Order Qty</th>
-                    <th style={{ width: "120px" }}>Stock Status</th>
+                    <th>Stage</th>
+                    <th>Reference #</th>
+                    <th>Project ID</th>
+                    <th>Project Name</th>
+                    <th>Item Category</th>
+                    <th>Item Name</th>
+                    <th>Item Code</th>
+                    <th>Item Type</th>
+                    <th className="project-costing-table__right">Requested Qty</th>
+                    <th className="project-costing-table__right">Available Qty</th>
+                    <th className="project-costing-table__right" style={{ color: "#b91c1c" }}>To Order Qty</th>
+                    <th>Stock Status</th>
+                    <th>Requested By</th>
+                    <th>Requested Date</th>
+                    <th>Updated By</th>
+                    <th>Updated On</th>
                   </tr>
                   <tr>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stage ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, stage: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.reference_number ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, reference_number: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_id ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_id: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_name: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_category ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_category: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_name: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_code ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_code: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_type ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_type: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_qty: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.purchase_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, purchase_qty: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.order_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, order_qty: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stock_status ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, stock_status: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_by ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_by: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_date ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_date: e.target.value }))} /></th>
                     <th></th>
-                    <th>
-                      <input
-                        className="users-table__filter-input"
-                        type="text"
-                        placeholder="Filter"
-                        value={columnFilters.stage ?? ""}
-                        onChange={(e) => setColumnFilters((prev) => ({ ...prev, stage: e.target.value }))}
-                      />
-                    </th>
-                    <th>
-                      <input
-                        className="users-table__filter-input"
-                        type="text"
-                        placeholder="Search item..."
-                        value={columnFilters.combined_item ?? ""}
-                        onChange={(e) => setColumnFilters((prev) => ({ ...prev, combined_item: e.target.value }))}
-                      />
-                    </th>
-                    <th>
-                      <input
-                        className="users-table__filter-input"
-                        type="text"
-                        placeholder="Filter"
-                        value={columnFilters.requested_qty ?? ""}
-                        onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_qty: e.target.value }))}
-                      />
-                    </th>
-                    <th>
-                      <input
-                        className="users-table__filter-input"
-                        type="text"
-                        placeholder="Filter"
-                        value={columnFilters.purchase_qty ?? ""}
-                        onChange={(e) => setColumnFilters((prev) => ({ ...prev, purchase_qty: e.target.value }))}
-                      />
-                    </th>
-                    <th>
-                      <input
-                        className="users-table__filter-input"
-                        type="text"
-                        placeholder="Filter"
-                        value={columnFilters.order_qty ?? ""}
-                        onChange={(e) => setColumnFilters((prev) => ({ ...prev, order_qty: e.target.value }))}
-                      />
-                    </th>
-                    <th>
-                      <input
-                        className="users-table__filter-input"
-                        type="text"
-                        placeholder="Filter"
-                        value={columnFilters.stock_status ?? ""}
-                        onChange={(e) => setColumnFilters((prev) => ({ ...prev, stock_status: e.target.value }))}
-                      />
-                    </th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="project-costing-empty">
+                      <td colSpan={16} className="project-costing-empty">
                         No missing stock items found. All requested quantities are covered by current stock.
                       </td>
                     </tr>
-                  ) : (
-                    filteredItems.map((row) => {
-                      const isSelected = selectedItemIds.has(row.id);
-                      return (
-                        <tr
-                          key={row.id}
-                          style={{
-                            background: isSelected ? "rgba(37, 99, 235, 0.05)" : undefined,
-                            cursor: "pointer",
-                          }}
-                          onClick={(e) => {
-                            // Don't toggle if clicking input or link
-                            if (e.target.tagName.toLowerCase() !== "input") {
-                              toggleSelectRow(row.id);
-                            }
-                          }}
-                        >
-                          <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleSelectRow(row.id)}
-                              style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                            />
-                          </td>
-                          <td>
-                            <span style={getStageBadgeStyle(row.stage)}>
-                              {row.stage}
-                            </span>
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 600, color: "#0f172a" }}>
-                              {row.combined_label || `${row.item_code} _ ${row.item_category} _ ${row.item_name}`}
-                            </div>
-                          </td>
-                          <td className="project-costing-table__right" style={{ fontWeight: 500 }}>
-                            {row.requested_qty}
-                          </td>
-                          <td className="project-costing-table__right" style={{ color: "#64748b" }}>
-                            {row.purchase_qty}
-                          </td>
-                          <td className="project-costing-table__right" style={{ fontWeight: 700, color: "#dc2626" }}>
-                            {row.order_qty}
-                            {Number(row.already_ordered_qty || 0) > 0 && (
-                              <div style={{ fontSize: "0.72rem", color: "#2563eb", fontWeight: 500, marginTop: "1px" }}>
-                                PO Placed: {row.already_ordered_qty}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <span className={`project-costing-stock-badge ${getStockBadgeClass(row.stock_status)}`}>
-                              {row.stock_status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
+                  ) : filteredItems.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <span style={getStageBadgeStyle(row.stage)}>
+                          {row.stage}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{row.reference_number}</td>
+                      <td>{row.project_id}</td>
+                      <td>{row.project_name}</td>
+                      <td>
+                        <div style={{ fontWeight: 600, color: "#0f172a" }}>{row.item_category || "—"}</div>
+                        <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "0.15rem", lineHeight: "1.3" }}>
+                          {row.item_name || "—"}
+                        </div>
+                      </td>
+                      <td>{row.item_name || "—"}</td>
+                      <td>{row.item_code || "—"}</td>
+                      <td>{row.item_type || "—"}</td>
+                      <td className="project-costing-table__right">{row.requested_qty ?? "—"}</td>
+                      <td className="project-costing-table__right">{row.purchase_qty ?? "—"}</td>
+                      <td className="project-costing-table__right" style={{ fontWeight: 700, color: "#dc2626" }}>
+                        {row.order_qty ?? "—"}
+                      </td>
+                      <td>
+                        <span className={`project-costing-stock-badge ${getStockBadgeClass(row.stock_status)}`}>
+                          {row.stock_status || "—"}
+                        </span>
+                      </td>
+                      <td>{row.requested_by || "—"}</td>
+                      <td>{row.requested_date || "—"}</td>
+                      <td>{row.updated_by || "—"}</td>
+                      <td>{row.updated_on || "—"}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

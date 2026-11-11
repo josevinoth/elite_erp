@@ -146,6 +146,15 @@ function CutOptimiserListPage() {
                   <td onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
+                      className="users-action users-action--edit"
+                      title="Edit"
+                      aria-label="Edit"
+                      onClick={() => navigate(`/projects/cut-optimiser/record/${row.id}`)}
+                    >
+                      <BsPencilSquare aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
                       className="users-action users-action--delete"
                       title="Delete"
                       aria-label="Delete"

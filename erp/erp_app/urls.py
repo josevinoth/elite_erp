@@ -31,10 +31,12 @@ from .sub_views.lab_furniture_item_api import (
     item_code_name_detail_api_view,
     item_requested_projects_api_view,
     item_ordered_pos_api_view,
+    item_consumed_projects_api_view,
 )
 from .sub_views.stock_purchase_api import (
     purchase_item_grns_api_view,
     stock_item_summary_api_view,
+    stock_purchase_item_consumed_projects_api_view,
     stock_purchase_item_delete_check_api_view,
 )
 from .sub_views.stock_manufacture_api import (
@@ -300,6 +302,11 @@ urlpatterns = [
     path("api/purchase-items/<str:item_code>/grns/", purchase_item_grns_api_view, name="api-purchase-item-grns"),
     path("api/stock/<str:item_code>/summary/", stock_item_summary_api_view, name="api-stock-item-summary"),
     path(
+        "api/stock-purchase-items/<int:pk>/consumed-projects/",
+        stock_purchase_item_consumed_projects_api_view,
+        name="api-stock-purchase-item-consumed-projects",
+    ),
+    path(
         "api/stock-purchase-items/<int:item_id>/trace/",
         stock_purchase_item_trace_api_view,
         name="api-stock-purchase-item-trace",
@@ -544,6 +551,7 @@ urlpatterns = [
     path("api/lab-furniture-items/<int:pk>/", lab_furniture_item_detail_api_view, name="api-lab-furniture-items-detail"),
     path("api/lab-furniture-items/<int:pk>/requested-projects/", item_requested_projects_api_view, name="api-lab-furniture-item-requested-projects"),
     path("api/lab-furniture-items/<int:pk>/ordered-pos/", item_ordered_pos_api_view, name="api-lab-furniture-item-ordered-pos"),
+    path("api/lab-furniture-items/<int:pk>/consumed-projects/", item_consumed_projects_api_view, name="api-lab-furniture-item-consumed-projects"),
     # item costing
     path("api/itemcosting/", list_item_costing_api_view, name="api-item-costing-list"),
     path("api/itemcosting/meta/", item_costing_meta_api_view, name="api-item-costing-meta"),

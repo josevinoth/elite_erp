@@ -146,7 +146,15 @@ function App() {
                         <Route path="/reset-password" element={<ResetPasswordPage/>}/>
                         <Route
                             path="/register"
-                            element={currentUser && !isAdmin ? <Navigate to="/home" replace/> : <RegisterPage/>}
+                            element={
+                                currentUser && !isAdmin
+                                    ? <Navigate to="/home" replace/>
+                                    : <Navigate
+                                        to="/login"
+                                        replace
+                                        state={{ approvalMessage: "Self-registration is disabled. Contact your administrator to create an account." }}
+                                      />
+                            }
                         />
 
                         <Route path="/home" element={secureRoute(<HomeLayout currentUser={currentUser}/>)}/>

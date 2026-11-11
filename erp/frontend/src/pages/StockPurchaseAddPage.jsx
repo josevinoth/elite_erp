@@ -510,7 +510,7 @@ function StockPurchaseAddPage() {
                             item_code: item.item_code || "",
                             item_code_id: item.item_code_id ? String(item.item_code_id) : (item.item_master_id ? String(item.item_master_id) : ""),
                             item_type: item.item_type || "BUY",
-                            quantity: item.quantity || "0",
+                            quantity: item.purchase_qty || item.quantity || "0",
                             unit_price: item.unit_price || "0",
                             total_price: tp,
                             tax: tax,
@@ -842,6 +842,7 @@ function StockPurchaseAddPage() {
                 item_master_id: row.item_master_id || row.item_code_id || null,
                 item_type: row.item_type || "BUY",
                 quantity: row.quantity || "0",
+                purchase_qty: row.quantity || "0",
                 unit_price: row.unit_price || "0",
                 total_price: row.total_price || "0",
                 tax: row.tax || "0",
@@ -1077,6 +1078,7 @@ function StockPurchaseAddPage() {
                 item_master_id: row.item_master_id || row.item_code_id || null,
                 item_type: row.item_type || "BUY",
                 quantity: row.quantity || "0",
+                purchase_qty: row.quantity || "0",
                 unit_price: row.unit_price || "0",
                 total_price: row.total_price || "0",
                 tax: row.tax || "0",
@@ -1637,4 +1639,3 @@ function StockPurchaseAddPage() {
 }
 
 export default StockPurchaseAddPage;
-

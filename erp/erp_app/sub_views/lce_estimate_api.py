@@ -128,8 +128,9 @@ def _calculate_item_purchase_stats(item_master):
             costs.append(Decimal(str(r.unit_price)).quantize(Decimal("0.01")))
         elif r.unit_price not in (None, ""):
             costs.append(Decimal(str(r.unit_price)).quantize(Decimal("0.01")))
-        elif r.total_price and r.quantity and r.quantity > 0:
-            costs.append((Decimal(str(r.total_price)) / Decimal(str(r.quantity))).quantize(Decimal("0.01")))
+        elif r.total_price and (r.purchase_qty or r.quantity) > 0:
+            received_qty = Decimal(str(r.purchase_qty or r.quantity))
+            costs.append((Decimal(str(r.total_price)) / received_qty).quantize(Decimal("0.01")))
     positive_costs = [c for c in costs if c > Decimal("0.00")]
     final_costs = positive_costs if positive_costs else costs
     min_cost = min(final_costs) if final_costs else Decimal("0.00")
@@ -580,6 +581,7 @@ def _serialize_list_row(obj):
         "total_supplier_price_omr": str(obj.total_supplier_price_omr),
         "total": str(obj.total),
         "updated_by": _clean_user_display(obj.created_by),
+        "updated_by": obj.created_by or "",
         "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
         "updated_on": obj.updated_at.strftime("%Y-%m-%d %H:%M:%S") if obj.updated_at else "",
     }
@@ -716,8 +718,9 @@ def lce_purchase_history_api_view(request, item_code):
 
         if r.unit_price not in (None, ""):
             cost = Decimal(str(r.unit_price)).quantize(Decimal("0.01"))
-        elif r.total_price and r.quantity and r.quantity > 0:
-            cost = (Decimal(str(r.total_price)) / Decimal(str(r.quantity))).quantize(Decimal("0.01"))
+        elif r.total_price and (r.purchase_qty or r.quantity) > 0:
+            received_qty = Decimal(str(r.purchase_qty or r.quantity))
+            cost = (Decimal(str(r.total_price)) / received_qty).quantize(Decimal("0.01"))
         else:
             cost = Decimal("0.00")
 
@@ -736,7 +739,8 @@ def lce_purchase_history_api_view(request, item_code):
             "purchase_number": sp_num,
             "invoice_number": r.vendor_detail.invoice_number if r.vendor_detail else "",
             "grn_number": raw_grn,
-            "quantity": str(r.quantity),
+            "quantity": str(r.purchase_qty or r.quantity),
+            "consumed_qty": str(r.quantity),
             "unit_price": str(r.unit_price),
             "lce_cost": str(r.lce_cost),
             "date": r.created_at.date().isoformat() if r.created_at else "",

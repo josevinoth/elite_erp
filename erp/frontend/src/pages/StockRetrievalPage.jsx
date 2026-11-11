@@ -1,53 +1,44 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { BsCheckLg, BsXLg } from "react-icons/bs";
 import ActionConfirmationPage from "../components/ActionConfirmationPage";
 import ConfirmPopupModal from "../components/ConfirmPopupModal";
 import { listStockRetrievalItems, updateStockRetrievalItem } from "../services/crudApi";
-import { getSessionUser } from "../services/sessionUser";
 import AlertMessage from "../components/AlertMessage";
 import TableSearchAndDownload from "../components/TableSearchAndDownload";
 import "../styles/StockRetrieval.css";
 
 const STATUS_NO_ACTION = "No Action";
-const STATUS_ITEM_REQUESTED = "Item Requested";
-
-const resolveRetrievalStatusName = (allocation, item) => {
-  const allocationStatus = String(allocation?.retrieval_status_name || "").trim();
-  const itemStatus = String(item?.retrieval_status?.status_name || item?.retrieval_status_name || "").trim();
-
-  if (allocationStatus && allocationStatus.toLowerCase() !== STATUS_NO_ACTION.toLowerCase()) {
-    return allocationStatus;
-  }
-  if (itemStatus) {
-    return itemStatus;
-  }
-  if (allocationStatus) {
-    return allocationStatus;
-  }
-  return STATUS_ITEM_REQUESTED;
-};
-
 const normalizeRejectedOption = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "item rejected" || normalized === "request rejected") {
     return "Item Rejected";
   }
-  return value;
+  return value || "—";
 };
-const getStatusHighlightClass = (action) => {
-  if (action === "accept") return "stock-retrieval-modal__highlight--success";
-  if (action === "reject") return "stock-retrieval-modal__highlight--danger";
-  return "stock-retrieval-modal__highlight";
+const getLiveStockStatus = (row) => {
+  const availableQty = Number(row?.available_stock_qty);
+  if (!Number.isFinite(availableQty)) {
+    return row?.stock_status?.status_name || "No Stock";
+  }
+  if (availableQty <= 0) return "No Stock";
+  return availableQty < (Number(row?.requested_qty) || 0) ? "Partial Stock" : "In-Stock";
+};
+const getStockBadgeClass = (statusName) => {
+  const normalized = String(statusName || "").trim().toLowerCase();
+  if (normalized === "in-stock" || normalized === "in stock") return "stock-retrieval-badge--in-stock";
+  if (normalized === "partial stock" || normalized === "partially ordered") return "stock-retrieval-badge--partial";
+  return "stock-retrieval-badge--no-stock";
+};
+const getRetrievalBadgeClass = (statusName) => {
+  const normalized = String(statusName || "").trim().toLowerCase();
+  if (normalized.includes("accepted") || normalized === "item supplied") return "stock-retrieval-badge--success";
+  if (normalized.includes("return") || normalized === "item rejected") return "stock-retrieval-badge--danger";
+  if (normalized === "no action") return "stock-retrieval-badge--neutral";
+  return "stock-retrieval-badge--pending";
 };
 function StockRetrievalPage() {
   const navigate = useNavigate();
-  const currentUser = useMemo(() => getSessionUser(), []);
-  const roleName = String(currentUser?.role || "").trim().toLowerCase();
-  const teamName = String(currentUser?.team || "").trim().toLowerCase();
-  const isAdmin = roleName === "admin" || roleName === "super admin" || roleName === "staff";
-  const currentUserId = String(currentUser?.id || "").trim();
-  const isStockRole = ["stock team", "stock", "stores team"].includes(roleName);
-  const canEdit = isAdmin || isStockRole || ["stock team", "stock", "stores team"].includes(teamName);
     const [loading, setLoading] = useState(true);
     const [savingId, setSavingId] = useState("");
     const [status, setStatus] = useState({ type: "", message: "" });
@@ -75,35 +66,25 @@ function StockRetrievalPage() {
   const buildSummary = useCallback((row = {}) => ({
     item_name: row?.item_name || "-",
     item_code: row?.item_code || "-",
-    grn_number: row?.grn_number || "-",
     project_name: row?.project_name || "-",
     quotation_number: row?.quotation_number || "-",
   }), []);
 
-   const isNotPurchased = useCallback((row) => (
-     ["no stock", "not purchased"].includes(String(row?.stock_status?.status_name || "").trim().toLowerCase())
-   ), []);
-
-   const isPendingRequest = useCallback((row) => (
-     String(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name || "")
-       .trim()
-       .toLowerCase() === STATUS_ITEM_REQUESTED.toLowerCase()
-   ), []);
-
    const retrievalRows = useMemo(() => (
-     items.flatMap((item) => {
-       const allocations = Array.isArray(item?.grn_allocations) && item.grn_allocations.length
-         ? item.grn_allocations
-         : [null];
-       return allocations.map((allocation, index) => ({
+     items.map((item) => {
+       const allocations = Array.isArray(item?.grn_allocations) ? item.grn_allocations : [];
+       const availableQty = Number(item?.available_stock_qty);
+       const requestedQty = allocations.length
+         ? allocations.reduce((sum, allocation) => sum + (Number(allocation?.allocated_qty) || 0), 0)
+         : Number(item?.requested_qty) || 0;
+       return {
          ...item,
-         row_key: `${item.id}-${allocation?.purchase_item_id || "base"}-${index}`,
-         grn_number: allocation?.grn_number || item?.purchase_item?.grn_number || "-",
-         grn_purchase_item_id: allocation?.purchase_item_id || item?.purchase_item?.id || null,
-         grn_purchase_qty: allocation?.purchase_qty || item?.purchase_qty || "0",
-         grn_allocated_qty: allocation?.allocated_qty || item?.requested_qty || "0",
-          grn_retrieval_status_name: resolveRetrievalStatusName(allocation, item),
-       }));
+         row_key: String(item.id),
+         combined_item: `${item?.item_code || "-"} _ ${item?.item_category || "-"} _ ${item?.item_name || "-"}`,
+         available_stock_qty: Number.isFinite(availableQty) ? String(availableQty) : "0",
+         grn_allocated_qty: String(requestedQty),
+         grn_retrieval_status_name: item?.retrieval_status?.status_name || "Item Requested",
+       };
      })
    ), [items]);
 
@@ -137,22 +118,15 @@ function StockRetrievalPage() {
    const tableColumns = [
      { key: "costing_ref", label: "Costing ID" },
      { key: "project_name", label: "Project ID - Name" },
-     { key: "item_category", label: "Item Category" },
-     { key: "item_name", label: "Item Name" },
-     { key: "item_code", label: "Item Code" },
-     { key: "grn_number", label: "GRN Number" },
+     { key: "combined_item", label: "Item Code _ Item Category _ Item Name" },
      { key: "item_type", label: "Item Type" },
-     { key: "stock_status", label: "Stock Status", exportValue: (row) => row?.stock_status?.status_name || "-" },
-     { key: "grn_purchase_qty", label: "Available Qty" },
+     { key: "stock_status", label: "Stock Status", exportValue: (row) => getLiveStockStatus(row) },
+     { key: "available_stock_qty", label: "Available Qty" },
      { key: "grn_allocated_qty", label: "Requested Qty" },
      { key: "requested_by_name", label: "Requested By" },
      { key: "requested_on", label: "Requested On" },
      { key: "updated_by", label: "Updated By", exportValue: (row) => row?.updated_by || row?.requested_by_name || "—" },
      { key: "updated_on", label: "Updated On", exportValue: (row) => row?.updated_on || (row?.updated_at ? new Date(row.updated_at).toLocaleString() : (row?.requested_on ? new Date(row.requested_on).toLocaleString() : "—")) },
-     { key: "length", label: "L" },
-     { key: "width", label: "W" },
-     { key: "height", label: "H" },
-     { key: "volume", label: "Volume" },
      { key: "grn_retrieval_status_name", label: "Retrieval Status", exportValue: (row) => normalizeRejectedOption(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name || STATUS_ITEM_REQUESTED) },
      { key: "rejection_comment", label: "Rejection Comments" },
    ];
@@ -183,8 +157,7 @@ function StockRetrievalPage() {
     rejectionComment = "",
     action = "",
     successMessage = "Stock status updated successfully",
-    successType = "success",
-    purchaseItemId = null
+    successType = "success"
   ) => {
     const itemId = row?.id;
     setSavingId(String(itemId));
@@ -193,7 +166,6 @@ function StockRetrievalPage() {
         retrieval_status_name: retrievalStatusName,
         rejection_comment: rejectionComment,
         action,
-        purchase_item_id: purchaseItemId,
       });
       await loadItems();
       setStatus({ type: "", message: "" });
@@ -234,9 +206,8 @@ function StockRetrievalPage() {
       "Item Supplied",
       "",
       "accept",
-      "GRN accepted and moved to Stock Acceptance.",
+      "FIFO stock accepted and moved to Stock Acceptance.",
       "success",
-      row?.grn_purchase_item_id || null
     );
   }, [confirmModal, submitStatusUpdate]);
 
@@ -256,9 +227,8 @@ function StockRetrievalPage() {
       STATUS_NO_ACTION,
       comment,
       "reject",
-      "GRN rejected and moved to No Action.",
+      "FIFO stock request rejected and moved to No Action.",
       "warning",
-      row?.grn_purchase_item_id || null
     );
   }, [confirmModal, submitStatusUpdate]);
 
@@ -328,7 +298,7 @@ function StockRetrievalPage() {
            <div className="stock-retrieval-modal__content">
              <p><strong>Item:</strong> {confirmModal.row?.item_name || "-"}</p>
              <p><strong>Item Code:</strong> {confirmModal.row?.item_code || "-"}</p>
-             <p><strong>GRN Number:</strong> {confirmModal.row?.grn_number || "-"}</p>
+             <p><strong>Allocation:</strong> The system will choose stock using FIFO.</p>
              <p><strong>Project:</strong> {confirmModal.row?.project_name || "-"}</p>
              {confirmModal.action === "accept" ? (
                 <p><strong>New Status:</strong> <span className="stock-retrieval-modal__highlight--success">Item Supplied</span></p>
@@ -350,7 +320,6 @@ function StockRetrievalPage() {
            </div>
          </ConfirmPopupModal>
        ) : null}
-       {!confirmation.open && !canEdit ? <AlertMessage type="warning" message="Stock team, project owners, or admin can update retrieval status." /> : null}
        {!confirmation.open && loading ? <p className="users-status">Loading stock retrieval items...</p> : null}
         {!confirmation.open && !loading ? (
           <>
@@ -367,10 +336,7 @@ function StockRetrievalPage() {
               <tr>
                 <th>Costing ID</th>
                 <th>Project ID - Name</th>
-                <th>Item Category</th>
-                <th>Item Name</th>
-                <th>Item Code</th>
-                <th>GRN Number</th>
+                <th>Item Code _ Item Category _ Item Name</th>
                 <th>Item Type</th>
                 <th>Stock Status</th>
                 <th>Available Qty</th>
@@ -379,10 +345,6 @@ function StockRetrievalPage() {
                 <th>Requested On</th>
                 <th>Updated By</th>
                 <th>Updated On</th>
-                <th className="stock-retrieval-table__right">L</th>
-                <th className="stock-retrieval-table__right">W</th>
-                <th className="stock-retrieval-table__right">H</th>
-                <th className="stock-retrieval-table__right">Volume</th>
                 <th>Retrieval Status</th>
                 <th>Action</th>
                <th>Rejection Comments</th>
@@ -390,22 +352,15 @@ function StockRetrievalPage() {
                <tr>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.costing_ref ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, costing_ref: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, project_name: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_category ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_category: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_name: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_code ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_code: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.grn_number ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, grn_number: e.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.combined_item ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, combined_item: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_type ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_type: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stock_status ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, stock_status: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.grn_purchase_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, grn_purchase_qty: e.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.available_stock_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, available_stock_qty: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.grn_allocated_qty ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, grn_allocated_qty: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_by_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, requested_by_name: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_on ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, requested_on: e.target.value }))} /></th>
-                  <th></th>
-                  <th></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.length ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, length: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.width ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, width: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.height ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, height: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.volume ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, volume: e.target.value }))} /></th>
+                 <th></th>
+                 <th></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.grn_retrieval_status_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, grn_retrieval_status_name: e.target.value }))} /></th>
                  <th></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.rejection_comment ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, rejection_comment: e.target.value }))} /></th>
@@ -414,48 +369,52 @@ function StockRetrievalPage() {
              <tbody>
                {filteredItems.length === 0 ? (
                  <tr>
-                   <td colSpan={21} className="stock-retrieval-empty">No retrieval items found.</td>
+                    <td colSpan={14} className="stock-retrieval-empty">No retrieval items found.</td>
                  </tr>
                 ) : filteredItems.map((row) => {
-                 const canEditRow = canEdit || String(row?.project_owner_id || "") === currentUserId;
                  return (
                 <tr key={row.row_key || row.id}>
                   <td>{row?.costing_ref || row?.costing_id || "-"}</td>
                   <td>{`${row?.project_code || "-"} - ${row?.project_name || "-"}`}</td>
-                  <td>{row.item_category || "-"}</td>
-                  <td>{row.item_name || "-"}</td>
-                  <td>{row.item_code || "-"}</td>
-                  <td>{row.grn_number || "-"}</td>
+                  <td>{row.combined_item}</td>
                   <td>{row.item_type || "-"}</td>
-                  <td>{row?.stock_status?.status_name || "-"}</td>
-                  <td className="stock-retrieval-table__right">{row.grn_purchase_qty}</td>
+                  <td>
+                    <span className={`stock-retrieval-badge ${getStockBadgeClass(getLiveStockStatus(row))}`}>
+                      {getLiveStockStatus(row)}
+                    </span>
+                  </td>
+                  <td className="stock-retrieval-table__right">{row.available_stock_qty}</td>
                   <td className="stock-retrieval-table__right">{row.grn_allocated_qty}</td>
                   <td>{row?.requested_by_name || "-"}</td>
                   <td>{row?.requested_on ? new Date(row.requested_on).toLocaleString() : "-"}</td>
                   <td>{row?.updated_by || row?.requested_by_name || "—"}</td>
                   <td>{row?.updated_on || (row?.updated_at ? new Date(row.updated_at).toLocaleString() : (row?.requested_on ? new Date(row.requested_on).toLocaleString() : "—"))}</td>
-                  <td className="stock-retrieval-table__right">{row.length}</td>
-                  <td className="stock-retrieval-table__right">{row.width}</td>
-                  <td className="stock-retrieval-table__right">{row.height}</td>
-                  <td className="stock-retrieval-table__right">{row.volume}</td>
-                  <td>{normalizeRejectedOption(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name || "Item Requested")}</td>
+                  <td>
+                    <span className={`stock-retrieval-badge ${getRetrievalBadgeClass(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name)}`}>
+                      {normalizeRejectedOption(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name)}
+                    </span>
+                  </td>
                   <td>
                     <div className="stock-retrieval-actions">
                       <button
                         type="button"
-                        className="modal-btn modal-btn--save stock-retrieval-action-btn"
-                         disabled={!canEditRow || savingId === String(row.id) || isNotPurchased(row) || !row?.grn_purchase_item_id || !isPendingRequest(row)}
+                        className="stock-retrieval-action-btn stock-retrieval-action-btn--accept"
+                        aria-label="Accept retrieval request"
+                        title="Accept"
+                        disabled={savingId === String(row.id) || Number(row.available_stock_qty) <= 0}
                         onClick={() => acceptItem(row)}
                       >
-                        Accept
+                        <BsCheckLg aria-hidden="true" />
                       </button>
                       <button
                         type="button"
-                        className="modal-btn modal-btn--cancel stock-retrieval-action-btn"
-                         disabled={!canEditRow || savingId === String(row.id) || !row?.grn_purchase_item_id || !isPendingRequest(row)}
+                        className="stock-retrieval-action-btn stock-retrieval-action-btn--reject"
+                        aria-label="Reject retrieval request"
+                        title="Reject"
+                        disabled={savingId === String(row.id) || Number(row.available_stock_qty) <= 0}
                         onClick={() => rejectItem(row)}
                       >
-                        Reject
+                        <BsXLg aria-hidden="true" />
                       </button>
                     </div>
                   </td>
