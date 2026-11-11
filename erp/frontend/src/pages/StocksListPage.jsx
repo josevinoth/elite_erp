@@ -1,8 +1,10 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BsBoxArrowUpRight } from "react-icons/bs";
 import StandardListPage from "../components/StandardListPage";
 import { listStockPurchases } from "../services/crudApi";
+import StockPurchaseDetailsModal from "../components/StockPurchaseDetailsModal";
+import StockGrnConsumedProjectsModal from "../components/StockGrnConsumedProjectsModal";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -22,6 +24,8 @@ const TABLE_COLUMNS = [
 
 function StocksListPage() {
   const navigate = useNavigate();
+  const [selectedPurchaseItem, setSelectedPurchaseItem] = useState(null);
+  const [selectedConsumedItem, setSelectedConsumedItem] = useState(null);
 
   const fetchRows = useCallback(async () => {
     const data = await listStockPurchases();
@@ -35,6 +39,8 @@ function StocksListPage() {
         flattened.push({
           key: `${purchase.id}-${item.id || item.item_code || item.item_name}`,
           purchase_id: purchase.id,
+          purchase_item_id: item.id,
+          item_code_id: item.item_code_id || item.item_master_id || "",
           grn_number: item.grn_number || "-",
           vendor: purchase.vendor_name || "",
           item_category: item.item_category || "",
@@ -55,6 +61,42 @@ function StocksListPage() {
 
     return flattened;
   }, []);
+
+  const columns = useMemo(() => TABLE_COLUMNS.map((column) => {
+    if (column.key === "purchased_qty" || column.key === "consumed_qty") {
+      const isPurchased = column.key === "purchased_qty";
+      return {
+        ...column,
+        align: "right",
+        render: (row) => (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (isPurchased) setSelectedPurchaseItem(row);
+              else setSelectedConsumedItem(row);
+            }}
+            title={isPurchased
+              ? `View purchase details for ${row.item_code}`
+              : `View projects consuming ${row.grn_number}`}
+            style={{
+              background: isPurchased ? "#e0f2fe" : "#fef3c7",
+              color: isPurchased ? "#0369a1" : "#b45309",
+              border: `1px solid ${isPurchased ? "#7dd3fc" : "#fcd34d"}`,
+              borderRadius: "6px",
+              padding: "2px 8px",
+              fontWeight: 700,
+              cursor: "pointer",
+              fontSize: "0.82rem",
+            }}
+          >
+            {row[column.key]}
+          </button>
+        ),
+      };
+    }
+    return column;
+  }), []);
 
   const rowActions = useMemo(
     () => [
@@ -87,9 +129,10 @@ function StocksListPage() {
   );
 
   return (
+    <>
     <StandardListPage
       title="Stocks List"
-      columns={TABLE_COLUMNS}
+      columns={columns}
       fetchRows={fetchRows}
       rowKey="key"
       rowActions={rowActions}
@@ -102,6 +145,19 @@ function StocksListPage() {
       pageSizeOptions={PAGE_SIZE_OPTIONS}
       tableMaxHeight="62vh"
     />
+    {selectedPurchaseItem && (
+      <StockPurchaseDetailsModal
+        item={selectedPurchaseItem}
+        onClose={() => setSelectedPurchaseItem(null)}
+      />
+    )}
+    {selectedConsumedItem && (
+      <StockGrnConsumedProjectsModal
+        item={selectedConsumedItem}
+        onClose={() => setSelectedConsumedItem(null)}
+      />
+    )}
+    </>
   );
 }
 

@@ -17,6 +17,13 @@ from .sub_models.stock_purchase import StockPurchaseItem
 from .sub_models.stock_status_mod import StockStatusInfo
 
 
+def _purchase_item_received_qty(purchase_item):
+    purchase_qty = getattr(purchase_item, "purchase_qty", None)
+    if purchase_qty not in (None, "") and Decimal(str(purchase_qty)) > 0:
+        return Decimal(str(purchase_qty))
+    return Decimal(str(getattr(purchase_item, "quantity", 0) or 0))
+
+
 class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
     purchase_item_id = serializers.PrimaryKeyRelatedField(
         source="purchase_item",
@@ -56,7 +63,7 @@ class ProjectCostingItemAllocationSerializer(serializers.ModelSerializer):
         purchase_item = getattr(obj, "purchase_item", None)
         if not purchase_item:
             return "0"
-        return str(getattr(purchase_item, "purchase_qty", None) or getattr(purchase_item, "quantity", 0) or 0)
+        return str(_purchase_item_received_qty(purchase_item))
 
     def get_grn_number(self, obj):
         purchase_item = getattr(obj, "purchase_item", None)
@@ -220,7 +227,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             "vendor_name": getattr(getattr(purchase_item, "vendor_detail", None), "vendor", None).name
             if getattr(getattr(purchase_item, "vendor_detail", None), "vendor", None)
             else "",
-            "purchase_qty": str(getattr(purchase_item, "purchase_qty", None) or getattr(purchase_item, "quantity", 0) or 0),
+            "purchase_qty": str(_purchase_item_received_qty(purchase_item)),
             "unit_price": str(purchase_item.unit_price),
         }
 
@@ -364,7 +371,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             for pi in purchase_items:
                 if rem <= 0:
                     break
-                p_qty = Decimal(str(getattr(pi, "purchase_qty", None) or pi.quantity or 0))
+                p_qty = _purchase_item_received_qty(pi)
                 consumed_qs = ProjectCostingItemAllocation.objects.select_related("costing_item__retrieval_status").filter(
                     purchase_item=pi,
                     costing_item__retrieval_status__status_name__in=[
@@ -440,9 +447,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             if not status_obj:
                 raise serializers.ValidationError({"grn_allocations": ["Default retrieval status is not configured."]})
 
-            purchased_qty = Decimal(
-                str(getattr(purchase_item, "purchase_qty", None) or getattr(purchase_item, "quantity", 0) or 0)
-            )
+            purchased_qty = _purchase_item_received_qty(purchase_item)
             consumed_qs = ProjectCostingItemAllocation.objects.select_related("retrieval_status", "costing_item__retrieval_status").filter(
                 purchase_item=purchase_item,
                 costing_item__retrieval_status__status_name__in=[
@@ -492,9 +497,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
 
         candidate.purchase_item = first_purchase_item
         if first_purchase_item:
-            candidate.purchase_qty = Decimal(
-                str(getattr(first_purchase_item, "purchase_qty", None) or getattr(first_purchase_item, "quantity", 0) or 0)
-            )
+            candidate.purchase_qty = _purchase_item_received_qty(first_purchase_item)
 
         accepted_qty = Decimal("0")
         for row in normalized_rows:
@@ -536,6 +539,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             row.purchase_item_id: row
             for row in ProjectCostingItemAllocation.objects.filter(costing_item=instance)
         }
+        affected_purchase_item_ids = set(existing)
         retained = set()
         accepted_qty = Decimal("0")
 
@@ -550,6 +554,7 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
             allocation.retrieval_status = row["retrieval_status"]
             allocation.save()
             retained.add(purchase_item.pk)
+            affected_purchase_item_ids.add(purchase_item.pk)
 
             status_name = str(getattr(allocation.retrieval_status, "status_name", "") or "")
             if status_name in {
@@ -568,6 +573,9 @@ class ProjectCostingItemSerializer(serializers.ModelSerializer):
         if instance.accepted_qty < 0:
             instance.accepted_qty = Decimal("0")
         instance.save(update_fields=["accepted_qty", "updated_at"])
+        from .sub_views.stock_purchase_api import sync_purchase_item_consumed_quantities
+
+        sync_purchase_item_consumed_quantities(affected_purchase_item_ids)
 
     def create(self, validated_data):
         instance, allocations_data = self._build_instance(validated_data)

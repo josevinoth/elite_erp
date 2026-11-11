@@ -1,6 +1,6 @@
 from collections import defaultdict
 from decimal import Decimal
-from django.db.models import Sum
+from django.db.models import Case, F, Sum, When
 
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -90,7 +90,7 @@ def items_to_order_api_view(request):
     received_by_po_item = dict(
         StockPurchaseItem.objects.filter(po_item__isnull=False)
         .values("po_item_id")
-        .annotate(tot=Sum("quantity"))
+        .annotate(tot=Sum(Case(When(purchase_qty__gt=0, then=F("purchase_qty")), default=F("quantity"))))
         .values_list("po_item_id", "tot")
     )
 
@@ -112,7 +112,12 @@ def items_to_order_api_view(request):
     sp_totals_by_code = dict(
         StockPurchaseItem.objects.filter(item_code__item_code_ref__isnull=False)
         .values("item_code__item_code_ref__item_code")
-        .annotate(tot=Sum("quantity"))
+        .annotate(tot=Sum(
+            Case(
+                When(purchase_qty__gt=0, then=F("purchase_qty") - F("quantity")),
+                default=F("quantity"),
+            )
+        ))
         .values_list("item_code__item_code_ref__item_code", "tot")
     )
 

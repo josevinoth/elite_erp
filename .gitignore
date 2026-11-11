@@ -15,7 +15,6 @@ build/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-/erp/erp_app/migrations/
 /erp/media/
 /erp/logs/
 /erp/staticfiles/

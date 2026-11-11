@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import DecimalField, Sum, Value
+from django.db.models import Case, DecimalField, F, Sum, Value, When
 from django.db.models.functions import Coalesce
 
 from ..utils import calculate_costs, normalize_text
@@ -87,7 +87,12 @@ def _resolve_purchase_qty(item_code, fallback=0):
 
     aggregate = StockPurchaseItem.objects.filter(item_code__item_code_ref__item_code__iexact=normalized_code).aggregate(
         total_qty=Coalesce(
-            Sum("quantity"),
+            Sum(
+                Case(
+                    When(purchase_qty__gt=0, then=F("purchase_qty") - F("quantity")),
+                    default=F("quantity"),
+                )
+            ),
             Value(Decimal("0"), output_field=DecimalField(max_digits=14, decimal_places=2)),
         )
     )
@@ -336,4 +341,3 @@ class ProjectQuotationItemInfo(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
         self._update_summary_totals()
-

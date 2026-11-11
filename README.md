@@ -25,6 +25,7 @@ checkout has no `erp_app` migration files, so a fresh database needs
 
 ```powershell
 Set-Location .\erp
+..\.venv\Scripts\python.exe manage.py migrate
 ..\.venv\Scripts\python.exe manage.py migrate --run-syncdb
 ..\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
 ```
@@ -869,5 +870,4 @@ The **Landing Cost Actuals (LCA)** module is cloned from the LCE (Landing Cost E
   - **Page Bottom Actions:** Save LCA Details and Cancel buttons at the bottom of the page.
 - **Navigation:**
   - Sidebar entry **Landing Cost Actuals** added under Projects in `homeNavigation.js` and `HomeSideNav.jsx`.
-
 

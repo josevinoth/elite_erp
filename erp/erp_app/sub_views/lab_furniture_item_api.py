@@ -3,7 +3,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError
-from django.db.models import DecimalField, Q, Sum, Value
+from django.db.models import Case, DecimalField, F, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
@@ -15,8 +15,10 @@ from ..sub_models import (
     LabFurnitureItem,
     UOM,
     ItemType_info,
+    ProjectCostingItemAllocation,
     ProjectCostingItemInfo,
     ProjectQuotationItemInfo,
+    RetrievalStatusInfo,
 )
 from ..utils import normalize_text
 
@@ -138,7 +140,13 @@ def _format_qty_number(val):
         return 0
 
 
-def _serialize(obj, calculated_total_reqd=None, calculated_ordered_qty=None, calculated_physical_qty=None):
+def _serialize(
+    obj,
+    calculated_total_reqd=None,
+    calculated_ordered_qty=None,
+    calculated_physical_qty=None,
+    calculated_consumed_qty=None,
+):
     item_category_id = getattr(obj, "item_category_id", None)
     uom_id = getattr(obj, "uom_id", None)
     item_type_id = getattr(obj, "item_type_id", None)
@@ -187,6 +195,7 @@ def _serialize(obj, calculated_total_reqd=None, calculated_ordered_qty=None, cal
         "physical_plus_ordered_qty": _format_qty_number(physical_plus_ordered),
         "physical_qty": _format_qty_number(physical_qty),
         "ordered_qty": _format_qty_number(ordered_qty),
+        "consumed_qty": _format_qty_number(calculated_consumed_qty),
         "total_reqd": _format_qty_number(total_reqd_dec),
         "updated_by": obj.updated_by.username if updated_by_id else "",
         "updated_on": obj.updated_at.isoformat() if getattr(obj, "updated_at", None) else "",
@@ -543,6 +552,118 @@ def item_ordered_pos_api_view(request, pk):
     })
 
 
+def _consumed_retrieval_statuses():
+    return [
+        RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+        RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+        RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+    ]
+
+
+def _allocation_consumption_rows(*, item_id=None, group_by_project=False):
+    status_filter = Q(retrieval_status__status_name__in=_consumed_retrieval_statuses()) | Q(
+        retrieval_status__isnull=True,
+        costing_item__retrieval_status__status_name__in=_consumed_retrieval_statuses(),
+    )
+    rows = ProjectCostingItemAllocation.objects.filter(
+        costing_item__item_code_id__isnull=False,
+    ).filter(status_filter)
+    if item_id is not None:
+        rows = rows.filter(costing_item__item_code_id=item_id)
+
+    group_fields = ["costing_item__item_code_id"]
+    if group_by_project:
+        group_fields.extend([
+            "costing_item__costing_id__project_id",
+            "costing_item__costing_id__project__project_id",
+            "costing_item__costing_id__project__project_name",
+        ])
+    return rows.values(*group_fields).annotate(
+        allocated_total=Sum("allocated_qty"),
+        returned_total=Sum("returned_qty"),
+    )
+
+
+@require_GET
+def item_consumed_projects_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    item = (
+        LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
+        .filter(pk=pk)
+        .first()
+    )
+    if not item:
+        return JsonResponse({"message": "Item not found."}, status=404)
+
+    projects_by_id = {}
+    for row in _allocation_consumption_rows(item_id=item.pk, group_by_project=True):
+        project_id = row["costing_item__costing_id__project_id"]
+        consumed_qty = (row["allocated_total"] or Decimal("0")) - (row["returned_total"] or Decimal("0"))
+        if consumed_qty <= 0:
+            continue
+        project_code = row["costing_item__costing_id__project__project_id"] or ""
+        project_name = row["costing_item__costing_id__project__project_name"] or ""
+        project = projects_by_id.setdefault(project_id, {
+            "project_id": project_code,
+            "project_name": project_name,
+            "consumed_qty": Decimal("0"),
+        })
+        project["consumed_qty"] += consumed_qty
+
+    legacy_rows = (
+        ProjectCostingItemInfo.objects.filter(
+            item_code_id=item.pk,
+            retrieval_status__status_name__in=_consumed_retrieval_statuses(),
+            grn_allocations__isnull=True,
+        )
+        .values(
+            "costing_id__project_id",
+            "costing_id__project__project_id",
+            "costing_id__project__project_name",
+        )
+        .annotate(consumed_total=Sum("accepted_qty"))
+    )
+    for row in legacy_rows:
+        consumed_qty = row["consumed_total"] or Decimal("0")
+        if consumed_qty <= 0:
+            continue
+        project_id = row["costing_id__project_id"]
+        project = projects_by_id.setdefault(project_id, {
+            "project_id": row["costing_id__project__project_id"] or "",
+            "project_name": row["costing_id__project__project_name"] or "",
+            "consumed_qty": Decimal("0"),
+        })
+        project["consumed_qty"] += consumed_qty
+
+    projects = []
+    for project in projects_by_id.values():
+        project["project_display"] = (
+            f'{project["project_id"]} - {project["project_name"]}'.strip(" -")
+            if project["project_name"] else project["project_id"]
+        )
+        project["consumed_qty"] = _format_qty_number(project["consumed_qty"])
+        projects.append(project)
+    projects.sort(key=lambda project: (project["project_id"] or "").lower())
+    total_consumed_qty = sum(
+        (Decimal(str(project["consumed_qty"])) for project in projects),
+        Decimal("0"),
+    )
+
+    return JsonResponse({
+        "success": True,
+        "item_id": item.pk,
+        "item_code": item.item_code,
+        "item_name": item.item_name,
+        "item_category": item.item_category.name if item.item_category else "",
+        "total_consumed_qty": _format_qty_number(total_consumed_qty),
+        "projects": projects,
+    })
+
+
 @require_GET
 def list_lab_furniture_items_api_view(request):
     not_allowed = _ensure_authenticated(request)
@@ -598,11 +719,35 @@ def list_lab_furniture_items_api_view(request):
         if p["item_code"]:
             po_totals_by_code[p["item_code"].strip().upper()] += tot
 
+    consumed_totals = defaultdict(Decimal)
+    for row in _allocation_consumption_rows():
+        item_id = row["costing_item__item_code_id"]
+        consumed_totals[item_id] += (
+            (row["allocated_total"] or Decimal("0")) - (row["returned_total"] or Decimal("0"))
+        )
+    legacy_consumed_items = (
+        ProjectCostingItemInfo.objects.filter(
+            item_code_id__isnull=False,
+            retrieval_status__status_name__in=_consumed_retrieval_statuses(),
+            grn_allocations__isnull=True,
+        )
+        .values("item_code_id")
+        .annotate(consumed_total=Sum("accepted_qty"))
+    )
+    for row in legacy_consumed_items:
+        consumed_totals[row["item_code_id"]] += row["consumed_total"] or Decimal("0")
+
     rows = (
         LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category", "uom", "item_type", "updated_by")
         .annotate(
-            available_qty=Coalesce(
-                Sum("stock_purchase_items__quantity"),
+            purchased_qty_total=Coalesce(
+                Sum(
+                    Case(
+                        When(stock_purchase_items__purchase_qty__gt=0, then=F("stock_purchase_items__purchase_qty")),
+                        default=F("stock_purchase_items__quantity"),
+                        output_field=DecimalField(max_digits=12, decimal_places=0),
+                    )
+                ),
                 Value(Decimal("0"), output_field=DecimalField(max_digits=14, decimal_places=2)),
             )
         )
@@ -617,7 +762,12 @@ def list_lab_furniture_items_api_view(request):
                     po_totals_by_id.get(row.pk)
                     or po_totals_by_code.get((row.item_code or "").strip().upper(), Decimal("0"))
                 ),
-                calculated_physical_qty=row.available_qty,
+                calculated_physical_qty=max(
+                    _to_decimal(row.purchased_qty_total, "0")
+                    - consumed_totals.get(row.pk, Decimal("0")),
+                    Decimal("0"),
+                ),
+                calculated_consumed_qty=consumed_totals.get(row.pk, Decimal("0")),
             )
             for row in rows
         ]
@@ -799,4 +949,3 @@ def lab_furniture_item_detail_api_view(request, pk):
         item_code_name.item_category = item_category
         item_code_name.save(update_fields=["item_category"])
     return JsonResponse({"success": True, "lab_furniture_item": _serialize(obj)})
-
