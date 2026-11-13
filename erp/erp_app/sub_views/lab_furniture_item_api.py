@@ -417,10 +417,7 @@ def get_item_requested_projects_data(item):
     )
 
     projects = []
-    costing_project_ids = set()
     for r in c_rows:
-        p_id = r["costing_id__project_id"]
-        costing_project_ids.add(p_id)
         code = r["costing_id__project__project_id"] or ""
         name = r["costing_id__project__project_name"] or ""
         display = f"{code} - {name}".strip(" -") if name else code
@@ -429,39 +426,7 @@ def get_item_requested_projects_data(item):
             "project_name": name,
             "project_display": display,
             "requested_qty": _format_qty_number(r["total_qty"]),
-            "stage": "Costing",
             "reference_no": r["costing_id__costing_id"] or "",
-        })
-
-    # 2. Quotation items (excluding projects with WIP costing)
-    q_rows = (
-        ProjectQuotationItemInfo.objects.filter(
-            item_code=item,
-            quotation_number__status__status_name__iexact="Work In Progress",
-            requested_qty__gt=0,
-        )
-        .exclude(quotation_number__project_id__in=costing_project_ids)
-        .values(
-            "quotation_number__project_id",
-            "quotation_number__project__project_id",
-            "quotation_number__project__project_name",
-            "quotation_number__quotation_number",
-        )
-        .annotate(total_qty=Sum("requested_qty"))
-        .order_by("quotation_number__project__project_id")
-    )
-
-    for r in q_rows:
-        code = r["quotation_number__project__project_id"] or ""
-        name = r["quotation_number__project__project_name"] or ""
-        display = f"{code} - {name}".strip(" -") if name else code
-        projects.append({
-            "project_id": code,
-            "project_name": name,
-            "project_display": display,
-            "requested_qty": _format_qty_number(r["total_qty"]),
-            "stage": "Quotation",
-            "reference_no": r["quotation_number__quotation_number"] or "",
         })
 
     return projects
@@ -473,11 +438,21 @@ def item_requested_projects_api_view(request, pk):
     if not_allowed:
         return not_allowed
 
-    item = (
-        LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
-        .filter(pk=pk)
-        .first()
-    )
+    item = None
+    pk_str = str(pk).strip()
+    if pk_str.isdigit():
+        item = (
+            LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
+            .filter(pk=int(pk_str))
+            .first()
+        )
+    if not item:
+        clean_code = pk_str.replace("item-", "").strip()
+        item = (
+            LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
+            .filter(Q(item_code__iexact=clean_code) | Q(item_code_ref__item_code__iexact=clean_code))
+            .first()
+        )
     if not item:
         return JsonResponse({"message": "Item not found."}, status=404)
 
@@ -682,27 +657,10 @@ def list_lab_furniture_items_api_view(request):
     )
 
     item_totals = defaultdict(Decimal)
-    costing_projects_per_item = defaultdict(set)
     for c in c_items:
         i_id = c["item_code_id"]
         if i_id:
             item_totals[i_id] += c["tot"] or Decimal("0")
-            costing_projects_per_item[i_id].add(c["costing_id__project_id"])
-
-    q_items = (
-        ProjectQuotationItemInfo.objects.filter(
-            quotation_number__status__status_name__iexact="Work In Progress",
-            requested_qty__gt=0,
-        )
-        .values("item_code_id", "quotation_number__project_id")
-        .annotate(tot=Sum("requested_qty"))
-    )
-
-    for q in q_items:
-        i_id = q["item_code_id"]
-        p_id = q["quotation_number__project_id"]
-        if i_id and p_id not in costing_projects_per_item[i_id]:
-            item_totals[i_id] += q["tot"] or Decimal("0")
 
     from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
     po_items_placed = (

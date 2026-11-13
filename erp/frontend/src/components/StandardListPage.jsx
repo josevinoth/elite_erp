@@ -42,6 +42,7 @@ function StandardListPage({
   showDefaultEdit = false,
   showDefaultDelete = false,
   enableRowClickEdit = true,
+  tableWrapClassName = null,
 }) {
   const fetchFn = useCallback(async () => {
     const data = await fetchRows();
@@ -67,6 +68,7 @@ function StandardListPage({
       exportFileName={exportFileName || title}
       includeAuditColumns={includeAuditColumns}
       tableMaxHeight={tableMaxHeight}
+      tableWrapClassName={tableWrapClassName}
       stickyHeader={stickyHeader}
       defaultPageSize={defaultPageSize}
       pageSizeOptions={pageSizeOptions}

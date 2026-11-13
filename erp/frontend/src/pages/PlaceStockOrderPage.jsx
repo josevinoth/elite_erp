@@ -800,7 +800,6 @@ export default function PlaceStockOrderPage() {
                     >
                       <thead>
                         <tr>
-                          <th style={{ width: "75px" }}>Stage</th>
                           <th style={{ minWidth: "220px", whiteSpace: "normal", wordBreak: "break-word" }}>Item (Code _ Category _ Name)</th>
                           <th style={{ width: "110px", whiteSpace: "normal", wordBreak: "break-word" }}>Reference #</th>
                           <th style={{ width: "140px", whiteSpace: "normal", wordBreak: "break-word" }}>Project</th>
@@ -811,28 +810,11 @@ export default function PlaceStockOrderPage() {
                       <tbody>
                         {detailItems.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="project-costing-empty">No items recorded in this order.</td>
+                            <td colSpan={5} className="project-costing-empty">No items recorded in this order.</td>
                           </tr>
                         ) : (
                           detailItems.map((item, idx) => (
                             <tr key={item.id || idx}>
-                              <td style={{ verticalAlign: "top" }}>
-                                <span
-                                  style={{
-                                    background: String(item.stage).toLowerCase() === "costing" ? "rgba(139, 92, 246, 0.12)" : "rgba(2, 132, 199, 0.12)",
-                                    color: String(item.stage).toLowerCase() === "costing" ? "#7c3aed" : "#0284c7",
-                                    border: String(item.stage).toLowerCase() === "costing" ? "1px solid rgba(139, 92, 246, 0.3)" : "1px solid rgba(2, 132, 199, 0.3)",
-                                    fontWeight: 600,
-                                    padding: "0.15rem 0.5rem",
-                                    borderRadius: "999px",
-                                    fontSize: "0.75rem",
-                                    display: "inline-block",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {item.stage || "—"}
-                                </span>
-                              </td>
                               <td style={{ verticalAlign: "top", whiteSpace: "normal", wordBreak: "break-word" }}>
                                 <div style={{ fontWeight: 600, color: "#0f172a", lineHeight: 1.4 }}>
                                   {item.combined_label || `${item.item_code} _ ${item.item_category} _ ${item.item_name}`}

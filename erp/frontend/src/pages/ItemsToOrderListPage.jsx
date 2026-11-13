@@ -12,6 +12,7 @@ import {
 import { listItemsToOrder } from "../services/crudApi";
 import { Card, CardHeader, CardBody } from "../components/Card";
 import PlaceOrderModal from "../components/PlaceOrderModal";
+import TotalReqdProjectsModal from "../components/TotalReqdProjectsModal";
 import "../styles/ProjectQuotation.css";
 import "../styles/ProjectCostingSummary.css";
 
@@ -22,40 +23,15 @@ const getStockBadgeClass = (statusName) => {
   return "project-costing-stock-badge--no-stock";
 };
 
-const getStageBadgeStyle = (stage) => {
-  if (String(stage).toLowerCase() === "costing") {
-    return {
-      background: "rgba(139, 92, 246, 0.12)",
-      color: "#7c3aed",
-      border: "1px solid rgba(139, 92, 246, 0.35)",
-      fontWeight: 600,
-      padding: "0.2rem 0.55rem",
-      borderRadius: "999px",
-      fontSize: "0.8rem",
-      display: "inline-block",
-    };
-  }
-  return {
-    background: "rgba(2, 132, 199, 0.12)",
-    color: "#0284c7",
-    border: "1px solid rgba(2, 132, 199, 0.35)",
-    fontWeight: 600,
-    padding: "0.2rem 0.55rem",
-    borderRadius: "999px",
-    fontSize: "0.8rem",
-    display: "inline-block",
-  };
-};
-
 function ItemsToOrderListPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState({ type: "", message: "" });
-  const [stageTab, setStageTab] = useState("all"); // "all" | "quotation" | "costing"
   const [columnFilters, setColumnFilters] = useState({});
   const [selectedItemIds, setSelectedItemIds] = useState(new Set());
   const [isPlaceOrderModalOpen, setIsPlaceOrderModalOpen] = useState(false);
+  const [selectedRequestedItem, setSelectedRequestedItem] = useState(null);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -80,31 +56,33 @@ function ItemsToOrderListPage() {
 
   const filteredItems = useMemo(() => {
     return items.filter((row) => {
-      // Stage tab filter
-      if (stageTab !== "all" && String(row.stage).toLowerCase() !== stageTab) {
-        return false;
-      }
-
       // Column filters
       const activeFilters = Object.entries(columnFilters).filter(([, val]) => String(val || "").trim());
       return activeFilters.every(([key, filterVal]) => {
         const needle = String(filterVal).trim().toLowerCase();
+        if (key === "project_or_ref") {
+          const combined = `${row.reference_number || ""} ${row.combined_project || ""} ${row.project_id || ""} ${row.project_name || ""}`.toLowerCase();
+          return combined.includes(needle);
+        }
+        if (key === "combined_project") {
+          const combined = (row.combined_project || `${row.project_id ?? ""} _ ${row.project_name ?? ""}`).toLowerCase();
+          return combined.includes(needle);
+        }
         if (key === "combined_item") {
-          const combined = (row.combined_label || `${row.item_code ?? ""} _ ${row.item_category ?? ""} _ ${row.item_name ?? ""}`).toLowerCase();
+          const combined = (row.combined_item || row.combined_label || `${row.item_code ?? ""} _ ${row.item_category ?? ""} _ ${row.item_name ?? ""}`).toLowerCase();
           return combined.includes(needle);
         }
         const rowVal = String(row[key] ?? "").toLowerCase();
         return rowVal.includes(needle);
       });
     });
-  }, [columnFilters, items, stageTab]);
+  }, [columnFilters, items]);
 
   const stats = useMemo(() => {
     const totalItems = items.length;
-    const quotationItems = items.filter((i) => String(i.stage).toLowerCase() === "quotation").length;
-    const costingItems = items.filter((i) => String(i.stage).toLowerCase() === "costing").length;
     const totalOrderQty = items.reduce((sum, i) => sum + (Number(i.order_qty) || 0), 0);
-    return { totalItems, quotationItems, costingItems, totalOrderQty };
+    const totalRequestedQty = items.reduce((sum, i) => sum + (Number(i.requested_qty) || 0), 0);
+    return { totalItems, totalOrderQty, totalRequestedQty };
   }, [items]);
 
   // Checkbox Selection
@@ -189,23 +167,23 @@ function ItemsToOrderListPage() {
           </div>
         </div>
 
-        <div className="project-costing-card" style={{ padding: "0.55rem 0.85rem", borderLeft: "3.5px solid #0ea5e9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="project-costing-card" style={{ padding: "0.55rem 0.85rem", borderLeft: "3.5px solid #dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>FROM QUOTATION STAGE</div>
-            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.15rem" }}>WIP Quotations</div>
+            <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>TOTAL ORDER QUANTITY</div>
+            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.15rem" }}>Units to purchase</div>
           </div>
-          <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#0284c7", lineHeight: 1 }}>
-            {stats.quotationItems}
+          <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#dc2626", lineHeight: 1 }}>
+            {stats.totalOrderQty.toFixed(2)}
           </div>
         </div>
 
         <div className="project-costing-card" style={{ padding: "0.55rem 0.85rem", borderLeft: "3.5px solid #8b5cf6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>FROM COSTING STAGE</div>
-            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.15rem" }}>WIP Costings</div>
+            <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>TOTAL REQUESTED QTY</div>
+            <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.15rem" }}>Units requested in Costing</div>
           </div>
           <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#7c3aed", lineHeight: 1 }}>
-            {stats.costingItems}
+            {stats.totalRequestedQty.toFixed(2)}
           </div>
         </div>
       </div>
@@ -227,57 +205,6 @@ function ItemsToOrderListPage() {
               </span>
             )}
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-            {/* Stage Filter Buttons */}
-            <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-              <button
-                type="button"
-                className={`crud-add-btn ${stageTab === "all" ? "" : "modal-btn--cancel"}`}
-                style={{ padding: "0.35rem 0.65rem", fontSize: "0.82rem" }}
-                onClick={() => setStageTab("all")}
-              >
-                All ({stats.totalItems})
-              </button>
-              <button
-                type="button"
-                className={`crud-add-btn ${stageTab === "quotation" ? "" : "modal-btn--cancel"}`}
-                style={{ padding: "0.35rem 0.65rem", fontSize: "0.82rem" }}
-                onClick={() => setStageTab("quotation")}
-              >
-                Quotation ({stats.quotationItems})
-              </button>
-              <button
-                type="button"
-                className={`crud-add-btn ${stageTab === "costing" ? "" : "modal-btn--cancel"}`}
-                style={{ padding: "0.35rem 0.65rem", fontSize: "0.82rem" }}
-                onClick={() => setStageTab("costing")}
-              >
-                Costing ({stats.costingItems})
-              </button>
-            </div>
-
-            {/* Place Order Button */}
-            <button
-              type="button"
-              className="crud-add-btn"
-              style={{
-                background: "#2563eb",
-                color: "#ffffff",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                padding: "0.45rem 1rem",
-                fontSize: "0.9rem",
-                fontWeight: 600,
-                boxShadow: "0 2px 4px rgba(37,99,235,0.25)",
-              }}
-              onClick={() => setIsPlaceOrderModalOpen(true)}
-            >
-              <BsCartPlus aria-hidden="true" style={{ fontSize: "1.05rem" }} />
-              Place Order {selectedItemIds.size > 0 ? `(${selectedItemIds.size})` : ""}
-            </button>
-          </div>
         </CardHeader>
 
         <CardBody className="pq-card-body">
@@ -288,13 +215,8 @@ function ItemsToOrderListPage() {
               <table className="users-table project-costing-table">
                 <thead>
                   <tr>
-                    <th>Stage</th>
-                    <th>Reference #</th>
-                    <th>Project ID</th>
-                    <th>Project Name</th>
-                    <th>Item Category</th>
-                    <th>Item Name</th>
-                    <th>Item Code</th>
+                    <th>Projects & Ref #</th>
+                    <th>Item (Code _ Category _ Name)</th>
                     <th>Item Type</th>
                     <th className="project-costing-table__right">Requested Qty</th>
                     <th className="project-costing-table__right">Available Qty</th>
@@ -306,13 +228,8 @@ function ItemsToOrderListPage() {
                     <th>Updated On</th>
                   </tr>
                   <tr>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stage ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, stage: e.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.reference_number ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, reference_number: e.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_id ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_id: e.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_name: e.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_category ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_category: e.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_name ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_name: e.target.value }))} /></th>
-                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_code ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_code: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_or_ref ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, project_or_ref: e.target.value }))} /></th>
+                    <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.combined_item ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, combined_item: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_type ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, item_type: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.requested_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, requested_qty: e.target.value }))} /></th>
                     <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.purchase_qty ?? ""} onChange={(e) => setColumnFilters((prev) => ({ ...prev, purchase_qty: e.target.value }))} /></th>
@@ -327,30 +244,65 @@ function ItemsToOrderListPage() {
                 <tbody>
                   {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={16} className="project-costing-empty">
+                      <td colSpan={11} className="project-costing-empty">
                         No missing stock items found. All requested quantities are covered by current stock.
                       </td>
                     </tr>
                   ) : filteredItems.map((row) => (
                     <tr key={row.id}>
                       <td>
-                        <span style={getStageBadgeStyle(row.stage)}>
-                          {row.stage}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRequestedItem(row)}
+                          style={{
+                            background: "#e0f2fe",
+                            color: "#0284c7",
+                            border: "1px solid #7dd3fc",
+                            borderRadius: "6px",
+                            padding: "3px 10px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            fontSize: "0.8rem",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            whiteSpace: "nowrap",
+                            transition: "all 0.15s ease",
+                          }}
+                          title="View project requirements & reference numbers"
+                        >
+                          <span>{row.requests_count ? `${row.requests_count} Projects` : "View Projects"}</span>
+                          <span style={{ fontSize: "0.75rem" }}>📋</span>
+                        </button>
                       </td>
-                      <td style={{ fontWeight: 600 }}>{row.reference_number}</td>
-                      <td>{row.project_id}</td>
-                      <td>{row.project_name}</td>
-                      <td>
-                        <div style={{ fontWeight: 600, color: "#0f172a" }}>{row.item_category || "—"}</div>
-                        <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "0.15rem", lineHeight: "1.3" }}>
-                          {row.item_name || "—"}
-                        </div>
+                      <td style={{ fontWeight: 600, color: "#0f172a" }}>
+                        {row.combined_item || row.combined_label || [row.item_code, row.item_category, row.item_name].filter(Boolean).join(" _ ") || "—"}
                       </td>
-                      <td>{row.item_name || "—"}</td>
-                      <td>{row.item_code || "—"}</td>
                       <td>{row.item_type || "—"}</td>
-                      <td className="project-costing-table__right">{row.requested_qty ?? "—"}</td>
+                      <td className="project-costing-table__right">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRequestedItem(row)}
+                          style={{
+                            background: "#e0f2fe",
+                            color: "#0284c7",
+                            border: "1px solid #7dd3fc",
+                            borderRadius: "6px",
+                            padding: "2px 8px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            fontSize: "0.82rem",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            transition: "all 0.15s ease",
+                          }}
+                          title={`View projects requesting ${row.item_code} (${row.requested_qty})`}
+                        >
+                          <span>{row.requested_qty ?? "—"}</span>
+                          <span style={{ fontSize: "0.75rem", opacity: 0.85 }}>📋</span>
+                        </button>
+                      </td>
                       <td className="project-costing-table__right">{row.purchase_qty ?? "—"}</td>
                       <td className="project-costing-table__right" style={{ fontWeight: 700, color: "#dc2626" }}>
                         {row.order_qty ?? "—"}
@@ -384,6 +336,14 @@ function ItemsToOrderListPage() {
           setSelectedItemIds(new Set());
         }}
       />
+
+      {/* Project Requirements & References Modal */}
+      {selectedRequestedItem && (
+        <TotalReqdProjectsModal
+          item={selectedRequestedItem}
+          onClose={() => setSelectedRequestedItem(null)}
+        />
+      )}
     </section>
   );
 }

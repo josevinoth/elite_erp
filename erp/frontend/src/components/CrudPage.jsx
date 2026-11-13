@@ -949,7 +949,8 @@ function CrudPage({
                       className={stickyHeader ? "users-table__sticky-head" : undefined}
                       style={{
                         textAlign: effectiveHeaderAlign || undefined,
-                        ...(col.width ? { width: col.width, minWidth: col.width } : {}),
+                        ...(col.width ? { width: col.width } : {}),
+                        ...(col.minWidth ? { minWidth: col.minWidth } : col.width ? { minWidth: col.width } : {}),
                       }}
                     >
                       <button
@@ -997,7 +998,11 @@ function CrudPage({
                   <th
                     key={`filter-${col.key}`}
                     className={stickyHeader ? "users-table__sticky-filter" : undefined}
-                    style={{ textAlign: effectiveHeaderAlign || undefined }}
+                    style={{
+                      textAlign: effectiveHeaderAlign || undefined,
+                      ...(col.width ? { width: col.width } : {}),
+                      ...(col.minWidth ? { minWidth: col.minWidth } : col.width ? { minWidth: col.width } : {}),
+                    }}
                   >
                     <input
                       className="users-table__filter-input"
@@ -1053,7 +1058,14 @@ function CrudPage({
                     </td>
                   ) : null}
                   {tableColumns.map((col) => (
-                    <td key={col.key} style={col.align ? { textAlign: col.align } : undefined}>
+                    <td
+                      key={col.key}
+                      style={{
+                        ...(col.align ? { textAlign: col.align } : {}),
+                        ...(col.width ? { width: col.width } : {}),
+                        ...(col.minWidth ? { minWidth: col.minWidth } : col.width ? { minWidth: col.width } : {}),
+                      }}
+                    >
                       {col.render ? col.render(row) : formatDateTimeForTable(row[col.key])}
                     </td>
                   ))}
@@ -1199,6 +1211,7 @@ function CrudPage({
                         filterOption={field.filterOption}
                         options={resolvedOptions}
                         placeholder={resolvedPlaceholder || `Select ${field.label}`}
+                        components={field.components}
                         value={(() => {
                           const current = String(formValues[field.key] ?? "").trim();
                           if (!current) return null;

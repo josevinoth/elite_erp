@@ -7,7 +7,6 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from ..sub_models.project_costing_items_mod import ProjectCostingItemInfo
-from ..sub_models.project_quotation_items_mod import ProjectQuotationItemInfo
 from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
 from ..sub_models.lab_furniture_item import LabFurnitureItem
 from ..sub_models.stock_purchase import StockPurchaseItem
@@ -146,12 +145,14 @@ def items_to_order_api_view(request):
             "costing_id",
             "costing_id__quotation_number",
             "costing_id__project",
+            "costing_id__updated_by",
             "item_code",
             "item_code__item_code_ref",
             "item_code__item_type",
             "item_code__item_category",
             "item_category",
             "item_type",
+            "requested_by",
         )
         .order_by("-costing_id__updated_at", "id")
     )
@@ -166,6 +167,12 @@ def items_to_order_api_view(request):
         "item_type": "",
         "count": 0,
         "stage": "Costing",
+        "references": set(),
+        "projects": {},
+        "requested_bys": set(),
+        "requested_dates": [],
+        "updated_bys": set(),
+        "updated_dates": [],
     })
 
     costing_project_ids = set()
@@ -179,6 +186,44 @@ def items_to_order_api_view(request):
         entry = costing_by_code[code]
         entry["requested_qty"] += Decimal(str(c.requested_qty or 0))
         entry["count"] += 1
+
+        costing = c.costing_id
+        qtn = getattr(costing, "quotation_number", None)
+        prj = getattr(costing, "project", None)
+        ref_no = getattr(costing, "costing_id", None) or getattr(qtn, "quotation_number", None) or f"COST-{costing.id}"
+        if ref_no:
+            entry["references"].add(str(ref_no).strip())
+
+        prj_code = getattr(prj, "project_id", "") or ""
+        prj_title = getattr(prj, "project_name", "") or ""
+        if prj_code or prj_title:
+            entry["projects"][prj_code] = prj_title
+
+        req_by = (
+            getattr(c.requested_by, "get_full_name", lambda: "")()
+            or getattr(c.requested_by, "username", "")
+            or ""
+        ).strip()
+        if req_by:
+            entry["requested_bys"].add(req_by)
+
+        req_date = c.requested_on or c.created_at
+        if req_date:
+            entry["requested_dates"].append(req_date)
+
+        upd_by = getattr(costing, "updated_by", None)
+        upd_name = (
+            getattr(upd_by, "get_full_name", lambda: "")()
+            or getattr(upd_by, "username", "")
+            or ""
+        ).strip()
+        if upd_name:
+            entry["updated_bys"].add(upd_name)
+
+        upd_date = c.updated_at or getattr(costing, "updated_at", None)
+        if upd_date:
+            entry["updated_dates"].append(upd_date)
+
         if not entry["item_code_ref_id"]:
             entry["item_code_ref_id"] = getattr(c, "item_code_id", None)
             entry["item_name"] = c.item_name or getattr(c.item_code, "item_name", "") or ""
@@ -189,70 +234,9 @@ def items_to_order_api_view(request):
             )
             entry["item_type"] = _resolve_item_type_name(c)
 
-    # 4. Pull missing stock from Work In Progress Quotations (exclude projects already in Costing)
-    quotation_items = (
-        ProjectQuotationItemInfo.objects.filter(
-            quotation_number__status__status_name__iexact="Work In Progress",
-            cost_type__name__iexact="MATERIAL",
-            requested_qty__gt=0,
-        )
-        .exclude(quotation_number__project_id__in=costing_project_ids)
-        .select_related(
-            "quotation_number",
-            "quotation_number__project",
-            "item_code",
-            "item_code__item_code_ref",
-            "item_code__item_type",
-            "item_code__item_category",
-            "item_category",
-            "item_type",
-        )
-        .order_by("-quotation_number__updated_at", "id")
-    )
-    if project_id:
-        quotation_items = quotation_items.filter(quotation_number__project_id=project_id)
-
-    quotation_by_code = defaultdict(lambda: {
-        "requested_qty": Decimal("0"),
-        "item_code_ref_id": None,
-        "item_name": "",
-        "item_category": "",
-        "item_type": "",
-        "count": 0,
-        "stage": "Quotation",
-    })
-
-    for q in quotation_items:
-        code = getattr(q.item_code, "item_code", "") or ""
-        code = code.strip().upper()
-        if not code:
-            continue
-        entry = quotation_by_code[code]
-        entry["requested_qty"] += Decimal(str(q.requested_qty or 0))
-        entry["count"] += 1
-        if not entry["item_code_ref_id"]:
-            entry["item_code_ref_id"] = getattr(q, "item_code_id", None)
-            entry["item_name"] = q.item_name or getattr(q.item_code, "item_name", "") or ""
-            entry["item_category"] = (
-                getattr(q.item_category, "name", "")
-                or getattr(getattr(q.item_code, "item_category", None), "name", "")
-                or ""
-            )
-            entry["item_type"] = _resolve_item_type_name(q)
-
-    # Select codes based on stage_filter
-    if stage_filter == "costing":
-        combined_codes = list(costing_by_code.keys())
-    elif stage_filter == "quotation":
-        combined_codes = list(quotation_by_code.keys())
-    else:
-        combined_codes = list(costing_by_code.keys()) + [
-            k for k in quotation_by_code.keys() if k not in costing_by_code
-        ]
-
     results = []
-    for code in sorted(combined_codes):
-        info = costing_by_code.get(code) or quotation_by_code.get(code)
+    for code in sorted(costing_by_code.keys()):
+        info = costing_by_code[code]
         req_qty = info["requested_qty"]
         avail_phys = physical_by_code.get(code, Decimal("0"))
         avail_ord = po_by_code.get(code, Decimal("0"))
@@ -279,6 +263,36 @@ def items_to_order_api_view(request):
             name = info["item_name"] or (m.item_name if m else "") or "—"
             combined = f"{code} _ {cat} _ {name}"
 
+            ref_list = sorted(info.get("references", []))
+            ref_str = ", ".join(ref_list) if ref_list else "—"
+
+            prj_dict = info.get("projects", {})
+            p_ids = [pid for pid in prj_dict.keys() if pid]
+            p_names = [pname for pname in prj_dict.values() if pname]
+            combined_prj_parts = []
+            for pid, pname in sorted(prj_dict.items()):
+                if pid and pname:
+                    combined_prj_parts.append(f"{pid} _ {pname}")
+                elif pid:
+                    combined_prj_parts.append(pid)
+                elif pname:
+                    combined_prj_parts.append(pname)
+            combined_project_str = ", ".join(combined_prj_parts) if combined_prj_parts else "—"
+            project_id_str = ", ".join(sorted(p_ids)) if p_ids else "—"
+            project_name_str = ", ".join(sorted(p_names)) if p_names else "—"
+
+            req_by_list = sorted(info.get("requested_bys", []))
+            req_by_str = ", ".join(req_by_list) if req_by_list else "—"
+
+            req_dates = info.get("requested_dates", [])
+            req_date_str = max(req_dates).strftime("%Y-%m-%d %H:%M") if req_dates else "—"
+
+            upd_by_list = sorted(info.get("updated_bys", []))
+            upd_by_str = ", ".join(upd_by_list) if upd_by_list else (req_by_str if req_by_str != "—" else "—")
+
+            upd_dates = info.get("updated_dates", [])
+            upd_date_str = max(upd_dates).strftime("%Y-%m-%d %H:%M") if upd_dates else (req_date_str if req_date_str != "—" else "—")
+
             results.append({
                 "id": f"item-{code}",
                 "item_id": info["item_code_ref_id"] or (m.pk if m else None),
@@ -286,9 +300,18 @@ def items_to_order_api_view(request):
                 "item_name": name,
                 "item_category": cat,
                 "item_type": info["item_type"] or "MATERIAL",
+                "combined_item": combined,
                 "combined_label": combined,
                 "item_code_ref_id": info["item_code_ref_id"] or (m.pk if m else None),
                 "stage": info["stage"],
+                "reference_number": ref_str,
+                "project_id": project_id_str,
+                "project_name": project_name_str,
+                "combined_project": combined_project_str,
+                "requested_by": req_by_str,
+                "requested_date": req_date_str,
+                "updated_by": upd_by_str,
+                "updated_on": upd_date_str,
                 "requested_qty": f"{req_qty:.2f}",
                 "purchase_qty": f"{alloc_phys:.2f}",
                 "already_ordered_qty": f"{alloc_ord:.2f}",

@@ -56,6 +56,21 @@ export const homeNavItems = [
         to: "/projects/project-costing",
         icon: "projectCosting",
       },
+      {
+        label: "Stock Retrieval",
+        to: "/stock-retrieval",
+        icon: "stockRetrieval",
+      },
+      {
+        label: "Stock Acceptance",
+        to: "/stock-acceptance",
+        icon: "stockAcceptance",
+      },
+      {
+        label: "Stock Return",
+        to: "/stock-return",
+        icon: "stockReturn",
+      },
     ],
   },
   { label: "Landing Cost Estimate (LCE)", to: "/projects/costing", icon: "lce", superAdminOnly: true },
@@ -63,7 +78,7 @@ export const homeNavItems = [
   { label: "Vendors", to: "/vendors", icon: "vendors" },
   { label: "Orders", to: "/orders", icon: "orders" },
   {
-    label: "Stocks:",
+    label: "Stocks",
     to: "/stocks",
     icon: "stocks",
     disableParentNavigation: true,
@@ -99,21 +114,6 @@ export const homeNavItems = [
         label: "Items to Order",
         to: "/items-to-order",
         icon: "itemsToOrder",
-      },
-      {
-        label: "Stock Retrieval",
-        to: "/stock-retrieval",
-        icon: "stockRetrieval",
-      },
-      {
-        label: "Stock Acceptance",
-        to: "/stock-acceptance",
-        icon: "stockAcceptance",
-      },
-      {
-        label: "Stock Return",
-        to: "/stock-return",
-        icon: "stockReturn",
       },
     ],
   },

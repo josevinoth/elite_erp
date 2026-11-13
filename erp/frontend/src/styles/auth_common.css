@@ -697,13 +697,40 @@ select.auth-input option {
   border-color: rgba(139, 92, 246, 0.28);
 }
 
-.home-sidenav__icon-box--stocks,
-.home-sidenav__icon-box--stocksList,
-.home-sidenav__icon-box--stockPurchase,
-.home-sidenav__icon-box--placeStockOrder {
+.home-sidenav__icon-box--stocks {
+  background: rgba(16, 185, 129, 0.22);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.home-sidenav__icon-box--itemMaster {
+  background: rgba(14, 165, 233, 0.18);
+  color: #38bdf8;
+  border-color: rgba(14, 165, 233, 0.28);
+}
+
+.home-sidenav__icon-box--itemCodeNames {
+  background: rgba(99, 102, 241, 0.18);
+  color: #818cf8;
+  border-color: rgba(99, 102, 241, 0.28);
+}
+
+.home-sidenav__icon-box--stocksList {
   background: rgba(16, 185, 129, 0.18);
   color: #34d399;
   border-color: rgba(16, 185, 129, 0.28);
+}
+
+.home-sidenav__icon-box--stockPurchase {
+  background: rgba(20, 184, 166, 0.18);
+  color: #2dd4bf;
+  border-color: rgba(20, 184, 166, 0.28);
+}
+
+.home-sidenav__icon-box--placeStockOrder {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.28);
 }
 
 .home-sidenav__icon-box--itemsToOrder {
@@ -713,26 +740,34 @@ select.auth-input option {
 }
 
 .home-sidenav__icon-box--stockPlanning,
-.home-sidenav__icon-box--stockMaintenance,
-.home-sidenav__icon-box--stockRetrieval,
-.home-sidenav__icon-box--stockReturn {
+.home-sidenav__icon-box--stockMaintenance {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.home-sidenav__icon-box--stockRetrieval {
   background: rgba(234, 179, 8, 0.18);
   color: #facc15;
   border-color: rgba(234, 179, 8, 0.28);
+}
+
+.home-sidenav__icon-box--stockAcceptance {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.28);
+}
+
+.home-sidenav__icon-box--stockReturn {
+  background: rgba(244, 63, 94, 0.18);
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.28);
 }
 
 .home-sidenav__icon-box--stockManufacture {
   background: rgba(59, 130, 246, 0.18);
   color: #60a5fa;
   border-color: rgba(59, 130, 246, 0.28);
-}
-
-.home-sidenav__icon-box--stockAcceptance,
-.home-sidenav__icon-box--itemMaster,
-.home-sidenav__icon-box--itemCodeNames {
-  background: rgba(20, 184, 166, 0.18);
-  color: #2dd4bf;
-  border-color: rgba(20, 184, 166, 0.28);
 }
 
 .home-sidenav__icon-box--cdcExpense {
@@ -1450,9 +1485,14 @@ select.auth-input option {
 
 .crud-page .users-table-wrap--item-master .users-table th,
 .crud-page .users-table-wrap--item-master .users-table td {
-  min-width: 120px;
+  min-width: 75px;
   max-width: none;
-  width: 120px;
+}
+
+.crud-page .users-table-wrap--item-master .users-table th:first-child,
+.crud-page .users-table-wrap--item-master .users-table td:first-child {
+  min-width: 320px;
+  width: 320px;
 }
 
 .crud-page .users-table-wrap--item-master .users-table th {
@@ -1475,6 +1515,36 @@ select.auth-input option {
 .crud-page .users-table-wrap--item-master .users-table .users-table__actions-col {
   width: 74px;
   min-width: 74px;
+}
+
+.crud-page .users-table-wrap--stocks-list {
+  overflow-x: auto;
+}
+
+.crud-page .users-table-wrap--stocks-list .users-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.crud-page .users-table-wrap--stocks-list .users-table th,
+.crud-page .users-table-wrap--stocks-list .users-table td {
+  min-width: 75px;
+  max-width: none;
+  white-space: normal;
+}
+
+.crud-page .users-table-wrap--stocks-list .users-table__sort-btn {
+  white-space: normal;
+  align-items: flex-start;
+}
+
+.crud-page .users-table-wrap--stocks-list .users-table__sort-btn span:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .users-table__filter-input,

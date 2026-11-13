@@ -10,7 +10,6 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
   const [filters, setFilters] = useState({
     project: "",
     qty: "",
-    stage: "ALL",
   });
 
   const [sortConfig, setSortConfig] = useState({
@@ -18,22 +17,24 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
     direction: "asc",
   });
 
+  const targetId = item?.item_id || item?.id || item?.item_code;
+
   useEffect(() => {
-    if (!item?.id) return;
+    if (!targetId) return;
     let isMounted = true;
     setLoading(true);
     setError(null);
 
-    getLabFurnitureItemRequestedProjects(item.id)
+    getLabFurnitureItemRequestedProjects(targetId)
       .then((data) => {
         if (!isMounted) return;
         if (data && data.success) {
           setProjects(data.projects || []);
           setItemMeta({
-            item_code: data.item_code,
-            item_name: data.item_name,
-            item_category: data.item_category,
-            total_reqd: data.total_reqd,
+            item_code: data.item_code || item?.item_code || "",
+            item_name: data.item_name || item?.item_name || "",
+            item_category: data.item_category || item?.item_category || "",
+            total_reqd: data.total_reqd != null ? data.total_reqd : (item?.total_reqd || item?.requested_qty || 0),
           });
         } else {
           setError(data?.message || "Failed to load project requirements.");
@@ -50,7 +51,7 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
     return () => {
       isMounted = false;
     };
-  }, [item?.id]);
+  }, [targetId, item]);
 
   const handleSort = (key) => {
     setSortConfig((prev) => {
@@ -82,7 +83,8 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
         const display = (p.project_display || "").toLowerCase();
         const code = (p.project_id || "").toLowerCase();
         const name = (p.project_name || "").toLowerCase();
-        if (!display.includes(query) && !code.includes(query) && !name.includes(query)) {
+        const ref = (p.reference_no || "").toLowerCase();
+        if (!display.includes(query) && !code.includes(query) && !name.includes(query) && !ref.includes(query)) {
           return false;
         }
       }
@@ -93,12 +95,6 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
           if (Number(p.requested_qty) < numFilter) return false;
         } else {
           if (!String(p.requested_qty).includes(filters.qty.trim())) return false;
-        }
-      }
-
-      if (filters.stage && filters.stage !== "ALL") {
-        if ((p.stage || "").toUpperCase() !== filters.stage.toUpperCase()) {
-          return false;
         }
       }
 
@@ -296,7 +292,7 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span>Project ID + Project Name</span>
+                        <span>Project ID & Name / Reference #</span>
                         {getSortIndicator("project_display")}
                       </div>
                     </th>
@@ -316,22 +312,6 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
                         {getSortIndicator("requested_qty")}
                       </div>
                     </th>
-                    <th
-                      onClick={() => handleSort("stage")}
-                      style={{
-                        cursor: "pointer",
-                        userSelect: "none",
-                        width: "140px",
-                        padding: "8px 12px",
-                        textAlign: "center",
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
-                        <span>Stage</span>
-                        {getSortIndicator("stage")}
-                      </div>
-                    </th>
                   </tr>
 
                   {/* Filter inputs under header */}
@@ -340,7 +320,7 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
                       <input
                         type="text"
                         className="users-table__filter-input"
-                        placeholder="Filter project ID or name..."
+                        placeholder="Filter by project ID, name, or reference #..."
                         value={filters.project}
                         onChange={(e) => setFilters((f) => ({ ...f, project: e.target.value }))}
                         style={{
@@ -371,39 +351,20 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
                         }}
                       />
                     </th>
-                    <th style={{ padding: "5px 8px", borderBottom: "2px solid #cbd5e1" }}>
-                      <select
-                        className="users-table__filter-input"
-                        value={filters.stage}
-                        onChange={(e) => setFilters((f) => ({ ...f, stage: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "4px 8px",
-                          fontSize: "0.8rem",
-                          borderRadius: "4px",
-                          border: "1px solid #cbd5e1",
-                          background: "#ffffff",
-                        }}
-                      >
-                        <option value="ALL">All Stages</option>
-                        <option value="Costing">Costing</option>
-                        <option value="Quotation">Quotation</option>
-                      </select>
-                    </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {sortedProjects.length === 0 ? (
                     <tr>
-                      <td colSpan={3} style={{ textAlign: "center", padding: "2rem", color: "#64748b" }}>
+                      <td colSpan={2} style={{ textAlign: "center", padding: "2rem", color: "#64748b" }}>
                         No projects match the current filters.
                       </td>
                     </tr>
                   ) : (
                     sortedProjects.map((proj, idx) => (
                       <tr
-                        key={`${proj.project_id}-${proj.stage}-${idx}`}
+                        key={`${proj.project_id}-${idx}`}
                         style={{
                           borderBottom: "1px solid #f1f5f9",
                           transition: "background 0.1s ease",
@@ -419,14 +380,17 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
                               <span
                                 style={{
                                   fontSize: "0.75rem",
-                                  color: "#64748b",
-                                  background: "#f1f5f9",
+                                  color: "#1e40af",
+                                  background: "#eff6ff",
+                                  border: "1px solid #bfdbfe",
                                   padding: "1px 6px",
                                   borderRadius: "4px",
+                                  fontWeight: 600,
                                   marginLeft: "4px",
                                 }}
+                                title="Costing Reference #"
                               >
-                                {proj.reference_no}
+                                Ref: {proj.reference_no}
                               </span>
                             )}
                           </div>
@@ -436,40 +400,6 @@ export default function TotalReqdProjectsModal({ item, onClose }) {
                           <span style={{ fontWeight: 700, color: "#0284c7", fontSize: "0.95rem" }}>
                             {formatQty(proj.requested_qty)}
                           </span>
-                        </td>
-
-                        <td style={{ textAlign: "center", padding: "8px 12px" }}>
-                          {proj.stage === "Costing" ? (
-                            <span
-                              style={{
-                                background: "#ecfdf5",
-                                color: "#047857",
-                                border: "1px solid #a7f3d0",
-                                padding: "3px 10px",
-                                borderRadius: "12px",
-                                fontSize: "0.76rem",
-                                fontWeight: 600,
-                                display: "inline-block",
-                              }}
-                            >
-                              Costing
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                background: "#eff6ff",
-                                color: "#1d4ed8",
-                                border: "1px solid #bfdbfe",
-                                padding: "3px 10px",
-                                borderRadius: "12px",
-                                fontSize: "0.76rem",
-                                fontWeight: 600,
-                                display: "inline-block",
-                              }}
-                            >
-                              Quotation
-                            </span>
-                          )}
                         </td>
                       </tr>
                     ))
