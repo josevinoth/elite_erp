@@ -587,7 +587,10 @@ def item_consumed_projects_api_view(request, pk):
             "project_name": project_name,
             "consumed_qty": Decimal("0"),
         })
-        project["consumed_qty"] += consumed_qty
+        current_consumed = project.get("consumed_qty")
+        if not isinstance(current_consumed, Decimal):
+            current_consumed = Decimal(str(current_consumed or "0"))
+        project["consumed_qty"] = current_consumed + consumed_qty
 
     legacy_rows = (
         ProjectCostingItemInfo.objects.filter(
@@ -612,7 +615,10 @@ def item_consumed_projects_api_view(request, pk):
             "project_name": row["costing_id__project__project_name"] or "",
             "consumed_qty": Decimal("0"),
         })
-        project["consumed_qty"] += consumed_qty
+        current_consumed = project.get("consumed_qty")
+        if not isinstance(current_consumed, Decimal):
+            current_consumed = Decimal(str(current_consumed or "0"))
+        project["consumed_qty"] = current_consumed + consumed_qty
 
     projects = []
     for project in projects_by_id.values():
