@@ -15,6 +15,7 @@ async function noopDelete() {
 
 function StandardListPage({
   title,
+  titleIcon = null,
   description = null,
   columns,
   fetchRows,
@@ -41,6 +42,7 @@ function StandardListPage({
   showDefaultEdit = false,
   showDefaultDelete = false,
   enableRowClickEdit = true,
+  tableWrapClassName = null,
 }) {
   const fetchFn = useCallback(async () => {
     const data = await fetchRows();
@@ -50,6 +52,7 @@ function StandardListPage({
   return (
     <CrudPage
       title={title}
+      titleIcon={titleIcon}
       description={description}
       columns={columns}
       fields={[]}
@@ -65,6 +68,7 @@ function StandardListPage({
       exportFileName={exportFileName || title}
       includeAuditColumns={includeAuditColumns}
       tableMaxHeight={tableMaxHeight}
+      tableWrapClassName={tableWrapClassName}
       stickyHeader={stickyHeader}
       defaultPageSize={defaultPageSize}
       pageSizeOptions={pageSizeOptions}

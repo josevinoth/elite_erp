@@ -9,17 +9,20 @@ import StockGrnConsumedProjectsModal from "../components/StockGrnConsumedProject
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 const TABLE_COLUMNS = [
-  { key: "grn_number", label: "GRN Number" },
-  { key: "vendor", label: "Vendor" },
-  { key: "item_category", label: "Item Category" },
-  { key: "item_name", label: "Item Name" },
-  { key: "item_code", label: "Item Code" },
-  { key: "purchased_qty", label: "Purchased Qty" },
-  { key: "consumed_qty", label: "Consumed Qty" },
-  { key: "balance_qty", label: "Balance Qty" },
-  { key: "unit_price", label: "Unit Price" },
-  { key: "total_price", label: "Total Price" },
-  { key: "lce_cost", label: "LCE Cost" },
+  { key: "grn_number", label: "GRN Number", width: "110px", minWidth: "95px" },
+  { key: "vendor", label: "Vendor", width: "140px", minWidth: "120px" },
+  {
+    key: "combined_item",
+    label: "Item (Code _ Category _ Name)",
+    width: "320px",
+    minWidth: "280px",
+  },
+  { key: "purchased_qty", label: "Purchased Qty", align: "right", width: "85px", minWidth: "75px" },
+  { key: "consumed_qty", label: "Consumed Qty", align: "right", width: "85px", minWidth: "75px" },
+  { key: "balance_qty", label: "Balance Qty", align: "right", width: "80px", minWidth: "70px" },
+  { key: "unit_price", label: "Unit Price", align: "right", width: "85px", minWidth: "75px" },
+  { key: "total_price", label: "Total Price", align: "right", width: "95px", minWidth: "85px" },
+  { key: "lce_cost", label: "LCE Cost", align: "right", width: "85px", minWidth: "75px" },
 ];
 
 function StocksListPage() {
@@ -36,6 +39,11 @@ function StocksListPage() {
     purchases.forEach((purchase) => {
       const items = Array.isArray(purchase?.items) ? purchase.items : [];
       items.forEach((item) => {
+        const code = (item.item_code || "").trim();
+        const cat = (item.item_category || "").trim();
+        const name = (item.item_name || "").trim();
+        const combined = [code, cat, name].filter(Boolean).join(" _ ") || "—";
+
         flattened.push({
           key: `${purchase.id}-${item.id || item.item_code || item.item_name}`,
           purchase_id: purchase.id,
@@ -43,9 +51,10 @@ function StocksListPage() {
           item_code_id: item.item_code_id || item.item_master_id || "",
           grn_number: item.grn_number || "-",
           vendor: purchase.vendor_name || "",
-          item_category: item.item_category || "",
-          item_name: item.item_name || "",
-          item_code: item.item_code || "",
+          item_category: cat,
+          item_name: name,
+          item_code: code,
+          combined_item: combined,
           purchased_qty: item.purchase_qty || item.quantity || "0",
           consumed_qty: item.consumed_qty || "0",
           balance_qty: item.balance_qty || (item.purchase_qty || item.quantity || "0"),
@@ -63,6 +72,16 @@ function StocksListPage() {
   }, []);
 
   const columns = useMemo(() => TABLE_COLUMNS.map((column) => {
+    if (column.key === "combined_item") {
+      return {
+        ...column,
+        render: (row) => (
+          <span style={{ fontWeight: 600, color: "#0f172a" }}>
+            {row.combined_item || [row.item_code, row.item_category, row.item_name].filter(Boolean).join(" _ ") || "—"}
+          </span>
+        ),
+      };
+    }
     if (column.key === "purchased_qty" || column.key === "consumed_qty") {
       const isPurchased = column.key === "purchased_qty";
       return {
@@ -77,7 +96,7 @@ function StocksListPage() {
               else setSelectedConsumedItem(row);
             }}
             title={isPurchased
-              ? `View purchase details for ${row.item_code}`
+              ? `View purchase details for ${row.item_code || row.combined_item}`
               : `View projects consuming ${row.grn_number}`}
             style={{
               background: isPurchased ? "#e0f2fe" : "#fef3c7",
@@ -144,6 +163,7 @@ function StocksListPage() {
       defaultPageSize={20}
       pageSizeOptions={PAGE_SIZE_OPTIONS}
       tableMaxHeight="62vh"
+      tableWrapClassName="users-table-wrap--stocks-list"
     />
     {selectedPurchaseItem && (
       <StockPurchaseDetailsModal

@@ -1414,18 +1414,18 @@ function StockPurchaseAddPage() {
                         </button>
                     </div>
                     <div className="users-table-wrap" style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}>
-                        <table className="users-table users-table--sp-items" style={{ minWidth: "100%" }}>
+                        <table className="users-table users-table--sp-purchase-items" style={{ minWidth: "100%", width: "100%" }}>
                             <thead>
                             <tr>
-                                <th style={{ width: "240px", whiteSpace: "normal", wordWrap: "break-word" }}>Item (Code _ Category _ Name)</th>
-                                <th style={{ width: "95px" }}>GRN No.</th>
-                                <th style={{ width: "85px" }}>UOM</th>
-                                {selectedPoId ? <th style={{ width: "100px", textAlign: "right" }}>Qty Ordered</th> : null}
-                                <th style={{ width: "115px", textAlign: "right" }}>Qty Received *</th>
-                                <th style={{ width: "125px", textAlign: "right" }}>Cost (Unit Price) *</th>
-                                <th style={{ width: "90px", textAlign: "right" }}>Tax (%)</th>
-                                <th style={{ width: "115px", textAlign: "right" }}>Total Price</th>
-                                <th style={{ width: "125px", textAlign: "right" }}>Total After Tax</th>
+                                <th style={{ minWidth: "320px", whiteSpace: "normal", wordWrap: "break-word" }}>Item (Code _ Category _ Name)</th>
+                                <th style={{ width: "85px", minWidth: "85px", padding: "0.5rem 0.4rem" }}>GRN No.</th>
+                                <th style={{ width: "65px", minWidth: "65px", padding: "0.5rem 0.4rem" }}>UOM</th>
+                                {selectedPoId ? <th style={{ width: "90px", minWidth: "90px", textAlign: "right", padding: "0.5rem 0.4rem" }}>Qty Ordered</th> : null}
+                                <th style={{ width: "110px", textAlign: "right" }}>Qty Received *</th>
+                                <th style={{ width: "120px", textAlign: "right" }}>Cost (Unit Price) *</th>
+                                <th style={{ width: "85px", textAlign: "right" }}>Tax (%)</th>
+                                <th style={{ width: "110px", textAlign: "right" }}>Total Price</th>
+                                <th style={{ width: "120px", textAlign: "right" }}>Total After Tax</th>
                                 <th style={{ width: "70px", textAlign: "center" }}>Action</th>
                             </tr>
                             </thead>
@@ -1438,29 +1438,29 @@ function StockPurchaseAddPage() {
 
                                 return (
                                     <tr key={row.rowId}>
-                                        <td style={{ maxWidth: "260px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>
-                                            <div style={{ fontWeight: 600, color: "#1e293b", fontSize: "0.88rem" }}>
+                                        <td style={{ minWidth: "320px", whiteSpace: "normal", wordWrap: "break-word", overflowWrap: "break-word" }}>
+                                            <div style={{ fontWeight: 600, color: "#1e293b", fontSize: "0.88rem", lineHeight: 1.35 }}>
                                                 {itemDisplayName || (isStubRow ? <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not set</span> : "—")}
                                             </div>
                                         </td>
-                                        <td style={{ width: "95px" }}>
+                                        <td style={{ width: "85px", minWidth: "85px", padding: "0.5rem 0.4rem" }}>
                                             {row.grn_number ? (
                                                 <span style={{ fontWeight: 600, color: "#0f766e" }}>{row.grn_number}</span>
                                             ) : (
                                                 <span style={{ color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem" }}>Auto</span>
                                             )}
                                         </td>
-                                        <td style={{ width: "85px" }}>
+                                        <td style={{ width: "65px", minWidth: "65px", padding: "0.5rem 0.4rem" }}>
                                             {uomDisplay}
                                         </td>
                                         {selectedPoId ? (
-                                            <td style={{ width: "100px", textAlign: "right" }}>
-                                                <span style={{ fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>
+                                            <td style={{ width: "90px", minWidth: "90px", textAlign: "right", padding: "0.5rem 0.4rem" }}>
+                                                <span style={{ fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "0.2rem 0.45rem", borderRadius: "4px" }}>
                                                     {row.po_order_qty || "—"}
                                                 </span>
                                             </td>
                                         ) : null}
-                                        <td style={{ width: "115px", textAlign: "right" }}>
+                                        <td style={{ width: "110px", textAlign: "right" }}>
                                             <input
                                                 type="number"
                                                 min="0"
@@ -1473,7 +1473,7 @@ function StockPurchaseAddPage() {
                                                 required
                                             />
                                         </td>
-                                        <td style={{ width: "125px", textAlign: "right" }}>
+                                        <td style={{ width: "120px", textAlign: "right" }}>
                                             <input
                                                 type="number"
                                                 min="0"
@@ -1486,7 +1486,7 @@ function StockPurchaseAddPage() {
                                                 required
                                             />
                                         </td>
-                                        <td style={{ width: "90px", textAlign: "right" }}>
+                                        <td style={{ width: "85px", textAlign: "right" }}>
                                             <input
                                                 type="number"
                                                 min="0"
@@ -1499,10 +1499,10 @@ function StockPurchaseAddPage() {
                                                 placeholder="5"
                                             />
                                         </td>
-                                        <td style={{ width: "115px", textAlign: "right", fontWeight: 600, color: "#334155" }}>
+                                        <td style={{ width: "110px", textAlign: "right", fontWeight: 600, color: "#334155" }}>
                                             {row.total_price || "0.00"}
                                         </td>
-                                        <td style={{ width: "125px", textAlign: "right", fontWeight: 700, color: "#0f766e" }}>
+                                        <td style={{ width: "120px", textAlign: "right", fontWeight: 700, color: "#0f766e" }}>
                                             {row.total_after_tax || "0.00"}
                                         </td>
                                         <td style={{ width: "70px", verticalAlign: "middle", textAlign: "center" }}>

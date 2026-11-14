@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { components } from "react-select";
 import CrudPage from "../components/CrudPage";
 import TotalReqdProjectsModal from "../components/TotalReqdProjectsModal";
 import OrderedQtyPosModal from "../components/OrderedQtyPosModal";
@@ -28,22 +29,24 @@ const BUSINESS_CRITICALITY_OPTIONS = [
 ];
 
 const COLUMNS = [
-  { key: "item_category", label: "Item Category" },
-  { key: "item_name", label: "Item Name" },
-  { key: "item_code", label: "Item Code" },
-  { key: "procurement_classification", label: "Procurement Classification" },
-  { key: "business_criticality", label: "Business Criticality" },
-  { key: "item_type", label: "Item Type" },
-  { key: "uom", label: "UOM" },
-  { key: "total_reqd", label: "Total Reqd" },
-  { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty" },
-  { key: "warning_alert_qty", label: "Warning Alert Qty" },
-  { key: "physical_qty", label: "Physical Qty" },
-  { key: "ordered_qty", label: "Ordered Qty" },
-  { key: "consumed_qty", label: "Consumed Qty" },
-  { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty" },
-  { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)" },
-  { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)" },
+  {
+    key: "combined_item",
+    label: "Item (Code _ Category _ Name)",
+    width: "320px",
+    minWidth: "300px",
+  },
+  { key: "uom", label: "UOM", width: "90px", minWidth: "80px" },
+  { key: "physical_qty", label: "Physical Qty", align: "right", width: "80px", minWidth: "70px" },
+  { key: "ordered_qty", label: "Ordered Qty", align: "right", width: "80px", minWidth: "70px" },
+  { key: "physical_plus_ordered_qty", label: "Phy. + Ord. Qty", align: "right", width: "85px", minWidth: "75px" },
+  { key: "total_reqd", label: "Total Reqd", align: "right", width: "80px", minWidth: "70px" },
+  { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)", align: "right", width: "135px", minWidth: "115px" },
+  { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty", align: "right", width: "115px", minWidth: "95px" },
+  { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)", align: "right", width: "135px", minWidth: "115px" },
+  { key: "warning_alert_qty", label: "Warning Alert Qty", align: "right", width: "80px", minWidth: "70px" },
+  { key: "procurement_classification", label: "Procurement Classification", width: "110px", minWidth: "95px" },
+  { key: "business_criticality", label: "Business Criticality", width: "105px", minWidth: "90px" },
+  { key: "item_type", label: "Item Type", width: "90px", minWidth: "80px" },
 ];
 
 const FIELDS = [
@@ -58,14 +61,16 @@ const FIELDS = [
     label: "Procurement Classification",
     options: PROCUREMENT_CLASSIFICATION_OPTIONS,
     placeholder: "Select Procurement Classification",
-    isClearable: true,
+    required: true,
+    isClearable: false,
   },
   {
     key: "business_criticality",
     label: "Business Criticality",
     options: BUSINESS_CRITICALITY_OPTIONS,
     placeholder: "Select Business Criticality",
-    isClearable: true,
+    required: true,
+    isClearable: false,
   },
   { key: "item_type_id", label: "Item Type", required: true },
   { key: "uom_id", label: "UOM", required: true },
@@ -76,8 +81,8 @@ const FIELDS = [
   { key: "total_reqd", label: "Total Reqd", type: "number", min: 0, step: "any", default: "0" },
   { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty", type: "number", min: 0, step: "any", default: "0" },
   { key: "warning_alert_qty", label: "Warning Alert Qty", type: "number", min: 0, step: "any", default: "0" },
-  { key: "physical_qty", label: "Physical Qty", type: "number", min: 0, step: "any", default: "0" },
-  { key: "ordered_qty", label: "Ordered Qty", type: "number", min: 0, step: "any", default: "0" },
+  { key: "physical_qty", label: "Physical Qty", type: "number", readOnly: true, default: "0" },
+  { key: "ordered_qty", label: "Ordered Qty", type: "number", readOnly: true, default: "0" },
   { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty", type: "number", readOnly: true, default: "0" },
   { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)", type: "number", readOnly: true, default: "0" },
   { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)", type: "number", readOnly: true, default: "0" },
@@ -107,7 +112,125 @@ function withQuantityDefaults(row = {}) {
   next.to_order_qty = (Number.isFinite(tot) ? tot : 0) - next.physical_plus_ordered_qty;
   next.to_order_qty_including_free_stock =
     (Number.isFinite(tot) ? tot : 0) + (Number.isFinite(rec) ? rec : 0) - next.physical_plus_ordered_qty;
+  const code = (next.item_code || "").trim();
+  const cat = (next.item_category || "").trim();
+  const name = (next.item_name || "").trim();
+  next.combined_item = [code, cat, name].filter(Boolean).join(" _ ") || "—";
   return next;
+}
+
+function ItemCodeMenuList(props) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const childrenArray = useMemo(() => {
+    if (!props.children) return [];
+    return Array.isArray(props.children) ? props.children : [props.children];
+  }, [props.children]);
+
+  const filteredChildren = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return childrenArray;
+    const searchTerms = q.split(/\s+/).filter(Boolean);
+    return childrenArray.filter((child) => {
+      const data = child?.props?.data;
+      const text = String(data?.label || child?.props?.children || "").toLowerCase();
+      return searchTerms.every((term) => text.includes(term));
+    });
+  }, [childrenArray, query]);
+
+  return (
+    <components.MenuList {...props}>
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          background: "#ffffff",
+          zIndex: 20,
+          padding: "8px 10px",
+          borderBottom: "1px solid #e2e8f0",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <span
+            style={{
+              position: "absolute",
+              left: "10px",
+              color: "#64748b",
+              fontSize: "0.85rem",
+              pointerEvents: "none",
+            }}
+          >
+            🔍
+          </span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by item code, category or name..."
+            style={{
+              width: "100%",
+              padding: "7px 28px 7px 30px",
+              fontSize: "0.85rem",
+              borderRadius: "6px",
+              border: "1px solid #cbd5e1",
+              outline: "none",
+              boxSizing: "border-box",
+              backgroundColor: "#f8fafc",
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") {
+                e.stopPropagation();
+              }
+            }}
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setQuery("");
+                inputRef.current?.focus();
+              }}
+              style={{
+                position: "absolute",
+                right: "6px",
+                background: "none",
+                border: "none",
+                color: "#94a3b8",
+                cursor: "pointer",
+                padding: "2px 6px",
+                fontSize: "0.85rem",
+              }}
+              title="Clear search"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {filteredChildren.length === 0 ? (
+        <div style={{ padding: "1.5rem", textAlign: "center", color: "#64748b", fontSize: "0.85rem" }}>
+          No matching items found for &ldquo;{query}&rdquo;
+        </div>
+      ) : (
+        filteredChildren
+      )}
+    </components.MenuList>
+  );
 }
 
 function StockItemsPage() {
@@ -236,6 +359,9 @@ function StockItemsPage() {
     {
       ...FIELDS[0],
       options: itemCodeOptions,
+      components: {
+        MenuList: ItemCodeMenuList,
+      },
       filterOption: (candidate, input) => {
         if (!input) return true;
         const terms = input.toLowerCase().split(/\s+/).filter(Boolean);
@@ -314,6 +440,16 @@ function StockItemsPage() {
 
   const columns = useMemo(() => {
     return COLUMNS.map((col) => {
+      if (col.key === "combined_item") {
+        return {
+          ...col,
+          render: (row) => (
+            <span style={{ fontWeight: 600, color: "#0f172a" }}>
+              {row.combined_item || [row.item_code, row.item_category, row.item_name].filter(Boolean).join(" _ ") || "—"}
+            </span>
+          ),
+        };
+      }
       if (col.key === "total_reqd") {
         return {
           ...col,
@@ -419,6 +555,46 @@ function StockItemsPage() {
               >
                 <span>{val}</span>
                 {hasConsumed && <span style={{ fontSize: "0.75rem" }}>📋</span>}
+              </button>
+            );
+          },
+        };
+      }
+      if (col.key === "to_order_qty" || col.key === "to_order_qty_including_free_stock") {
+        return {
+          ...col,
+          align: "right",
+          render: (row) => {
+            const val = Number(row[col.key] || 0);
+            const hasToOrder = val > 0;
+            const hasReq = Number(row.total_reqd || 0) > 0;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (hasReq || hasToOrder) {
+                    setSelectedRequestedItem(row);
+                  }
+                }}
+                style={{
+                  background: hasToOrder ? "#fee2e2" : "#f8fafc",
+                  color: hasToOrder ? "#b91c1c" : "#64748b",
+                  border: hasToOrder ? "1px solid #fca5a5" : "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontWeight: 700,
+                  cursor: hasReq || hasToOrder ? "pointer" : "default",
+                  fontSize: "0.82rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  transition: "all 0.15s ease",
+                }}
+                title={hasToOrder ? `View requirements for ${row.item_code} (${val} to order)` : (hasReq ? "View project requirements" : "No order required")}
+              >
+                <span>{val}</span>
+                {hasToOrder && <span style={{ fontSize: "0.75rem", opacity: 0.85 }}>📋</span>}
               </button>
             );
           },

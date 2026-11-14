@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from ..sub_models import Project, ProjectStatusOption
+from ..sub_models import Project, ProjectStatusOption, Customer
 from ..sub_models.approval_status_mod import ApprovalStatus_info
 from ..sub_models.non_moe_product_series_mod import NonMOEProductSeries_info
 from ..sub_models.non_standard_lab_mod import NonStandardLab_info
@@ -114,6 +114,10 @@ def _serialize(project):
         'status': status_name,
         'expected_customer_need_date': str(
             project.expected_customer_need_date) if project.expected_customer_need_date else '',
+        'customer': project.customer_id,
+        'customer_id': project.customer_id,
+        'customer_name': project.customer.name if getattr(project, 'customer', None) else '',
+        'customer_code': project.customer.customer_code if getattr(project, 'customer', None) else '',
         'updated_at': project.updated_at.isoformat() if project.updated_at else '',
         'updated_on': project.updated_at.strftime("%Y-%m-%d %H:%M:%S") if project.updated_at else '',
     }
@@ -262,6 +266,10 @@ def list_project_lifecycle_meta_api_view(request):
         {"value": str(user.id), "label": user.username}
         for user in User.objects.filter(is_active=True).order_by('username')
     ]
+    customers = [
+        {"value": str(c.id), "label": f"{c.customer_code} - {c.name}" if c.customer_code else c.name, "name": c.name}
+        for c in Customer.objects.order_by("name")
+    ]
     return Response(
         {
             "statuses": statuses,
@@ -275,6 +283,7 @@ def list_project_lifecycle_meta_api_view(request):
             "approval_statuses": approval_statuses,
             "approvers": approvers,
             "project_owners": project_owners,
+            "customers": customers,
         },
         status=status.HTTP_200_OK,
     )
@@ -599,6 +608,18 @@ def create_project_api_view(request):
     if project_owner is not None:
         create_kwargs['project_owner'] = project_owner
 
+    customer_val = payload.get('customer') or payload.get('customer_id')
+    if customer_val not in (None, ''):
+        try:
+            if str(customer_val).isdigit():
+                customer_obj = Customer.objects.filter(pk=int(customer_val)).first()
+            else:
+                customer_obj = Customer.objects.filter(name__iexact=str(customer_val).strip()).first()
+            if customer_obj:
+                create_kwargs['customer'] = customer_obj
+        except Exception:
+            pass
+
     project = Project.objects.create(
         **create_kwargs,
     )
@@ -787,6 +808,18 @@ def project_detail_api_view(request, project_id):
     )
     if 'project_owner' in payload and payload.get('project_owner') in (None, ''):
         project.project_owner = None
+    if 'customer' in payload or 'customer_id' in payload:
+        c_val = payload.get('customer') if 'customer' in payload else payload.get('customer_id')
+        if c_val in (None, ''):
+            project.customer = None
+        else:
+            try:
+                if str(c_val).isdigit():
+                    project.customer = Customer.objects.filter(pk=int(c_val)).first()
+                else:
+                    project.customer = Customer.objects.filter(name__iexact=str(c_val).strip()).first()
+            except Exception:
+                pass
     project.save()
     return Response({'success': True, 'project': _serialize(project)}, status=status.HTTP_200_OK)
 
