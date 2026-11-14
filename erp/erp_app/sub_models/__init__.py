@@ -46,6 +46,7 @@ from .user_profile import UserProfile
 from .user_status_option import UserStatusOption
 from .vendor import Vendor, VendorCategory
 from .vendor_mod import VendorInfo
+from .customer import Customer
 from .notification_read import TaskNotificationRead, CommentNotificationRead
 from .cut_optimiser import CutOptimiserRecord, CutSize, UOM
 from .item_type_mod import ItemType_info
@@ -78,6 +79,7 @@ __all__ = [
     "Vendor",
     "VendorCategory",
     "VendorInfo",
+    "Customer",
     "Project",
     "ProjectInfo",
     "ProjectCostingSummaryInfo",

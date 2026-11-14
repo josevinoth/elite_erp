@@ -183,6 +183,55 @@ export async function deleteVendor(id) {
   return parseJson(res);
 }
 
+// ── Customers ─────────────────────────────────────────────
+export async function listCustomers() {
+  const res = await fetch("/api/customers/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getCustomer(id) {
+  const res = await fetch(`/api/customers/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createCustomer(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/customers/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateCustomer(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/customers/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteCustomer(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/customers/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function checkCustomerDownstream(id) {
+  const res = await fetch(`/api/customers/${id}/downstream-check/`, { credentials: "include" });
+  return parseJson(res);
+}
+
 // ── Projects ──────────────────────────────────────────────
 export async function listProjects() {
   const res = await fetch("/api/projects/", { credentials: "include" });

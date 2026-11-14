@@ -38,6 +38,7 @@ import TimesheetPage from "./pages/TimesheetPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import VendorsListPage from "./pages/VendorsListPage";
 import VendorFormPage from "./pages/VendorFormPage";
+import CustomersPage from "./pages/CustomersPage";
 import {logoutUser} from "./services/authApi";
 import {listHeaderNotifications} from "./services/crudApi";
 import {clearSessionUser, getSessionUser} from "./services/sessionUser";
@@ -174,6 +175,7 @@ function App() {
                         <Route path="/vendors" element={secureRoute(<VendorsListPage/>)}/>
                         <Route path="/vendors/add" element={secureRoute(<VendorFormPage/>)}/>
                         <Route path="/vendors/edit/:id" element={secureRoute(<VendorFormPage/>)}/>
+                        <Route path="/customers" element={secureRoute(<CustomersPage/>)}/>
                         <Route path="/stock-purchase" element={superAdminRoute(<StockPurchasePage/>)}/>
                         <Route path="/stock-purchase/add" element={superAdminRoute(<StockPurchaseAddPage/>)}/>
                         <Route path="/stock-purchase/record/:purchaseId"

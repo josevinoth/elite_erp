@@ -14,6 +14,7 @@ import {
   BsPeopleFill,
   BsPersonPlusFill,
   BsPerson,
+  BsPersonBadge,
   BsCartCheck,
   BsReceiptCutoff,
   BsScissors,
@@ -119,6 +120,7 @@ function HomeLayout({ currentUser }) {
       theme: "amber",
     },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill, theme: "rose" },
+    { title: "Customer Master", stat: "Customer directory", to: "/customers", icon: BsPersonBadge, theme: "blue" },
     ...(isSuperAdmin || isAdmin
       ? [
           {

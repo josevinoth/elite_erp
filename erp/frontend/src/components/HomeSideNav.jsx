@@ -38,6 +38,7 @@ const iconMap = {
   projects: BsFolder2Open,
   projectsList: BsListTask,
   vendors: BsBuildingFill,
+  customerMaster: BsPersonBadge,
   stocks: BsBoxes,
   stocksList: BsBarChartFill,
   stockPurchase: BsCartCheckFill,

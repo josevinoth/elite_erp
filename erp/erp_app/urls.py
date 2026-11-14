@@ -90,6 +90,7 @@ from .views import (
     create_timesheet_api_view,
     create_vendor_api_view,
     create_vendor_category_api_view,
+    create_customer_api_view,
     create_cut_optimiser,
     csrf_token_view,
     cut_optimiser_detail,
@@ -165,6 +166,9 @@ from .views import (
     list_users_api_view,
     list_vendors_api_view,
     list_vendor_categories_api_view,
+    list_customers_api_view,
+    customer_detail_api_view,
+    check_customer_downstream_api_view,
     login_api_view,
     logout_api_view,
     mark_message_notifications_read_api_view,
@@ -218,6 +222,11 @@ urlpatterns = [
     path("api/vendors/<int:vendor_id>/", vendor_detail_api_view, name="api-vendors-detail"),
     path("api/vendor-categories/", list_vendor_categories_api_view, name="api-vendor-categories-list"),
     path("api/vendor-categories/create/", create_vendor_category_api_view, name="api-vendor-categories-create"),
+    # customers
+    path("api/customers/", list_customers_api_view, name="api-customers-list"),
+    path("api/customers/create/", create_customer_api_view, name="api-customers-create"),
+    path("api/customers/<int:customer_id>/", customer_detail_api_view, name="api-customers-detail"),
+    path("api/customers/<int:customer_id>/downstream-check/", check_customer_downstream_api_view, name="api-customers-downstream-check"),
     # projects
     path("api/projects/", list_projects_api_view, name="api-projects-list"),
     path(

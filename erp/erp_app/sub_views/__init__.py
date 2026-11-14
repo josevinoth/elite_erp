@@ -186,6 +186,12 @@ from .vendor_api import (
     list_vendor_categories_api_view,
     create_vendor_category_api_view,
 )
+from .customers_api import (
+    list_customers_api_view,
+    create_customer_api_view,
+    customer_detail_api_view,
+    check_customer_downstream_api_view,
+)
 
 from .stock_manufacture_api import (
     list_stock_manufacture_items_api_view,

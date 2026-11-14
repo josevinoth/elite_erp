@@ -76,6 +76,7 @@ export const homeNavItems = [
   { label: "Landing Cost Estimate (LCE)", to: "/projects/costing", icon: "lce", superAdminOnly: true },
   { label: "Landing Cost Actuals (LCA)", to: "/projects/lca", icon: "lca", superAdminOnly: true },
   { label: "Vendors", to: "/vendors", icon: "vendors" },
+  { label: "Customer Master", to: "/customers", icon: "customerMaster" },
   { label: "Orders", to: "/orders", icon: "orders" },
   {
     label: "Stocks",
