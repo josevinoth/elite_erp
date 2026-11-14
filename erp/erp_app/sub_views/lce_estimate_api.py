@@ -914,6 +914,7 @@ def lce_estimate_record_api_view(request, lce_id):
         except ValidationError as exc:
             return JsonResponse({"message": exc.message if hasattr(exc, "message") else str(exc)}, status=400)
     elif "item_ids" in payload:
+        item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
         _link_items_to_estimate(estimate, item_ids)
     if "balance_settlements" in payload:
         _replace_balance_settlements(estimate, payload.get("balance_settlements") or [])
