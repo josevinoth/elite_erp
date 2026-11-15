@@ -232,6 +232,131 @@ export async function checkCustomerDownstream(id) {
   return parseJson(res);
 }
 
+// ── Project Templates ─────────────────────────────────────
+export async function listProjectTemplates() {
+  const res = await fetch("/api/project-templates/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getProjectTemplate(id) {
+  const res = await fetch(`/api/project-templates/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createProjectTemplate(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/project-templates/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateProjectTemplate(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-templates/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteProjectTemplate(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/project-templates/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function checkProjectTemplateDownstream(id) {
+  const res = await fetch(`/api/project-templates/${id}/downstream-check/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listQuotationTemplates(quotationNumber) {
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function previewQuotationTemplate(quotationNumber, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/preview/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function applyQuotationTemplate(quotationNumber, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/apply/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function deleteQuotationTemplate(quotationNumber, appliedId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/${appliedId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function listCostingTemplates(costingId) {
+  const res = await fetch(`/api/project-costings/${costingId}/templates/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function previewCostingTemplate(costingId, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-costings/${costingId}/templates/preview/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function applyCostingTemplate(costingId, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-costings/${costingId}/templates/apply/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function deleteCostingTemplate(costingId, appliedId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/project-costings/${costingId}/templates/${appliedId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
 // ── Projects ──────────────────────────────────────────────
 export async function listProjects() {
   const res = await fetch("/api/projects/", { credentials: "include" });
