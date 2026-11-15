@@ -138,6 +138,13 @@ class ProjectCostingItemInfo(models.Model):
         blank=True,
         related_name="project_costing_items",
     )
+    applied_template = models.ForeignKey(
+        "ProjectCostingTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

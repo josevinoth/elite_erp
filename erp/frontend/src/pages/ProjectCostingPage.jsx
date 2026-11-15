@@ -38,6 +38,7 @@ import AlertMessage from "../components/AlertMessage";
 import ConfirmPopupModal from "../components/ConfirmPopupModal";
 import { Card, CardHeader, CardBody } from "../components/Card";
 import CostingItemModal from "./CostingItemModal";
+import ProjectTemplatesSection from "../components/ProjectTemplatesSection";
 import "../styles/ProjectCostingSummary.css";
 import "../styles/ProjectQuotation.css";
 
@@ -477,6 +478,12 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
       setStatus({ type: "error", message: err.message || "Failed to load costing detail." });
     }
   }, [isAdmin, normalizeStatusName]);
+
+  const refreshCostingData = useCallback(async () => {
+    if (editingCosting?.id) {
+      await openCosting(editingCosting.id);
+    }
+  }, [editingCosting?.id, openCosting]);
 
   useEffect(() => {
     if (initialCostingId) {
@@ -1202,6 +1209,14 @@ function ProjectCostingPage({ projectId = null, projectCode = "", embedded = fal
             </div>
           </CardBody>
         </Card>
+
+        {/* ── Project Templates Section ──────────────────────────── */}
+        <ProjectTemplatesSection
+          mode="costing"
+          parentId={editingCosting?.id}
+          readOnly={isCostingReadOnly}
+          onItemsUpdated={refreshCostingData}
+        />
 
         {/* ── CARD 2: Costing Items ──────────────────────────── */}
         <Card className="lca-card mb-3 pq-card">

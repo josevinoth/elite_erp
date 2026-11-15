@@ -34,6 +34,7 @@ import AlertMessage from "../components/AlertMessage";
 import ConfirmPopupModal from "../components/ConfirmPopupModal";
 import { Card, CardHeader, CardBody } from "../components/Card";
 import QuotationItemModal from "./QuotationItemModal";
+import ProjectTemplatesSection from "../components/ProjectTemplatesSection";
 import { getSessionUser } from "../services/sessionUser";
 import "../styles/ProjectCostingSummary.css";
 import "../styles/ProjectQuotation.css";
@@ -1742,6 +1743,14 @@ function ProjectQuotationPage({ projectId = null, embedded = false, onSummarySta
               </div>
             </CardBody>
           </Card>
+
+          {/* ========= Project Templates Section ========= */}
+          <ProjectTemplatesSection
+            mode="quotation"
+            parentId={summary?.quotation_number || summary?.id}
+            readOnly={isQuotationReadOnly}
+            onItemsUpdated={() => refreshSelectedSummary(selectedQuotationId || summary?.id)}
+          />
 
           {/* ========= CARD 2: Quotation Items ========= */}
           <Card className="lca-card mb-3 pq-card">

@@ -18,6 +18,7 @@ function ConfirmPopupModal({
   confirmDisabled = false,
   cancelDisabled = false,
   maxWidth,
+  zIndex = 3000,
   onConfirm,
   onCancel,
   children = null,
@@ -49,7 +50,7 @@ function ConfirmPopupModal({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 2000,
+        zIndex,
         padding: "1rem",
       }}
       onClick={onCancel}

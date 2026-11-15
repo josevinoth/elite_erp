@@ -220,6 +220,13 @@ class ProjectQuotationItemInfo(models.Model):
         related_name="quotation_items",
     )
     stock_status = models.ForeignKey(StockStatusInfo, on_delete=models.PROTECT, null=True, blank=True)
+    applied_template = models.ForeignKey(
+        "ProjectQuotationTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
 
     requested_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     purchase_qty = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -239,7 +246,6 @@ class ProjectQuotationItemInfo(models.Model):
         ordering = ["quotation_number", "id"]
         verbose_name = "Project Quotation Item"
         verbose_name_plural = "Project Quotation Items"
-        unique_together = (("quotation_number", "item_code"),)
 
     def __str__(self):
         quote_key = getattr(self, "quotation_number_id", None) or getattr(self, "quotation_number", None)

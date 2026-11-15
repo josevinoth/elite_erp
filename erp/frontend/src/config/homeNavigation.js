@@ -57,6 +57,11 @@ export const homeNavItems = [
         icon: "projectCosting",
       },
       {
+        label: "Project Templates",
+        to: "/project-templates",
+        icon: "projectTemplates",
+      },
+      {
         label: "Stock Retrieval",
         to: "/stock-retrieval",
         icon: "stockRetrieval",
