@@ -393,7 +393,9 @@ function CrudPage({
         fields.map((f) => [
           f.key,
           // Disabled fields always use their default (e.g. updated_by = logged-in user)
-          f.disabled ? (f.default ?? "") : (row[f.key] ?? ""),
+          f.disabled
+            ? (f.default ?? "")
+            : (typeof f.getEditValue === "function" ? f.getEditValue(row) : (row[f.key] ?? "")),
         ])
       )
     );
@@ -456,17 +458,42 @@ function CrudPage({
         ":hover": { borderColor: "#556ee6" },
         };
       },
-      singleValue: (base) => ({ ...base, color: "#495057", fontWeight: 400 }),
+      singleValue: (base) => ({
+        ...base,
+        color: "#495057",
+        fontWeight: 400,
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }),
       input: (base) => ({ ...base, color: "#495057" }),
-      placeholder: (base) => ({ ...base, color: "#74788d" }),
-      menu: (base) => ({ ...base, backgroundColor: "#ffffff", zIndex: 2000, border: "1px solid #d9dce8" }),
-      menuPortal: (base) => ({ ...base, zIndex: 3000 }),
+      placeholder: (base) => ({
+        ...base,
+        color: "#74788d",
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }),
+      menu: (base) => ({
+        ...base,
+        backgroundColor: "#ffffff",
+        zIndex: 2000,
+        border: "1px solid #d9dce8",
+        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+      }),
+      menuPortal: (base) => ({ ...base, zIndex: 9999 }),
       option: (base, state) => {
         return {
         ...base,
         backgroundColor: state.isSelected ? "#556ee6" : state.isFocused ? "#f1f3ff" : "#ffffff",
         color: state.isSelected ? "#ffffff" : "#495057",
         fontWeight: state.isSelected ? 500 : 400,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+        fontSize: "0.85rem",
+        padding: "8px 12px",
         };
       },
     }),
@@ -1216,9 +1243,12 @@ function CrudPage({
                           const current = String(formValues[field.key] ?? "").trim();
                           if (!current) return null;
 
-                          // Support edit values coming as labels while options use IDs.
+                          // Support edit values coming as IDs, item codes, or labels.
                           return (
                             resolvedOptions.find((opt) => String(opt.value) === current) ||
+                            resolvedOptions.find(
+                              (opt) => String(opt.itemCode || "").trim().toLowerCase() === current.toLowerCase()
+                            ) ||
                             resolvedOptions.find(
                               (opt) => String(opt.label || "").trim().toLowerCase() === current.toLowerCase()
                             ) ||

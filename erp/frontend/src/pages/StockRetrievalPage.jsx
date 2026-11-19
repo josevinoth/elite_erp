@@ -77,9 +77,15 @@ function StockRetrievalPage() {
        const requestedQty = allocations.length
          ? allocations.reduce((sum, allocation) => sum + (Number(allocation?.allocated_qty) || 0), 0)
          : Number(item?.requested_qty) || 0;
+       const projectCode = item?.project_code || "";
+       const projectName = item?.project_name || "";
+       const projectDisplay = projectCode && projectName
+         ? `${projectCode} - ${projectName}`
+         : (projectCode || projectName || "-");
        return {
          ...item,
          row_key: String(item.id),
+         project_display: projectDisplay,
          combined_item: `${item?.item_code || "-"} _ ${item?.item_category || "-"} _ ${item?.item_name || "-"}`,
          available_stock_qty: Number.isFinite(availableQty) ? String(availableQty) : "0",
          grn_allocated_qty: String(requestedQty),
@@ -92,11 +98,15 @@ function StockRetrievalPage() {
       // Global search first
       const searchLower = searchText.trim().toLowerCase();
       const globalSearched = searchLower
-        ? retrievalRows.filter((row) =>
-            Object.values(row).some((value) =>
-              String(value || "").toLowerCase().includes(searchLower)
-            )
-          )
+        ? retrievalRows.filter((row) => {
+            const combined = `${row?.costing_ref || ""} ${row?.costing_id || ""} ${row?.project_code || ""} ${row?.project_name || ""} ${row?.project_display || ""} ${row?.combined_item || ""} ${row?.item_type || ""} ${getLiveStockStatus(row)} ${row?.available_stock_qty || ""} ${row?.grn_allocated_qty || ""} ${row?.requested_by_name || ""} ${row?.updated_by || ""} ${row?.grn_retrieval_status_name || ""} ${row?.rejection_comment || ""}`.toLowerCase();
+            return (
+              combined.includes(searchLower) ||
+              Object.values(row).some((value) =>
+                String(value || "").toLowerCase().includes(searchLower)
+              )
+            );
+          })
         : retrievalRows;
 
       // Then apply per-column filters
@@ -107,17 +117,34 @@ function StockRetrievalPage() {
       if (!activeFilters.length) return globalSearched;
 
       return globalSearched.filter((row) =>
-        activeFilters.every(([key, filterValue]) =>
-          String(row[key] || "")
+        activeFilters.every(([key, filterValue]) => {
+          const val = String(filterValue).trim().toLowerCase();
+          if (key === "project_name" || key === "project_display" || key === "project_code") {
+            const combinedProject = `${row?.project_code || ""} ${row?.project_name || ""} ${row?.project_display || ""}`.toLowerCase();
+            return combinedProject.includes(val);
+          }
+          if (key === "costing_ref") {
+            const costingVal = `${row?.costing_ref || ""} ${row?.costing_id || ""}`.toLowerCase();
+            return costingVal.includes(val);
+          }
+          if (key === "stock_status") {
+            const statusVal = `${getLiveStockStatus(row)} ${row?.stock_status?.status_name || ""}`.toLowerCase();
+            return statusVal.includes(val);
+          }
+          if (key === "grn_retrieval_status_name") {
+            const statusVal = normalizeRejectedOption(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name).toLowerCase();
+            return statusVal.includes(val);
+          }
+          return String(row[key] || "")
             .toLowerCase()
-            .includes(String(filterValue).trim().toLowerCase())
-        )
+            .includes(val);
+        })
       );
     }, [retrievalRows, searchText, columnFilters]);
 
    const tableColumns = [
      { key: "costing_ref", label: "Costing ID" },
-     { key: "project_name", label: "Project ID - Name" },
+     { key: "project_display", label: "Project ID - Name" },
      { key: "combined_item", label: "Item Code _ Item Category _ Item Name" },
      { key: "item_type", label: "Item Type" },
      { key: "stock_status", label: "Stock Status", exportValue: (row) => getLiveStockStatus(row) },
@@ -337,21 +364,21 @@ function StockRetrievalPage() {
                 <th>Costing ID</th>
                 <th>Project ID - Name</th>
                 <th>Item Code _ Item Category _ Item Name</th>
-                <th>Item Type</th>
-                <th>Stock Status</th>
+                <th className="stock-retrieval-table__center">Item Type</th>
+                <th className="stock-retrieval-table__center">Stock Status</th>
                 <th>Available Qty</th>
                 <th>Requested Qty</th>
                 <th>Requested By</th>
                 <th>Requested On</th>
                 <th>Updated By</th>
                 <th>Updated On</th>
-                <th>Retrieval Status</th>
-                <th>Action</th>
+                <th className="stock-retrieval-table__center">Retrieval Status</th>
+                <th className="stock-retrieval-table__center">Action</th>
                <th>Rejection Comments</th>
                </tr>
                <tr>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.costing_ref ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, costing_ref: e.target.value }))} /></th>
-                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, project_name: e.target.value }))} /></th>
+                 <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.project_display ?? columnFilters.project_name ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, project_display: e.target.value, project_name: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.combined_item ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, combined_item: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.item_type ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, item_type: e.target.value }))} /></th>
                  <th><input className="users-table__filter-input" type="text" placeholder="Filter" value={columnFilters.stock_status ?? ""} onChange={(e) => setColumnFilters(prev => ({ ...prev, stock_status: e.target.value }))} /></th>
@@ -375,10 +402,10 @@ function StockRetrievalPage() {
                  return (
                 <tr key={row.row_key || row.id}>
                   <td>{row?.costing_ref || row?.costing_id || "-"}</td>
-                  <td>{`${row?.project_code || "-"} - ${row?.project_name || "-"}`}</td>
+                  <td>{row.project_display}</td>
                   <td>{row.combined_item}</td>
-                  <td>{row.item_type || "-"}</td>
-                  <td>
+                  <td className="stock-retrieval-table__center">{row.item_type || "-"}</td>
+                  <td className="stock-retrieval-table__center">
                     <span className={`stock-retrieval-badge ${getStockBadgeClass(getLiveStockStatus(row))}`}>
                       {getLiveStockStatus(row)}
                     </span>
@@ -389,12 +416,12 @@ function StockRetrievalPage() {
                   <td>{row?.requested_on ? new Date(row.requested_on).toLocaleString() : "-"}</td>
                   <td>{row?.updated_by || row?.requested_by_name || "—"}</td>
                   <td>{row?.updated_on || (row?.updated_at ? new Date(row.updated_at).toLocaleString() : (row?.requested_on ? new Date(row.requested_on).toLocaleString() : "—"))}</td>
-                  <td>
+                  <td className="stock-retrieval-table__center">
                     <span className={`stock-retrieval-badge ${getRetrievalBadgeClass(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name)}`}>
                       {normalizeRejectedOption(row?.grn_retrieval_status_name || row?.retrieval_status?.status_name)}
                     </span>
                   </td>
-                  <td>
+                  <td className="stock-retrieval-table__center">
                     <div className="stock-retrieval-actions">
                       <button
                         type="button"
