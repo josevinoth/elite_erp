@@ -727,6 +727,7 @@ def create_stock_purchase_api_view(request):
         from ..sub_models.place_stock_order_mod import PlaceStockOrderInfo
         po = PlaceStockOrderInfo.objects.filter(pk=po_id).first()
 
+    raw_status = p.get("status_id")
     obj = StockPurchaseVendorDetail.objects.create(
         vendor=vendor,
         purchase_order=po,
@@ -736,7 +737,7 @@ def create_stock_purchase_api_view(request):
         total_value=_to_decimal(p.get("total_value"), "0"),
         total_after_tax=_to_decimal(p.get("total_after_tax"), "0"),
         notes=p.get("notes", ""),
-        status_id=p.get("status_id"),
+        status_id=int(raw_status) if str(raw_status).isdigit() else None,
     )
 
     items_payload = p.get("items") or []
@@ -828,7 +829,8 @@ def stock_purchase_detail_api_view(request, pk):
     if "total_after_tax" in p:
         obj.total_after_tax = _to_decimal(p.get("total_after_tax", obj.total_after_tax))
     obj.notes = p.get("notes", obj.notes)
-    obj.status_id = p.get("status_id", obj.status_id)
+    raw_status = p.get("status_id", obj.status_id)
+    obj.status_id = int(raw_status) if str(raw_status).isdigit() else None
     obj.save()
 
     # Update items if provided
