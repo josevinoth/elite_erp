@@ -297,12 +297,16 @@ function CrudPage({
         label: updatedByCol?.label || "Updated By",
         align: updatedByCol?.align || defaultAuditAlign,
         headerAlign: updatedByCol?.headerAlign || defaultAuditHeaderAlign,
+        ...(updatedByCol?.width ? { width: updatedByCol.width } : {}),
+        ...(updatedByCol?.minWidth ? { minWidth: updatedByCol.minWidth } : {}),
       },
       {
         key: "updated_on",
         label: updatedOnCol?.label || "Updated On",
         align: updatedOnCol?.align || defaultAuditAlign,
         headerAlign: updatedOnCol?.headerAlign || defaultAuditHeaderAlign,
+        ...(updatedOnCol?.width ? { width: updatedOnCol.width } : {}),
+        ...(updatedOnCol?.minWidth ? { minWidth: updatedOnCol.minWidth } : {}),
       },
     ];
   }, [columns, includeAuditColumns]);
@@ -393,7 +397,9 @@ function CrudPage({
         fields.map((f) => [
           f.key,
           // Disabled fields always use their default (e.g. updated_by = logged-in user)
-          f.disabled ? (f.default ?? "") : (row[f.key] ?? ""),
+          f.disabled
+            ? (f.default ?? "")
+            : (typeof f.getEditValue === "function" ? f.getEditValue(row) : (row[f.key] ?? "")),
         ])
       )
     );
@@ -456,17 +462,42 @@ function CrudPage({
         ":hover": { borderColor: "#556ee6" },
         };
       },
-      singleValue: (base) => ({ ...base, color: "#495057", fontWeight: 400 }),
+      singleValue: (base) => ({
+        ...base,
+        color: "#495057",
+        fontWeight: 400,
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }),
       input: (base) => ({ ...base, color: "#495057" }),
-      placeholder: (base) => ({ ...base, color: "#74788d" }),
-      menu: (base) => ({ ...base, backgroundColor: "#ffffff", zIndex: 2000, border: "1px solid #d9dce8" }),
-      menuPortal: (base) => ({ ...base, zIndex: 3000 }),
+      placeholder: (base) => ({
+        ...base,
+        color: "#74788d",
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }),
+      menu: (base) => ({
+        ...base,
+        backgroundColor: "#ffffff",
+        zIndex: 2000,
+        border: "1px solid #d9dce8",
+        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+      }),
+      menuPortal: (base) => ({ ...base, zIndex: 9999 }),
       option: (base, state) => {
         return {
         ...base,
         backgroundColor: state.isSelected ? "#556ee6" : state.isFocused ? "#f1f3ff" : "#ffffff",
         color: state.isSelected ? "#ffffff" : "#495057",
         fontWeight: state.isSelected ? 500 : 400,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+        fontSize: "0.85rem",
+        padding: "8px 12px",
         };
       },
     }),
@@ -506,7 +537,7 @@ function CrudPage({
         const payload = buildPayload(fv);
         try {
           if (editRow) {
-            savedRow = await updateFn(editRow[rowKey], payload);
+            savedRow = await updateFn(editRow[rowKey], payload, editRow);
           } else {
             savedRow = await createFn(payload);
           }
@@ -544,7 +575,9 @@ function CrudPage({
       }
       closeModal();
     } catch (err) {
-      setModalError(err.message || "Save failed.");
+      if (!err?.silent && !err?.isCancelled) {
+        setModalError(err.message || 'Save failed.');
+      }
     } finally {
       setSaving(false);
     }
@@ -722,11 +755,13 @@ function CrudPage({
 
   const displayedRows = useMemo(() => {
     const searchText = String(globalSearch || "").trim().toLowerCase();
+    const searchParts = searchText ? searchText.split(/\s+/).filter(Boolean) : [];
     const searchedRows = searchText
       ? normalizedRows.filter((row) =>
-          tableColumns.some((col) =>
-            String(row[col.key] ?? "").toLowerCase().includes(searchText)
-          )
+          tableColumns.some((col) => {
+            const val = String(row[col.key] ?? "").toLowerCase();
+            return val.includes(searchText) || (searchParts.length > 1 && searchParts.every((p) => val.includes(p)));
+          })
         )
       : normalizedRows;
 
@@ -736,11 +771,13 @@ function CrudPage({
 
     const filtered = normalizedFilters.length
       ? searchedRows.filter((row) =>
-          normalizedFilters.every(([key, value]) =>
-            String(row[key] ?? "")
-              .toLowerCase()
-              .includes(String(value).trim().toLowerCase())
-          )
+          normalizedFilters.every(([key, value]) => {
+            const rowVal = String(row[key] ?? "").toLowerCase();
+            const filterVal = String(value).trim().toLowerCase();
+            if (rowVal.includes(filterVal)) return true;
+            const filterParts = filterVal.split(/\s+/).filter(Boolean);
+            return filterParts.length > 1 && filterParts.every((p) => rowVal.includes(p));
+          })
         )
       : searchedRows;
 
@@ -1192,6 +1229,19 @@ function CrudPage({
                   </label>
 
                   {(() => {
+                    if (typeof field.render === "function") {
+                      return field.render({
+                        field,
+                        value: formValues[field.key],
+                        formValues,
+                        onChange: (val) => handleFieldChange(field.key, val),
+                        setFormValues,
+                        editRow,
+                        isRequired: isFieldRequired(field),
+                        isReadOnly: isFieldReadOnly(field),
+                      });
+                    }
+
                     const resolvedOptions = typeof field.options === "function"
                       ? field.options(formValues)
                       : field.options;
@@ -1216,9 +1266,12 @@ function CrudPage({
                           const current = String(formValues[field.key] ?? "").trim();
                           if (!current) return null;
 
-                          // Support edit values coming as labels while options use IDs.
+                          // Support edit values coming as IDs, item codes, or labels.
                           return (
                             resolvedOptions.find((opt) => String(opt.value) === current) ||
+                            resolvedOptions.find(
+                              (opt) => String(opt.itemCode || "").trim().toLowerCase() === current.toLowerCase()
+                            ) ||
                             resolvedOptions.find(
                               (opt) => String(opt.label || "").trim().toLowerCase() === current.toLowerCase()
                             ) ||

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { components } from "react-select";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import CrudPage from "../components/CrudPage";
 import TotalReqdProjectsModal from "../components/TotalReqdProjectsModal";
 import OrderedQtyPosModal from "../components/OrderedQtyPosModal";
@@ -116,121 +115,10 @@ function withQuantityDefaults(row = {}) {
   const cat = (next.item_category || "").trim();
   const name = (next.item_name || "").trim();
   next.combined_item = [code, cat, name].filter(Boolean).join(" _ ") || "—";
+  if (!next.item_code_ref_id && next.item_name_ref_id) {
+    next.item_code_ref_id = next.item_name_ref_id;
+  }
   return next;
-}
-
-function ItemCodeMenuList(props) {
-  const [query, setQuery] = useState("");
-  const inputRef = useRef(null);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    }, 50);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const childrenArray = useMemo(() => {
-    if (!props.children) return [];
-    return Array.isArray(props.children) ? props.children : [props.children];
-  }, [props.children]);
-
-  const filteredChildren = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return childrenArray;
-    const searchTerms = q.split(/\s+/).filter(Boolean);
-    return childrenArray.filter((child) => {
-      const data = child?.props?.data;
-      const text = String(data?.label || child?.props?.children || "").toLowerCase();
-      return searchTerms.every((term) => text.includes(term));
-    });
-  }, [childrenArray, query]);
-
-  return (
-    <components.MenuList {...props}>
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          background: "#ffffff",
-          zIndex: 20,
-          padding: "8px 10px",
-          borderBottom: "1px solid #e2e8f0",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-          <span
-            style={{
-              position: "absolute",
-              left: "10px",
-              color: "#64748b",
-              fontSize: "0.85rem",
-              pointerEvents: "none",
-            }}
-          >
-            🔍
-          </span>
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by item code, category or name..."
-            style={{
-              width: "100%",
-              padding: "7px 28px 7px 30px",
-              fontSize: "0.85rem",
-              borderRadius: "6px",
-              border: "1px solid #cbd5e1",
-              outline: "none",
-              boxSizing: "border-box",
-              backgroundColor: "#f8fafc",
-            }}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") {
-                e.stopPropagation();
-              }
-            }}
-          />
-          {query ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setQuery("");
-                inputRef.current?.focus();
-              }}
-              style={{
-                position: "absolute",
-                right: "6px",
-                background: "none",
-                border: "none",
-                color: "#94a3b8",
-                cursor: "pointer",
-                padding: "2px 6px",
-                fontSize: "0.85rem",
-              }}
-              title="Clear search"
-            >
-              ✕
-            </button>
-          ) : null}
-        </div>
-      </div>
-      {filteredChildren.length === 0 ? (
-        <div style={{ padding: "1.5rem", textAlign: "center", color: "#64748b", fontSize: "0.85rem" }}>
-          No matching items found for &ldquo;{query}&rdquo;
-        </div>
-      ) : (
-        filteredChildren
-      )}
-    </components.MenuList>
-  );
 }
 
 function StockItemsPage() {
@@ -318,7 +206,9 @@ function StockItemsPage() {
     (payload) => {
       const next = { ...payload };
       const selected = itemCodeOptions.find(
-        (opt) => String(opt.value) === String(payload.item_code_ref_id || "")
+        (opt) =>
+          String(opt.value) === String(payload.item_code_ref_id || "") ||
+          String(opt.itemCode || "").trim().toLowerCase() === String(payload.item_code_ref_id || "").trim().toLowerCase()
       );
       if (selected) {
         next.item_code_ref_id = selected.value;
@@ -355,42 +245,53 @@ function StockItemsPage() {
     [enrichPayload]
   );
 
-  const fields = [
-    {
-      ...FIELDS[0],
-      options: itemCodeOptions,
-      components: {
-        MenuList: ItemCodeMenuList,
+  const fields = useMemo(
+    () => [
+      {
+        ...FIELDS[0],
+        options: itemCodeOptions,
+        filterOption: (candidate, input) => {
+          if (!input || !input.trim()) return true;
+          const terms = input.toLowerCase().trim().split(/\s+/).filter(Boolean);
+          const text = [
+            candidate.label,
+            candidate.data?.itemCode,
+            candidate.data?.itemCategory,
+            candidate.data?.itemName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return terms.every((t) => text.includes(t));
+        },
+        placeholder: "Search & select Item Code _ Category _ Name...",
+        isClearable: true,
+        getEditValue: (row) => row.item_code_ref_id || row.item_name_ref_id || row.item_code || "",
       },
-      filterOption: (candidate, input) => {
-        if (!input) return true;
-        const terms = input.toLowerCase().split(/\s+/).filter(Boolean);
-        const text = candidate.label.toLowerCase();
-        return terms.every((t) => text.includes(t));
+      FIELDS[1],
+      FIELDS[2],
+      {
+        ...FIELDS[3],
+        options: itemTypeOptions,
+        isClearable: false,
       },
-      placeholder: "Search & select Item Code _ Category _ Name...",
-      isClearable: false,
-    },
-    FIELDS[1],
-    FIELDS[2],
-    {
-      ...FIELDS[3],
-      options: itemTypeOptions,
-      isClearable: false,
-    },
-    {
-      ...FIELDS[4],
-      options: uomOptions,
-      isClearable: false,
-    },
-    ...FIELDS.slice(5),
-  ];
+      {
+        ...FIELDS[4],
+        options: uomOptions,
+        isClearable: false,
+      },
+      ...FIELDS.slice(5),
+    ],
+    [itemCodeOptions, itemTypeOptions, uomOptions]
+  );
 
   const computeValues = useCallback(
     (changedKey, _changedValue, allValues) => {
       if (changedKey === "item_code_ref_id") {
         const selected = itemCodeOptions.find(
-          (option) => String(option.value) === String(allValues.item_code_ref_id || "")
+          (option) =>
+            String(option.value) === String(allValues.item_code_ref_id || "") ||
+            String(option.itemCode || "").trim().toLowerCase() === String(allValues.item_code_ref_id || "").trim().toLowerCase()
         );
         return {
           item_code_ref_id: selected ? selected.value : "",
