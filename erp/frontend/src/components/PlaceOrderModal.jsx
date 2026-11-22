@@ -523,7 +523,6 @@ export default function PlaceOrderModal({
                     <thead style={{ position: "sticky", top: 0, zIndex: 3, background: "#f8fafc" }}>
                       <tr>
                         <th style={{ width: "38px", textAlign: "center" }}>#</th>
-                        <th style={{ width: "85px" }}>Stage</th>
                         <th style={{ width: "auto" }}>Item (Code _ Category _ Name)</th>
                         <th style={{ width: "140px" }}>Project / Ref</th>
                         <th style={{ width: "95px", textAlign: "right" }}>Reqd Qty</th>
@@ -535,7 +534,7 @@ export default function PlaceOrderModal({
                     <tbody>
                       {orderItems.length === 0 ? (
                         <tr>
-                          <td colSpan={8} style={{ textAlign: "center", padding: "2rem", color: "#64748b" }}>
+                          <td colSpan={7} style={{ textAlign: "center", padding: "2rem", color: "#64748b" }}>
                             No items selected. Use &ldquo;Add Item Manually&rdquo; above to pick items to order.
                           </td>
                         </tr>
@@ -544,23 +543,6 @@ export default function PlaceOrderModal({
                           <tr key={`${item.id}-${idx}`}>
                             <td style={{ textAlign: "center", color: "#64748b", fontSize: "0.82rem", verticalAlign: "top" }}>
                               {idx + 1}
-                            </td>
-                            <td style={{ verticalAlign: "top" }}>
-                              <span
-                                style={{
-                                  background: item.stage === "Costing" ? "rgba(139, 92, 246, 0.12)" : "rgba(2, 132, 199, 0.12)",
-                                  color: item.stage === "Costing" ? "#7c3aed" : "#0284c7",
-                                  border: `1px solid ${item.stage === "Costing" ? "rgba(139, 92, 246, 0.35)" : "rgba(2, 132, 199, 0.35)"}`,
-                                  padding: "2px 8px",
-                                  borderRadius: "12px",
-                                  fontSize: "0.75rem",
-                                  fontWeight: 600,
-                                  whiteSpace: "nowrap",
-                                  display: "inline-block",
-                                }}
-                              >
-                                {item.stage || "Manual"}
-                              </span>
                             </td>
                             <td style={{ verticalAlign: "top", whiteSpace: "normal", wordBreak: "break-word" }}>
                               <strong style={{ color: "#0f172a", fontSize: "0.85rem", lineHeight: 1.4, display: "block" }}>

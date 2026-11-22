@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CrudPage from "../components/CrudPage";
 import TotalReqdProjectsModal from "../components/TotalReqdProjectsModal";
 import OrderedQtyPosModal from "../components/OrderedQtyPosModal";
+import ConsumedQtyProjectsModal from "../components/ConsumedQtyProjectsModal";
 import {
   createLabFurnitureItem,
   deleteLabFurnitureItem,
@@ -27,21 +28,24 @@ const BUSINESS_CRITICALITY_OPTIONS = [
 ];
 
 const COLUMNS = [
-  { key: "item_category", label: "Item Category" },
-  { key: "item_name", label: "Item Name" },
-  { key: "item_code", label: "Item Code" },
-  { key: "procurement_classification", label: "Procurement Classification" },
-  { key: "business_criticality", label: "Business Criticality" },
-  { key: "item_type", label: "Item Type" },
-  { key: "uom", label: "UOM" },
-  { key: "total_reqd", label: "Total Reqd" },
-  { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty" },
-  { key: "warning_alert_qty", label: "Warning Alert Qty" },
-  { key: "physical_qty", label: "Physical Qty" },
-  { key: "ordered_qty", label: "Ordered Qty" },
-  { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty" },
-  { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)" },
-  { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)" },
+  {
+    key: "combined_item",
+    label: "Item (Code _ Category _ Name)",
+    width: "320px",
+    minWidth: "300px",
+  },
+  { key: "uom", label: "UOM", width: "90px", minWidth: "80px" },
+  { key: "physical_qty", label: "Physical Qty", align: "right", width: "80px", minWidth: "70px" },
+  { key: "ordered_qty", label: "Ordered Qty", align: "right", width: "80px", minWidth: "70px" },
+  { key: "physical_plus_ordered_qty", label: "Phy. + Ord. Qty", align: "right", width: "85px", minWidth: "75px" },
+  { key: "total_reqd", label: "Total Reqd", align: "right", width: "80px", minWidth: "70px" },
+  { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)", align: "right", width: "135px", minWidth: "115px" },
+  { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty", align: "right", width: "115px", minWidth: "95px" },
+  { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)", align: "right", width: "135px", minWidth: "115px" },
+  { key: "warning_alert_qty", label: "Warning Alert Qty", align: "right", width: "80px", minWidth: "70px" },
+  { key: "procurement_classification", label: "Procurement Classification", width: "110px", minWidth: "95px" },
+  { key: "business_criticality", label: "Business Criticality", width: "105px", minWidth: "90px" },
+  { key: "item_type", label: "Item Type", width: "90px", minWidth: "80px" },
 ];
 
 const FIELDS = [
@@ -56,14 +60,16 @@ const FIELDS = [
     label: "Procurement Classification",
     options: PROCUREMENT_CLASSIFICATION_OPTIONS,
     placeholder: "Select Procurement Classification",
-    isClearable: true,
+    required: true,
+    isClearable: false,
   },
   {
     key: "business_criticality",
     label: "Business Criticality",
     options: BUSINESS_CRITICALITY_OPTIONS,
     placeholder: "Select Business Criticality",
-    isClearable: true,
+    required: true,
+    isClearable: false,
   },
   { key: "item_type_id", label: "Item Type", required: true },
   { key: "uom_id", label: "UOM", required: true },
@@ -74,8 +80,8 @@ const FIELDS = [
   { key: "total_reqd", label: "Total Reqd", type: "number", min: 0, step: "any", default: "0" },
   { key: "recommended_free_stock_qty", label: "Recommended Free Stock Qty", type: "number", min: 0, step: "any", default: "0" },
   { key: "warning_alert_qty", label: "Warning Alert Qty", type: "number", min: 0, step: "any", default: "0" },
-  { key: "physical_qty", label: "Physical Qty", type: "number", min: 0, step: "any", default: "0" },
-  { key: "ordered_qty", label: "Ordered Qty", type: "number", min: 0, step: "any", default: "0" },
+  { key: "physical_qty", label: "Physical Qty", type: "number", readOnly: true, default: "0" },
+  { key: "ordered_qty", label: "Ordered Qty", type: "number", readOnly: true, default: "0" },
   { key: "physical_plus_ordered_qty", label: "Physical + Ordered Qty", type: "number", readOnly: true, default: "0" },
   { key: "to_order_qty_including_free_stock", label: "To Order Qty (Including Recommended Free Stk Qty)", type: "number", readOnly: true, default: "0" },
   { key: "to_order_qty", label: "To Order Qty (Excluding Recommended Free Stk Qty)", type: "number", readOnly: true, default: "0" },
@@ -105,12 +111,20 @@ function withQuantityDefaults(row = {}) {
   next.to_order_qty = (Number.isFinite(tot) ? tot : 0) - next.physical_plus_ordered_qty;
   next.to_order_qty_including_free_stock =
     (Number.isFinite(tot) ? tot : 0) + (Number.isFinite(rec) ? rec : 0) - next.physical_plus_ordered_qty;
+  const code = (next.item_code || "").trim();
+  const cat = (next.item_category || "").trim();
+  const name = (next.item_name || "").trim();
+  next.combined_item = [code, cat, name].filter(Boolean).join(" _ ") || "—";
+  if (!next.item_code_ref_id && next.item_name_ref_id) {
+    next.item_code_ref_id = next.item_name_ref_id;
+  }
   return next;
 }
 
 function StockItemsPage() {
   const [selectedRequestedItem, setSelectedRequestedItem] = useState(null);
   const [selectedOrderedItem, setSelectedOrderedItem] = useState(null);
+  const [selectedConsumedItem, setSelectedConsumedItem] = useState(null);
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [itemCodeOptions, setItemCodeOptions] = useState([]);
   const [uomOptions, setUomOptions] = useState([]);
@@ -192,7 +206,9 @@ function StockItemsPage() {
     (payload) => {
       const next = { ...payload };
       const selected = itemCodeOptions.find(
-        (opt) => String(opt.value) === String(payload.item_code_ref_id || "")
+        (opt) =>
+          String(opt.value) === String(payload.item_code_ref_id || "") ||
+          String(opt.itemCode || "").trim().toLowerCase() === String(payload.item_code_ref_id || "").trim().toLowerCase()
       );
       if (selected) {
         next.item_code_ref_id = selected.value;
@@ -229,39 +245,53 @@ function StockItemsPage() {
     [enrichPayload]
   );
 
-  const fields = [
-    {
-      ...FIELDS[0],
-      options: itemCodeOptions,
-      filterOption: (candidate, input) => {
-        if (!input) return true;
-        const terms = input.toLowerCase().split(/\s+/).filter(Boolean);
-        const text = candidate.label.toLowerCase();
-        return terms.every((t) => text.includes(t));
+  const fields = useMemo(
+    () => [
+      {
+        ...FIELDS[0],
+        options: itemCodeOptions,
+        filterOption: (candidate, input) => {
+          if (!input || !input.trim()) return true;
+          const terms = input.toLowerCase().trim().split(/\s+/).filter(Boolean);
+          const text = [
+            candidate.label,
+            candidate.data?.itemCode,
+            candidate.data?.itemCategory,
+            candidate.data?.itemName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return terms.every((t) => text.includes(t));
+        },
+        placeholder: "Search & select Item Code _ Category _ Name...",
+        isClearable: true,
+        getEditValue: (row) => row.item_code_ref_id || row.item_name_ref_id || row.item_code || "",
       },
-      placeholder: "Search & select Item Code _ Category _ Name...",
-      isClearable: false,
-    },
-    FIELDS[1],
-    FIELDS[2],
-    {
-      ...FIELDS[3],
-      options: itemTypeOptions,
-      isClearable: false,
-    },
-    {
-      ...FIELDS[4],
-      options: uomOptions,
-      isClearable: false,
-    },
-    ...FIELDS.slice(5),
-  ];
+      FIELDS[1],
+      FIELDS[2],
+      {
+        ...FIELDS[3],
+        options: itemTypeOptions,
+        isClearable: false,
+      },
+      {
+        ...FIELDS[4],
+        options: uomOptions,
+        isClearable: false,
+      },
+      ...FIELDS.slice(5),
+    ],
+    [itemCodeOptions, itemTypeOptions, uomOptions]
+  );
 
   const computeValues = useCallback(
     (changedKey, _changedValue, allValues) => {
       if (changedKey === "item_code_ref_id") {
         const selected = itemCodeOptions.find(
-          (option) => String(option.value) === String(allValues.item_code_ref_id || "")
+          (option) =>
+            String(option.value) === String(allValues.item_code_ref_id || "") ||
+            String(option.itemCode || "").trim().toLowerCase() === String(allValues.item_code_ref_id || "").trim().toLowerCase()
         );
         return {
           item_code_ref_id: selected ? selected.value : "",
@@ -311,6 +341,16 @@ function StockItemsPage() {
 
   const columns = useMemo(() => {
     return COLUMNS.map((col) => {
+      if (col.key === "combined_item") {
+        return {
+          ...col,
+          render: (row) => (
+            <span style={{ fontWeight: 600, color: "#0f172a" }}>
+              {row.combined_item || [row.item_code, row.item_category, row.item_name].filter(Boolean).join(" _ ") || "—"}
+            </span>
+          ),
+        };
+      }
       if (col.key === "total_reqd") {
         return {
           ...col,
@@ -385,6 +425,82 @@ function StockItemsPage() {
           },
         };
       }
+      if (col.key === "consumed_qty") {
+        return {
+          ...col,
+          align: "right",
+          render: (row) => {
+            const val = Number(row.consumed_qty || 0);
+            const hasConsumed = val > 0;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedConsumedItem(row);
+                }}
+                style={{
+                  background: hasConsumed ? "#fef3c7" : "#f8fafc",
+                  color: hasConsumed ? "#b45309" : "#64748b",
+                  border: hasConsumed ? "1px solid #fcd34d" : "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+                title={`View consumed quantities by project for ${row.item_code}`}
+              >
+                <span>{val}</span>
+                {hasConsumed && <span style={{ fontSize: "0.75rem" }}>📋</span>}
+              </button>
+            );
+          },
+        };
+      }
+      if (col.key === "to_order_qty" || col.key === "to_order_qty_including_free_stock") {
+        return {
+          ...col,
+          align: "right",
+          render: (row) => {
+            const val = Number(row[col.key] || 0);
+            const hasToOrder = val > 0;
+            const hasReq = Number(row.total_reqd || 0) > 0;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (hasReq || hasToOrder) {
+                    setSelectedRequestedItem(row);
+                  }
+                }}
+                style={{
+                  background: hasToOrder ? "#fee2e2" : "#f8fafc",
+                  color: hasToOrder ? "#b91c1c" : "#64748b",
+                  border: hasToOrder ? "1px solid #fca5a5" : "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontWeight: 700,
+                  cursor: hasReq || hasToOrder ? "pointer" : "default",
+                  fontSize: "0.82rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  transition: "all 0.15s ease",
+                }}
+                title={hasToOrder ? `View requirements for ${row.item_code} (${val} to order)` : (hasReq ? "View project requirements" : "No order required")}
+              >
+                <span>{val}</span>
+                {hasToOrder && <span style={{ fontSize: "0.75rem", opacity: 0.85 }}>📋</span>}
+              </button>
+            );
+          },
+        };
+      }
       return col;
     });
   }, []);
@@ -415,6 +531,12 @@ function StockItemsPage() {
         <OrderedQtyPosModal
           item={selectedOrderedItem}
           onClose={() => setSelectedOrderedItem(null)}
+        />
+      )}
+      {selectedConsumedItem && (
+        <ConsumedQtyProjectsModal
+          item={selectedConsumedItem}
+          onClose={() => setSelectedConsumedItem(null)}
         />
       )}
     </>

@@ -1,12 +1,60 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BsDownload, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircle } from "react-icons/bs";
+import {
+  BsDownload,
+  BsPencilSquare,
+  BsPlusCircleFill,
+  BsTrashFill,
+  BsXCircle,
+  BsSearch,
+  BsTruck,
+  BsBoxes,
+  BsBuilding,
+  BsPeople,
+  BsFolder2,
+  BsCartCheck,
+  BsCartPlus,
+  BsCheckCircle,
+  BsClock,
+  BsBoxSeam,
+} from "react-icons/bs";
 import Select from "react-select";
 import { exportRowsToExcel } from "../utils/exportToExcel";
 import PaginationControls from "./PaginationControls";
 import ConfirmPopupModal from "./ConfirmPopupModal";
 
 const AUDIT_COLUMN_KEYS = ["updated_by", "updated_on"];
+
+
+function getTitleIcon(title, customIcon) {
+  if (customIcon) return customIcon;
+  const normalized = String(title || "").toLowerCase();
+  if (normalized.includes("receive") || normalized.includes("purchase") || normalized.includes("goods") || normalized.includes("grn")) {
+    return <BsTruck />;
+  }
+  if (normalized.includes("procurement") || normalized.includes("place stock order")) {
+    return <BsCartCheck />;
+  }
+  if (normalized.includes("item to order") || normalized.includes("items to order")) {
+    return <BsCartPlus />;
+  }
+  if (normalized.includes("user")) return <BsPeople />;
+  if (normalized.includes("vendor")) return <BsBuilding />;
+  if (
+    normalized.includes("project") ||
+    normalized.includes("lca") ||
+    normalized.includes("lce") ||
+    normalized.includes("landing") ||
+    normalized.includes("quotation") ||
+    normalized.includes("costing")
+  ) {
+    return <BsFolder2 />;
+  }
+  if (normalized.includes("stock") || normalized.includes("item")) return <BsBoxes />;
+  if (normalized.includes("task")) return <BsCheckCircle />;
+  if (normalized.includes("timesheet")) return <BsClock />;
+  return <BsBoxSeam />;
+}
 
 function getTitleVariant(title) {
   const normalized = String(title || "").toLowerCase();
@@ -150,6 +198,7 @@ function withAuditFields(row) {
  */
 function CrudPage({
   title,
+  titleIcon = null,
   columns,
   fields,
   fetchFn,
@@ -248,12 +297,16 @@ function CrudPage({
         label: updatedByCol?.label || "Updated By",
         align: updatedByCol?.align || defaultAuditAlign,
         headerAlign: updatedByCol?.headerAlign || defaultAuditHeaderAlign,
+        ...(updatedByCol?.width ? { width: updatedByCol.width } : {}),
+        ...(updatedByCol?.minWidth ? { minWidth: updatedByCol.minWidth } : {}),
       },
       {
         key: "updated_on",
         label: updatedOnCol?.label || "Updated On",
         align: updatedOnCol?.align || defaultAuditAlign,
         headerAlign: updatedOnCol?.headerAlign || defaultAuditHeaderAlign,
+        ...(updatedOnCol?.width ? { width: updatedOnCol.width } : {}),
+        ...(updatedOnCol?.minWidth ? { minWidth: updatedOnCol.minWidth } : {}),
       },
     ];
   }, [columns, includeAuditColumns]);
@@ -344,7 +397,9 @@ function CrudPage({
         fields.map((f) => [
           f.key,
           // Disabled fields always use their default (e.g. updated_by = logged-in user)
-          f.disabled ? (f.default ?? "") : (row[f.key] ?? ""),
+          f.disabled
+            ? (f.default ?? "")
+            : (typeof f.getEditValue === "function" ? f.getEditValue(row) : (row[f.key] ?? "")),
         ])
       )
     );
@@ -407,17 +462,42 @@ function CrudPage({
         ":hover": { borderColor: "#556ee6" },
         };
       },
-      singleValue: (base) => ({ ...base, color: "#495057", fontWeight: 400 }),
+      singleValue: (base) => ({
+        ...base,
+        color: "#495057",
+        fontWeight: 400,
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }),
       input: (base) => ({ ...base, color: "#495057" }),
-      placeholder: (base) => ({ ...base, color: "#74788d" }),
-      menu: (base) => ({ ...base, backgroundColor: "#ffffff", zIndex: 2000, border: "1px solid #d9dce8" }),
-      menuPortal: (base) => ({ ...base, zIndex: 3000 }),
+      placeholder: (base) => ({
+        ...base,
+        color: "#74788d",
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }),
+      menu: (base) => ({
+        ...base,
+        backgroundColor: "#ffffff",
+        zIndex: 2000,
+        border: "1px solid #d9dce8",
+        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+      }),
+      menuPortal: (base) => ({ ...base, zIndex: 9999 }),
       option: (base, state) => {
         return {
         ...base,
         backgroundColor: state.isSelected ? "#556ee6" : state.isFocused ? "#f1f3ff" : "#ffffff",
         color: state.isSelected ? "#ffffff" : "#495057",
         fontWeight: state.isSelected ? 500 : 400,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+        fontSize: "0.85rem",
+        padding: "8px 12px",
         };
       },
     }),
@@ -457,7 +537,7 @@ function CrudPage({
         const payload = buildPayload(fv);
         try {
           if (editRow) {
-            savedRow = await updateFn(editRow[rowKey], payload);
+            savedRow = await updateFn(editRow[rowKey], payload, editRow);
           } else {
             savedRow = await createFn(payload);
           }
@@ -495,7 +575,9 @@ function CrudPage({
       }
       closeModal();
     } catch (err) {
-      setModalError(err.message || "Save failed.");
+      if (!err?.silent && !err?.isCancelled) {
+        setModalError(err.message || 'Save failed.');
+      }
     } finally {
       setSaving(false);
     }
@@ -673,11 +755,13 @@ function CrudPage({
 
   const displayedRows = useMemo(() => {
     const searchText = String(globalSearch || "").trim().toLowerCase();
+    const searchParts = searchText ? searchText.split(/\s+/).filter(Boolean) : [];
     const searchedRows = searchText
       ? normalizedRows.filter((row) =>
-          tableColumns.some((col) =>
-            String(row[col.key] ?? "").toLowerCase().includes(searchText)
-          )
+          tableColumns.some((col) => {
+            const val = String(row[col.key] ?? "").toLowerCase();
+            return val.includes(searchText) || (searchParts.length > 1 && searchParts.every((p) => val.includes(p)));
+          })
         )
       : normalizedRows;
 
@@ -687,11 +771,13 @@ function CrudPage({
 
     const filtered = normalizedFilters.length
       ? searchedRows.filter((row) =>
-          normalizedFilters.every(([key, value]) =>
-            String(row[key] ?? "")
-              .toLowerCase()
-              .includes(String(value).trim().toLowerCase())
-          )
+          normalizedFilters.every(([key, value]) => {
+            const rowVal = String(row[key] ?? "").toLowerCase();
+            const filterVal = String(value).trim().toLowerCase();
+            if (rowVal.includes(filterVal)) return true;
+            const filterParts = filterVal.split(/\s+/).filter(Boolean);
+            return filterParts.length > 1 && filterParts.every((p) => rowVal.includes(p));
+          })
         )
       : searchedRows;
 
@@ -804,27 +890,36 @@ function CrudPage({
 
   return (
     <section className="module-page crud-page">
-      <div className="crud-page__header">
+      <div className="crud-page__header pq-header project-costing-toolbar">
         <div>
-          <h1 className={`module-page__title module-page__title--${titleVariant}`}>{title}</h1>
+          <h1 className="module-page__title project-costing-title">
+            <span className="project-costing-title__icon" aria-hidden="true">
+              {getTitleIcon(title, titleIcon)}
+            </span>
+            <span className="project-costing-title__text">{title}</span>
+          </h1>
           {description ? (
-            <p className="module-page__description" style={{ margin: "0.25rem 0 0 0" }}>
+            <p className="module-page__description project-costing-description" style={{ margin: "0.25rem 0 0 0" }}>
               {description}
             </p>
           ) : null}
         </div>
         <div className="crud-page__header-tools">
-          <input
-            type="search"
-            className="crud-page__search-input"
-            placeholder="Search all columns"
-            value={globalSearch}
-            onChange={(e) => {
-              setGlobalSearch(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Search all columns"
-          />
+          <div className="crud-search-wrap" style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <BsSearch style={{ position: "absolute", left: "0.75rem", color: "#94a3b8", fontSize: "0.82rem", pointerEvents: "none" }} aria-hidden="true" />
+            <input
+              type="search"
+              className="crud-page__search-input"
+              style={{ paddingLeft: "2.1rem" }}
+              placeholder="Search all columns"
+              value={globalSearch}
+              onChange={(e) => {
+                setGlobalSearch(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Search all columns"
+            />
+          </div>
           {renderHeaderActions
             ? renderHeaderActions({ rows, loading, reloadRows })
             : null}
@@ -891,7 +986,8 @@ function CrudPage({
                       className={stickyHeader ? "users-table__sticky-head" : undefined}
                       style={{
                         textAlign: effectiveHeaderAlign || undefined,
-                        ...(col.width ? { width: col.width, minWidth: col.width } : {}),
+                        ...(col.width ? { width: col.width } : {}),
+                        ...(col.minWidth ? { minWidth: col.minWidth } : col.width ? { minWidth: col.width } : {}),
                       }}
                     >
                       <button
@@ -939,7 +1035,11 @@ function CrudPage({
                   <th
                     key={`filter-${col.key}`}
                     className={stickyHeader ? "users-table__sticky-filter" : undefined}
-                    style={{ textAlign: effectiveHeaderAlign || undefined }}
+                    style={{
+                      textAlign: effectiveHeaderAlign || undefined,
+                      ...(col.width ? { width: col.width } : {}),
+                      ...(col.minWidth ? { minWidth: col.minWidth } : col.width ? { minWidth: col.width } : {}),
+                    }}
                   >
                     <input
                       className="users-table__filter-input"
@@ -995,7 +1095,14 @@ function CrudPage({
                     </td>
                   ) : null}
                   {tableColumns.map((col) => (
-                    <td key={col.key} style={col.align ? { textAlign: col.align } : undefined}>
+                    <td
+                      key={col.key}
+                      style={{
+                        ...(col.align ? { textAlign: col.align } : {}),
+                        ...(col.width ? { width: col.width } : {}),
+                        ...(col.minWidth ? { minWidth: col.minWidth } : col.width ? { minWidth: col.width } : {}),
+                      }}
+                    >
                       {col.render ? col.render(row) : formatDateTimeForTable(row[col.key])}
                     </td>
                   ))}
@@ -1122,6 +1229,19 @@ function CrudPage({
                   </label>
 
                   {(() => {
+                    if (typeof field.render === "function") {
+                      return field.render({
+                        field,
+                        value: formValues[field.key],
+                        formValues,
+                        onChange: (val) => handleFieldChange(field.key, val),
+                        setFormValues,
+                        editRow,
+                        isRequired: isFieldRequired(field),
+                        isReadOnly: isFieldReadOnly(field),
+                      });
+                    }
+
                     const resolvedOptions = typeof field.options === "function"
                       ? field.options(formValues)
                       : field.options;
@@ -1141,13 +1261,17 @@ function CrudPage({
                         filterOption={field.filterOption}
                         options={resolvedOptions}
                         placeholder={resolvedPlaceholder || `Select ${field.label}`}
+                        components={field.components}
                         value={(() => {
                           const current = String(formValues[field.key] ?? "").trim();
                           if (!current) return null;
 
-                          // Support edit values coming as labels while options use IDs.
+                          // Support edit values coming as IDs, item codes, or labels.
                           return (
                             resolvedOptions.find((opt) => String(opt.value) === current) ||
+                            resolvedOptions.find(
+                              (opt) => String(opt.itemCode || "").trim().toLowerCase() === current.toLowerCase()
+                            ) ||
                             resolvedOptions.find(
                               (opt) => String(opt.label || "").trim().toLowerCase() === current.toLowerCase()
                             ) ||

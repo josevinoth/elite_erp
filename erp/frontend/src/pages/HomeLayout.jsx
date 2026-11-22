@@ -9,11 +9,13 @@ import {
   BsCalculatorFill,
   BsClipboardData,
   BsFolder2Open,
+  BsGrid3X3GapFill,
   BsHourglassSplit,
   BsKanbanFill,
   BsPeopleFill,
   BsPersonPlusFill,
   BsPerson,
+  BsPersonBadge,
   BsCartCheck,
   BsReceiptCutoff,
   BsScissors,
@@ -95,6 +97,7 @@ function HomeLayout({ currentUser }) {
         ]
       : []),
     { title: "Projects", stat: "Track active work", to: "/projects", icon: BsFolder2Open, theme: "sky" },
+    { title: "Project Templates", stat: "Template bill of materials", to: "/project-templates", icon: BsGrid3X3GapFill, theme: "indigo" },
     {
       title: "Layout Drawing Approval",
       stat: layoutApprovalCount > 0 ? `${layoutApprovalCount} awaiting your action` : "No pending approvals",
@@ -119,6 +122,7 @@ function HomeLayout({ currentUser }) {
       theme: "amber",
     },
     { title: "Vendors", stat: "Supplier directory", to: "/vendors", icon: BsBuildingFill, theme: "rose" },
+    { title: "Customer Master", stat: "Customer directory", to: "/customers", icon: BsPersonBadge, theme: "blue" },
     ...(isSuperAdmin || isAdmin
       ? [
           {

@@ -111,6 +111,9 @@ _default_csrf_origins = [
     "http://192.168.1.6:8000",
     "http://192.168.1.6:8010",
     "https://erp.erpeliteone.com",
+    "http://13.201.255.133:8000",
+    "https://13.201.255.133:8000"
+
 ]
 _csrf_ports = {"8000", "8010"}
 _erp_port = os.getenv("ERP_PORT", "").strip()
@@ -196,7 +199,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'erp_006'),
+        'NAME': os.getenv('DB_NAME', 'erp_002'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', '244613'),
         'HOST': os.getenv('DB_HOST', 'localhost'),

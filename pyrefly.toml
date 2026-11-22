@@ -13,3 +13,13 @@ site-packages-path = [
 [errors]
 missing-attribute = false
 bad-context-manager = false
+bad-assignment = false
+unsupported-operation = false
+bad-override = false
+bad-override-mutable-attribute = false
+bad-argument-type = false
+untyped-import = false
+unnecessary-type-conversion = false
+unreachable-except-clause = false
+attribute-assign-on-never = false
+implicit-import = false

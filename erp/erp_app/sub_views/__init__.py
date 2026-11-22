@@ -186,6 +186,26 @@ from .vendor_api import (
     list_vendor_categories_api_view,
     create_vendor_category_api_view,
 )
+from .customers_api import (
+    list_customers_api_view,
+    create_customer_api_view,
+    customer_detail_api_view,
+    check_customer_downstream_api_view,
+)
+from .project_templates_api import (
+    list_project_templates_api_view,
+    create_project_template_api_view,
+    project_template_detail_api_view,
+    check_project_template_downstream_api_view,
+    list_quotation_templates_api_view,
+    preview_quotation_template_api_view,
+    apply_quotation_template_api_view,
+    delete_quotation_template_api_view,
+    list_costing_templates_api_view,
+    preview_costing_template_api_view,
+    apply_costing_template_api_view,
+    delete_costing_template_api_view,
+)
 
 from .stock_manufacture_api import (
     list_stock_manufacture_items_api_view,

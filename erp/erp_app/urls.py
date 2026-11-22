@@ -31,10 +31,13 @@ from .sub_views.lab_furniture_item_api import (
     item_code_name_detail_api_view,
     item_requested_projects_api_view,
     item_ordered_pos_api_view,
+    item_consumed_projects_api_view,
+    update_lab_furniture_item_category_api_view,
 )
 from .sub_views.stock_purchase_api import (
     purchase_item_grns_api_view,
     stock_item_summary_api_view,
+    stock_purchase_item_consumed_projects_api_view,
     stock_purchase_item_delete_check_api_view,
 )
 from .sub_views.stock_manufacture_api import (
@@ -88,6 +91,7 @@ from .views import (
     create_timesheet_api_view,
     create_vendor_api_view,
     create_vendor_category_api_view,
+    create_customer_api_view,
     create_cut_optimiser,
     csrf_token_view,
     cut_optimiser_detail,
@@ -163,6 +167,21 @@ from .views import (
     list_users_api_view,
     list_vendors_api_view,
     list_vendor_categories_api_view,
+    list_customers_api_view,
+    customer_detail_api_view,
+    check_customer_downstream_api_view,
+    list_project_templates_api_view,
+    create_project_template_api_view,
+    project_template_detail_api_view,
+    check_project_template_downstream_api_view,
+    list_quotation_templates_api_view,
+    preview_quotation_template_api_view,
+    apply_quotation_template_api_view,
+    delete_quotation_template_api_view,
+    list_costing_templates_api_view,
+    preview_costing_template_api_view,
+    apply_costing_template_api_view,
+    delete_costing_template_api_view,
     login_api_view,
     logout_api_view,
     mark_message_notifications_read_api_view,
@@ -216,6 +235,26 @@ urlpatterns = [
     path("api/vendors/<int:vendor_id>/", vendor_detail_api_view, name="api-vendors-detail"),
     path("api/vendor-categories/", list_vendor_categories_api_view, name="api-vendor-categories-list"),
     path("api/vendor-categories/create/", create_vendor_category_api_view, name="api-vendor-categories-create"),
+    # customers
+    path("api/customers/", list_customers_api_view, name="api-customers-list"),
+    path("api/customers/create/", create_customer_api_view, name="api-customers-create"),
+    path("api/customers/<int:customer_id>/", customer_detail_api_view, name="api-customers-detail"),
+    path("api/customers/<int:customer_id>/downstream-check/", check_customer_downstream_api_view, name="api-customers-downstream-check"),
+    # project templates
+    path("api/project-templates/", list_project_templates_api_view, name="api-project-templates-list"),
+    path("api/project-templates/create/", create_project_template_api_view, name="api-project-templates-create"),
+    path("api/project-templates/<int:pk>/", project_template_detail_api_view, name="api-project-templates-detail"),
+    path("api/project-templates/<int:pk>/downstream-check/", check_project_template_downstream_api_view, name="api-project-templates-downstream-check"),
+    # project quotation templates
+    path("api/project-quotations/<str:quotation_pk>/templates/", list_quotation_templates_api_view, name="api-quotation-templates-list"),
+    path("api/project-quotations/<str:quotation_pk>/templates/preview/", preview_quotation_template_api_view, name="api-quotation-templates-preview"),
+    path("api/project-quotations/<str:quotation_pk>/templates/apply/", apply_quotation_template_api_view, name="api-quotation-templates-apply"),
+    path("api/project-quotations/<str:quotation_pk>/templates/<int:applied_id>/", delete_quotation_template_api_view, name="api-quotation-templates-delete"),
+    # project costing templates
+    path("api/project-costings/<int:costing_pk>/templates/", list_costing_templates_api_view, name="api-costing-templates-list"),
+    path("api/project-costings/<int:costing_pk>/templates/preview/", preview_costing_template_api_view, name="api-costing-templates-preview"),
+    path("api/project-costings/<int:costing_pk>/templates/apply/", apply_costing_template_api_view, name="api-costing-templates-apply"),
+    path("api/project-costings/<int:costing_pk>/templates/<int:applied_id>/", delete_costing_template_api_view, name="api-costing-templates-delete"),
     # projects
     path("api/projects/", list_projects_api_view, name="api-projects-list"),
     path(
@@ -299,6 +338,11 @@ urlpatterns = [
     path("api/stock-purchases/<int:pk>/", stock_purchase_detail_api_view, name="api-stock-purchases-detail"),
     path("api/purchase-items/<str:item_code>/grns/", purchase_item_grns_api_view, name="api-purchase-item-grns"),
     path("api/stock/<str:item_code>/summary/", stock_item_summary_api_view, name="api-stock-item-summary"),
+    path(
+        "api/stock-purchase-items/<int:pk>/consumed-projects/",
+        stock_purchase_item_consumed_projects_api_view,
+        name="api-stock-purchase-item-consumed-projects",
+    ),
     path(
         "api/stock-purchase-items/<int:item_id>/trace/",
         stock_purchase_item_trace_api_view,
@@ -540,10 +584,16 @@ urlpatterns = [
         create_lab_furniture_item_category_api_view,
         name="api-lab-furniture-item-categories-create",
     ),
+    path(
+        "api/lab-furniture-item-categories/<int:pk>/",
+        update_lab_furniture_item_category_api_view,
+        name="api-lab-furniture-item-categories-update",
+    ),
     path("api/lab-furniture-items/create/", create_lab_furniture_item_api_view, name="api-lab-furniture-items-create"),
     path("api/lab-furniture-items/<int:pk>/", lab_furniture_item_detail_api_view, name="api-lab-furniture-items-detail"),
     path("api/lab-furniture-items/<int:pk>/requested-projects/", item_requested_projects_api_view, name="api-lab-furniture-item-requested-projects"),
     path("api/lab-furniture-items/<int:pk>/ordered-pos/", item_ordered_pos_api_view, name="api-lab-furniture-item-ordered-pos"),
+    path("api/lab-furniture-items/<int:pk>/consumed-projects/", item_consumed_projects_api_view, name="api-lab-furniture-item-consumed-projects"),
     # item costing
     path("api/itemcosting/", list_item_costing_api_view, name="api-item-costing-list"),
     path("api/itemcosting/meta/", item_costing_meta_api_view, name="api-item-costing-meta"),

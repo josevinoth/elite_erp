@@ -83,8 +83,8 @@ class StockPurchaseItem(models.Model):
     )
     item_name = models.CharField(max_length=200)
     item_code = models.ForeignKey(LabFurnitureItem,on_delete=models.PROTECT,null=True,blank=True,related_name="stock_purchase_items",)
-    quantity = models.DecimalField(max_digits=12, decimal_places=0, default=0)
-    purchase_qty = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    quantity = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="Consumed Qty")
+    purchase_qty = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="Purchased Qty")
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     tax = models.DecimalField(max_digits=5, decimal_places=2, default=0)
@@ -136,12 +136,14 @@ class StockPurchaseItem(models.Model):
             if getattr(resolved_master, "uom_id", None):
                 self.uom_id = resolved_master.uom_id
         self.item_name = normalize_text(self.item_name)
-        self.total_price = (self.quantity or 0) * (self.unit_price or 0)
-        tax_pct = Decimal(str(self.tax or 0))
-        self.total_after_tax = self.total_price + (self.total_price * (tax_pct / Decimal("100")))
-        # Keep purchase_qty as the immutable reference quantity used for stock allocation.
+        # purchase_qty is the received quantity; quantity tracks net consumption.
         if self.pk is None and self.purchase_qty in (None, "", 0, "0"):
             self.purchase_qty = self.quantity or 0
+        if self.pk is None:
+            self.quantity = 0
+        self.total_price = (self.purchase_qty or 0) * (self.unit_price or 0)
+        tax_pct = Decimal(str(self.tax or 0))
+        self.total_after_tax = self.total_price + (self.total_price * (tax_pct / Decimal("100")))
 
         # Normalize legacy GRN values (e.g. 0000001) to prefixed format (GRN0001).
         if self.grn_number and not str(self.grn_number).upper().startswith("GRN"):

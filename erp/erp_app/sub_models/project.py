@@ -62,6 +62,13 @@ class Project(models.Model):
         blank=True,
         related_name="owned_projects",
     )
+    customer = models.ForeignKey(
+        "Customer",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="projects",
+    )
 
     class Meta:
         ordering = ['-created_at']

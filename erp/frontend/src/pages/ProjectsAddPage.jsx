@@ -12,6 +12,7 @@ import {
   createProject,
   createProjectCosting,
   createQuotationSummary,
+  listCustomers,
   listProjectCostings,
   listProjects,
   listProjectsMeta,
@@ -104,6 +105,7 @@ function ProjectsAddPage() {
   const [nonStandardLabOptions, setNonStandardLabOptions] = useState([]);
   const [nonMoeProductSeriesOptions, setNonMoeProductSeriesOptions] = useState([]);
   const [projectOwnerOptions, setProjectOwnerOptions] = useState([]);
+  const [customerOptions, setCustomerOptions] = useState([]);
   const [approvalStatusOptions, setApprovalStatusOptions] = useState([]);
   const [approverOptions, setApproverOptions] = useState([]);
   const [formValues, setFormValues] = useState(() => ({ ...EMPTY_FORM }));
@@ -147,6 +149,7 @@ function ProjectsAddPage() {
     setNonStandardLabOptions(Array.isArray(data.non_standard_labs) ? data.non_standard_labs : []);
     setNonMoeProductSeriesOptions(Array.isArray(data.non_moe_product_series) ? data.non_moe_product_series : []);
     setProjectOwnerOptions(Array.isArray(data.project_owners) ? data.project_owners : []);
+    setCustomerOptions(Array.isArray(data.customers) ? data.customers : []);
     setApprovalStatusOptions(Array.isArray(data.approval_statuses) ? data.approval_statuses : []);
     setApproverOptions(Array.isArray(data.approvers) ? data.approvers : []);
     if (!isEditMode && !formValues.status) {
@@ -154,6 +157,24 @@ function ProjectsAddPage() {
       if (defaultStatus) setFormValues((prev) => ({ ...prev, status: defaultStatus }));
     }
   }, [ensureStatusExists, formValues.status, isEditMode, mapOptions]);
+
+  useEffect(() => {
+    let alive = true;
+    listCustomers()
+      .then((data) => {
+        if (!alive) return;
+        const custs = Array.isArray(data.customers)
+          ? data.customers.map((c) => ({
+              value: String(c.id),
+              label: c.customer_code ? `${c.customer_code} - ${c.name}` : c.name,
+              name: c.name,
+            }))
+          : [];
+        setCustomerOptions(custs);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -171,6 +192,9 @@ function ProjectsAddPage() {
         setNonStandardLabOptions(Array.isArray(data.non_standard_labs) ? data.non_standard_labs : []);
         setNonMoeProductSeriesOptions(Array.isArray(data.non_moe_product_series) ? data.non_moe_product_series : []);
         setProjectOwnerOptions(Array.isArray(data.project_owners) ? data.project_owners : []);
+        if (Array.isArray(data.customers) && data.customers.length > 0) {
+          setCustomerOptions(data.customers);
+        }
         setApprovalStatusOptions(Array.isArray(data.approval_statuses) ? data.approval_statuses : []);
         setApproverOptions(Array.isArray(data.approvers) ? data.approvers : []);
         if (!isEditMode && !formValues.status) {
@@ -226,6 +250,7 @@ function ProjectsAddPage() {
         const nextValues = {
           project_id: String(record.project_id || ""),
           project_name: String(record.project_name || ""),
+          customer: String(record.customer ?? record.customer_id ?? ""),
           project_location: String(record.project_location || ""),
           proposal_date: toDateInputValue(record.proposal_date),
           material_required_date: toDateInputValue(record.material_required_date),
@@ -568,6 +593,18 @@ function ProjectsAddPage() {
               </div>
 
               {/* Row 2 */}
+              <div className="lca-field-pair">
+                <label className="lca-label" htmlFor="project-customer">Customer</label>
+                <div className="lca-input">
+                  <select id="project-customer" name="customer" className="auth-input" value={formValues.customer} onChange={handleChange}>
+                    <option value="">Select Customer (Optional)</option>
+                    {customerOptions.map((opt) => (
+                      <option key={`customer-${opt.value}`} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="lca-field-pair">
                 <label className="lca-label" htmlFor="project-location">Project Location</label>
                 <div className="lca-input">

@@ -16,6 +16,7 @@ import "../styles/project_quotation.css";
 const COLUMNS = [
   { key: "project_id", label: "Project ID" },
   { key: "project_name", label: "Project Name" },
+  { key: "customer_name", label: "Customer" },
   { key: "proposal_date", label: "Date of Proposal" },
   { key: "updated_by", label: "Updated By" },
   { key: "order_value_omr", label: "Order Value (OMR)" },

@@ -183,6 +183,180 @@ export async function deleteVendor(id) {
   return parseJson(res);
 }
 
+// ── Customers ─────────────────────────────────────────────
+export async function listCustomers() {
+  const res = await fetch("/api/customers/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getCustomer(id) {
+  const res = await fetch(`/api/customers/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createCustomer(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/customers/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateCustomer(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/customers/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteCustomer(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/customers/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function checkCustomerDownstream(id) {
+  const res = await fetch(`/api/customers/${id}/downstream-check/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+// ── Project Templates ─────────────────────────────────────
+export async function listProjectTemplates() {
+  const res = await fetch("/api/project-templates/", { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getProjectTemplate(id) {
+  const res = await fetch(`/api/project-templates/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function createProjectTemplate(payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch("/api/project-templates/create/", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function updateProjectTemplate(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-templates/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function deleteProjectTemplate(id) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/project-templates/${id}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function checkProjectTemplateDownstream(id) {
+  const res = await fetch(`/api/project-templates/${id}/downstream-check/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function listQuotationTemplates(quotationNumber) {
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function previewQuotationTemplate(quotationNumber, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/preview/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function applyQuotationTemplate(quotationNumber, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/apply/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function deleteQuotationTemplate(quotationNumber, appliedId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/project-quotations/${quotationNumber}/templates/${appliedId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
+export async function listCostingTemplates(costingId) {
+  const res = await fetch(`/api/project-costings/${costingId}/templates/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function previewCostingTemplate(costingId, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-costings/${costingId}/templates/preview/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function applyCostingTemplate(costingId, templateId, qty) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/project-costings/${costingId}/templates/apply/`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ template_id: templateId, qty }),
+  });
+  return parseJson(res);
+}
+
+export async function deleteCostingTemplate(costingId, appliedId) {
+  const headers = await csrfHeaders();
+  delete headers["Content-Type"];
+  const res = await fetch(`/api/project-costings/${costingId}/templates/${appliedId}/`, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+  return parseJson(res);
+}
+
 // ── Projects ──────────────────────────────────────────────
 export async function listProjects() {
   const res = await fetch("/api/projects/", { credentials: "include" });
@@ -1068,6 +1242,11 @@ export async function getLabFurnitureItemOrderedPos(id) {
   return parseJson(res);
 }
 
+export async function getLabFurnitureItemConsumedProjects(id) {
+  const res = await fetch(`/api/lab-furniture-items/${id}/consumed-projects/`, { credentials: "include" });
+  return parseJson(res);
+}
+
 
 export async function listLabFurnitureItemCategories() {
   const res = await fetch("/api/lab-furniture-item-categories/", { credentials: "include" });
@@ -1085,6 +1264,17 @@ export async function createLabFurnitureItemCategory(payload) {
   return parseJson(res);
 }
 
+export async function updateLabFurnitureItemCategory(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/lab-furniture-item-categories/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
 // ── Stock Purchase ────────────────────────────────────────
 export async function listStockPurchases() {
   const res = await fetch("/api/stock-purchases/", { credentials: "include" });
@@ -1093,6 +1283,16 @@ export async function listStockPurchases() {
 
 export async function getStockPurchaseById(id) {
   const res = await fetch(`/api/stock-purchases/${id}/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getStockPurchaseItemGrns(itemCodeOrId) {
+  const res = await fetch(`/api/purchase-items/${encodeURIComponent(itemCodeOrId)}/grns/`, { credentials: "include" });
+  return parseJson(res);
+}
+
+export async function getStockPurchaseItemConsumedProjects(id) {
+  const res = await fetch(`/api/stock-purchase-items/${id}/consumed-projects/`, { credentials: "include" });
   return parseJson(res);
 }
 

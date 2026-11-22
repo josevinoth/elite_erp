@@ -3,7 +3,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError
-from django.db.models import DecimalField, Q, Sum, Value
+from django.db.models import Case, DecimalField, F, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
@@ -15,8 +15,10 @@ from ..sub_models import (
     LabFurnitureItem,
     UOM,
     ItemType_info,
+    ProjectCostingItemAllocation,
     ProjectCostingItemInfo,
     ProjectQuotationItemInfo,
+    RetrievalStatusInfo,
 )
 from ..utils import normalize_text
 
@@ -54,15 +56,21 @@ def _serialize_item_code_name(obj):
             or getattr(updated_by_user, "username", "")
             or str(updated_by_user)
         )
+    cat_name = obj.item_category.name if getattr(obj, "item_category_id", None) else ""
+    code = (obj.item_code or "").strip()
+    name = (obj.item_name or "").strip()
+    combined_parts = [p for p in [code, cat_name, name] if p]
+    combined_item = " _ ".join(combined_parts) if combined_parts else "—"
     return {
         "id": obj.pk,
         "item_code": obj.item_code,
         "item_name": obj.item_name,
         "item_category_id": getattr(obj, "item_category_id", None),
-        "item_category": obj.item_category.name if getattr(obj, "item_category_id", None) else "",
+        "item_category": cat_name,
         "procurement_classification": getattr(obj, "procurement_classification", "") or "",
         "business_criticality": getattr(obj, "business_criticality", "") or "",
         "label": f"{obj.item_code} - {obj.item_name}",
+        "combined_item": combined_item,
         "updated_at": getattr(obj, "updated_at", None).isoformat() if getattr(obj, "updated_at", None) else "",
         "updated_on": getattr(obj, "updated_at", None).strftime("%Y-%m-%d %H:%M:%S") if getattr(obj, "updated_at", None) else "",
         "updated_by": updated_by_name,
@@ -138,7 +146,13 @@ def _format_qty_number(val):
         return 0
 
 
-def _serialize(obj, calculated_total_reqd=None, calculated_ordered_qty=None, calculated_physical_qty=None):
+def _serialize(
+    obj,
+    calculated_total_reqd=None,
+    calculated_ordered_qty=None,
+    calculated_physical_qty=None,
+    calculated_consumed_qty=None,
+):
     item_category_id = getattr(obj, "item_category_id", None)
     uom_id = getattr(obj, "uom_id", None)
     item_type_id = getattr(obj, "item_type_id", None)
@@ -187,6 +201,7 @@ def _serialize(obj, calculated_total_reqd=None, calculated_ordered_qty=None, cal
         "physical_plus_ordered_qty": _format_qty_number(physical_plus_ordered),
         "physical_qty": _format_qty_number(physical_qty),
         "ordered_qty": _format_qty_number(ordered_qty),
+        "consumed_qty": _format_qty_number(calculated_consumed_qty),
         "total_reqd": _format_qty_number(total_reqd_dec),
         "updated_by": obj.updated_by.username if updated_by_id else "",
         "updated_on": obj.updated_at.isoformat() if getattr(obj, "updated_at", None) else "",
@@ -280,7 +295,7 @@ def create_item_code_name_api_view(request):
     payload = _read_json(request)
     item_code = _normalize_code(payload.get("item_code"))
     item_name = normalize_text(payload.get("item_name"))
-    item_category = _resolve_existing_category(payload.get("item_category_id", payload.get("item_category")))
+    item_category = _resolve_category(payload.get("item_category_id", payload.get("item_category")))
     procurement_classification = normalize_text(payload.get("procurement_classification", "")).upper()
     business_criticality = normalize_text(payload.get("business_criticality", "")).upper()
 
@@ -333,7 +348,37 @@ def item_code_name_detail_api_view(request, pk):
     payload = _read_json(request)
     item_code = _normalize_code(payload.get("item_code", obj.item_code))
     item_name = normalize_text(payload.get("item_name", obj.item_name))
-    item_category = _resolve_existing_category(payload.get("item_category_id", payload.get("item_category", obj.item_category_id)))
+
+    category_mode = payload.get("category_mode")
+    rename_category = payload.get("rename_category") or category_mode == "rename"
+
+    if rename_category and obj.item_category:
+        new_cat_name = normalize_text(payload.get("item_category", payload.get("new_category_name", "")))
+        if new_cat_name and new_cat_name.lower() != obj.item_category.name.lower():
+            old_cat_name = obj.item_category.name
+            cat_obj = obj.item_category
+            cat_obj.name = new_cat_name
+            cat_obj.save(update_fields=["name"])
+
+            # Propagate to any models storing category as CharField
+            from ..sub_models.lce_estimate import LCEEstimateItem
+            from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
+            try:
+                LCEEstimateItem.objects.filter(item_category__iexact=old_cat_name).update(item_category=new_cat_name)
+            except Exception:
+                pass
+            try:
+                PlaceStockOrderItem.objects.filter(item_category__iexact=old_cat_name).update(item_category=new_cat_name)
+            except Exception:
+                pass
+            item_category = cat_obj
+        else:
+            item_category = obj.item_category
+    else:
+        item_category = _resolve_category(payload.get("item_category_id", payload.get("item_category", obj.item_category_id)))
+        if item_category and item_category.pk != obj.item_category_id:
+            # Category was changed to another category -> update any linked LabFurnitureItem records too
+            LabFurnitureItem.objects.filter(item_code_ref=obj).update(item_category=item_category)
 
     if not item_code:
         return JsonResponse({"message": "Item code is required."}, status=400)
@@ -381,6 +426,42 @@ def create_lab_furniture_item_category_api_view(request):
     obj, _created = ItemCategory.objects.get_or_create(name=name)
     return JsonResponse({"success": True, "item_category": _serialize_category(obj)}, status=201)
 
+@csrf_protect
+def update_lab_furniture_item_category_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    cat = ItemCategory.objects.filter(pk=pk).first()
+    if not cat:
+        return JsonResponse({"message": "Category not found."}, status=404)
+
+    payload = _read_json(request)
+    new_name = normalize_text(payload.get("name") or payload.get("category_name", ""))
+    if not new_name:
+        return JsonResponse({"message": "Category name is required."}, status=400)
+
+    old_name = cat.name
+    if new_name.lower() != old_name.lower():
+        existing = ItemCategory.objects.filter(name__iexact=new_name).exclude(pk=cat.pk).first()
+        if existing:
+            return JsonResponse({"message": f'Category "{new_name}" already exists.'}, status=400)
+        cat.name = new_name
+        cat.save(update_fields=["name"])
+
+        from ..sub_models.lce_estimate import LCEEstimateItem
+        from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
+        try:
+            LCEEstimateItem.objects.filter(item_category__iexact=old_name).update(item_category=new_name)
+        except Exception:
+            pass
+        try:
+            PlaceStockOrderItem.objects.filter(item_category__iexact=old_name).update(item_category=new_name)
+        except Exception:
+            pass
+
+    return JsonResponse({"success": True, "item_category": _serialize_category(cat)})
+
 
 def get_item_requested_projects_data(item):
     """
@@ -408,10 +489,7 @@ def get_item_requested_projects_data(item):
     )
 
     projects = []
-    costing_project_ids = set()
     for r in c_rows:
-        p_id = r["costing_id__project_id"]
-        costing_project_ids.add(p_id)
         code = r["costing_id__project__project_id"] or ""
         name = r["costing_id__project__project_name"] or ""
         display = f"{code} - {name}".strip(" -") if name else code
@@ -420,39 +498,7 @@ def get_item_requested_projects_data(item):
             "project_name": name,
             "project_display": display,
             "requested_qty": _format_qty_number(r["total_qty"]),
-            "stage": "Costing",
             "reference_no": r["costing_id__costing_id"] or "",
-        })
-
-    # 2. Quotation items (excluding projects with WIP costing)
-    q_rows = (
-        ProjectQuotationItemInfo.objects.filter(
-            item_code=item,
-            quotation_number__status__status_name__iexact="Work In Progress",
-            requested_qty__gt=0,
-        )
-        .exclude(quotation_number__project_id__in=costing_project_ids)
-        .values(
-            "quotation_number__project_id",
-            "quotation_number__project__project_id",
-            "quotation_number__project__project_name",
-            "quotation_number__quotation_number",
-        )
-        .annotate(total_qty=Sum("requested_qty"))
-        .order_by("quotation_number__project__project_id")
-    )
-
-    for r in q_rows:
-        code = r["quotation_number__project__project_id"] or ""
-        name = r["quotation_number__project__project_name"] or ""
-        display = f"{code} - {name}".strip(" -") if name else code
-        projects.append({
-            "project_id": code,
-            "project_name": name,
-            "project_display": display,
-            "requested_qty": _format_qty_number(r["total_qty"]),
-            "stage": "Quotation",
-            "reference_no": r["quotation_number__quotation_number"] or "",
         })
 
     return projects
@@ -464,11 +510,21 @@ def item_requested_projects_api_view(request, pk):
     if not_allowed:
         return not_allowed
 
-    item = (
-        LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
-        .filter(pk=pk)
-        .first()
-    )
+    item = None
+    pk_str = str(pk).strip()
+    if pk_str.isdigit():
+        item = (
+            LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
+            .filter(pk=int(pk_str))
+            .first()
+        )
+    if not item:
+        clean_code = pk_str.replace("item-", "").strip()
+        item = (
+            LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
+            .filter(Q(item_code__iexact=clean_code) | Q(item_code_ref__item_code__iexact=clean_code))
+            .first()
+        )
     if not item:
         return JsonResponse({"message": "Item not found."}, status=404)
 
@@ -543,6 +599,124 @@ def item_ordered_pos_api_view(request, pk):
     })
 
 
+def _consumed_retrieval_statuses():
+    return [
+        RetrievalStatusInfo.STATUS_ITEM_SUPPLIED,
+        RetrievalStatusInfo.STATUS_ITEM_ACCEPTED,
+        RetrievalStatusInfo.STATUS_ITEM_RETURN,
+        RetrievalStatusInfo.STATUS_ITEM_RETURN_ACCEPTED,
+    ]
+
+
+def _allocation_consumption_rows(*, item_id=None, group_by_project=False):
+    status_filter = Q(retrieval_status__status_name__in=_consumed_retrieval_statuses()) | Q(
+        retrieval_status__isnull=True,
+        costing_item__retrieval_status__status_name__in=_consumed_retrieval_statuses(),
+    )
+    rows = ProjectCostingItemAllocation.objects.filter(
+        costing_item__item_code_id__isnull=False,
+    ).filter(status_filter)
+    if item_id is not None:
+        rows = rows.filter(costing_item__item_code_id=item_id)
+
+    group_fields = ["costing_item__item_code_id"]
+    if group_by_project:
+        group_fields.extend([
+            "costing_item__costing_id__project_id",
+            "costing_item__costing_id__project__project_id",
+            "costing_item__costing_id__project__project_name",
+        ])
+    return rows.values(*group_fields).annotate(
+        allocated_total=Sum("allocated_qty"),
+        returned_total=Sum("returned_qty"),
+    )
+
+
+@require_GET
+def item_consumed_projects_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    item = (
+        LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category")
+        .filter(pk=pk)
+        .first()
+    )
+    if not item:
+        return JsonResponse({"message": "Item not found."}, status=404)
+
+    projects_by_id = {}
+    for row in _allocation_consumption_rows(item_id=item.pk, group_by_project=True):
+        project_id = row["costing_item__costing_id__project_id"]
+        consumed_qty = (row["allocated_total"] or Decimal("0")) - (row["returned_total"] or Decimal("0"))
+        if consumed_qty <= 0:
+            continue
+        project_code = row["costing_item__costing_id__project__project_id"] or ""
+        project_name = row["costing_item__costing_id__project__project_name"] or ""
+        project = projects_by_id.setdefault(project_id, {
+            "project_id": project_code,
+            "project_name": project_name,
+            "consumed_qty": Decimal("0"),
+        })
+        current_consumed = project.get("consumed_qty")
+        if not isinstance(current_consumed, Decimal):
+            current_consumed = Decimal(str(current_consumed or "0"))
+        project["consumed_qty"] = current_consumed + consumed_qty
+
+    legacy_rows = (
+        ProjectCostingItemInfo.objects.filter(
+            item_code_id=item.pk,
+            retrieval_status__status_name__in=_consumed_retrieval_statuses(),
+            grn_allocations__isnull=True,
+        )
+        .values(
+            "costing_id__project_id",
+            "costing_id__project__project_id",
+            "costing_id__project__project_name",
+        )
+        .annotate(consumed_total=Sum("accepted_qty"))
+    )
+    for row in legacy_rows:
+        consumed_qty = row["consumed_total"] or Decimal("0")
+        if consumed_qty <= 0:
+            continue
+        project_id = row["costing_id__project_id"]
+        project = projects_by_id.setdefault(project_id, {
+            "project_id": row["costing_id__project__project_id"] or "",
+            "project_name": row["costing_id__project__project_name"] or "",
+            "consumed_qty": Decimal("0"),
+        })
+        current_consumed = project.get("consumed_qty")
+        if not isinstance(current_consumed, Decimal):
+            current_consumed = Decimal(str(current_consumed or "0"))
+        project["consumed_qty"] = current_consumed + consumed_qty
+
+    projects = []
+    for project in projects_by_id.values():
+        project["project_display"] = (
+            f'{project["project_id"]} - {project["project_name"]}'.strip(" -")
+            if project["project_name"] else project["project_id"]
+        )
+        project["consumed_qty"] = _format_qty_number(project["consumed_qty"])
+        projects.append(project)
+    projects.sort(key=lambda project: (project["project_id"] or "").lower())
+    total_consumed_qty = sum(
+        (Decimal(str(project["consumed_qty"])) for project in projects),
+        Decimal("0"),
+    )
+
+    return JsonResponse({
+        "success": True,
+        "item_id": item.pk,
+        "item_code": item.item_code,
+        "item_name": item.item_name,
+        "item_category": item.item_category.name if item.item_category else "",
+        "total_consumed_qty": _format_qty_number(total_consumed_qty),
+        "projects": projects,
+    })
+
+
 @require_GET
 def list_lab_furniture_items_api_view(request):
     not_allowed = _ensure_authenticated(request)
@@ -561,27 +735,10 @@ def list_lab_furniture_items_api_view(request):
     )
 
     item_totals = defaultdict(Decimal)
-    costing_projects_per_item = defaultdict(set)
     for c in c_items:
         i_id = c["item_code_id"]
         if i_id:
             item_totals[i_id] += c["tot"] or Decimal("0")
-            costing_projects_per_item[i_id].add(c["costing_id__project_id"])
-
-    q_items = (
-        ProjectQuotationItemInfo.objects.filter(
-            quotation_number__status__status_name__iexact="Work In Progress",
-            requested_qty__gt=0,
-        )
-        .values("item_code_id", "quotation_number__project_id")
-        .annotate(tot=Sum("requested_qty"))
-    )
-
-    for q in q_items:
-        i_id = q["item_code_id"]
-        p_id = q["quotation_number__project_id"]
-        if i_id and p_id not in costing_projects_per_item[i_id]:
-            item_totals[i_id] += q["tot"] or Decimal("0")
 
     from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
     po_items_placed = (
@@ -598,11 +755,35 @@ def list_lab_furniture_items_api_view(request):
         if p["item_code"]:
             po_totals_by_code[p["item_code"].strip().upper()] += tot
 
+    consumed_totals = defaultdict(Decimal)
+    for row in _allocation_consumption_rows():
+        item_id = row["costing_item__item_code_id"]
+        consumed_totals[item_id] += (
+            (row["allocated_total"] or Decimal("0")) - (row["returned_total"] or Decimal("0"))
+        )
+    legacy_consumed_items = (
+        ProjectCostingItemInfo.objects.filter(
+            item_code_id__isnull=False,
+            retrieval_status__status_name__in=_consumed_retrieval_statuses(),
+            grn_allocations__isnull=True,
+        )
+        .values("item_code_id")
+        .annotate(consumed_total=Sum("accepted_qty"))
+    )
+    for row in legacy_consumed_items:
+        consumed_totals[row["item_code_id"]] += row["consumed_total"] or Decimal("0")
+
     rows = (
         LabFurnitureItem.objects.select_related("item_code_ref", "item_name_ref", "item_category", "uom", "item_type", "updated_by")
         .annotate(
-            available_qty=Coalesce(
-                Sum("stock_purchase_items__quantity"),
+            purchased_qty_total=Coalesce(
+                Sum(
+                    Case(
+                        When(stock_purchase_items__purchase_qty__gt=0, then=F("stock_purchase_items__purchase_qty")),
+                        default=F("stock_purchase_items__quantity"),
+                        output_field=DecimalField(max_digits=12, decimal_places=0),
+                    )
+                ),
                 Value(Decimal("0"), output_field=DecimalField(max_digits=14, decimal_places=2)),
             )
         )
@@ -617,7 +798,12 @@ def list_lab_furniture_items_api_view(request):
                     po_totals_by_id.get(row.pk)
                     or po_totals_by_code.get((row.item_code or "").strip().upper(), Decimal("0"))
                 ),
-                calculated_physical_qty=row.available_qty,
+                calculated_physical_qty=max(
+                    _to_decimal(row.purchased_qty_total, "0")
+                    - consumed_totals.get(row.pk, Decimal("0")),
+                    Decimal("0"),
+                ),
+                calculated_consumed_qty=consumed_totals.get(row.pk, Decimal("0")),
             )
             for row in rows
         ]
@@ -799,4 +985,3 @@ def lab_furniture_item_detail_api_view(request, pk):
         item_code_name.item_category = item_category
         item_code_name.save(update_fields=["item_category"])
     return JsonResponse({"success": True, "lab_furniture_item": _serialize(obj)})
-

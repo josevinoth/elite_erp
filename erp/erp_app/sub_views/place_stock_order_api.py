@@ -1,6 +1,6 @@
 from decimal import Decimal
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Case, F, Sum, When
 from django.views.decorators.csrf import csrf_protect
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -43,9 +43,15 @@ def _serialize_vendor(vendor):
 
 def _serialize_order_item(item):
     from ..sub_models.stock_purchase import StockPurchaseItem
-    received_sum = StockPurchaseItem.objects.filter(po_item=item).aggregate(total=Sum("quantity"))["total"] or Decimal("0")
+    received_sum = StockPurchaseItem.objects.filter(po_item=item).aggregate(
+        total=Sum(Case(When(purchase_qty__gt=0, then=F("purchase_qty")), default=F("quantity")))
+    )["total"] or Decimal("0")
     if received_sum == 0 and item.item_code_ref_id:
-        received_sum = StockPurchaseItem.objects.filter(vendor_detail__purchase_order=item.order, item_code_id=item.item_code_ref_id).aggregate(total=Sum("quantity"))["total"] or Decimal("0")
+        received_sum = StockPurchaseItem.objects.filter(
+            vendor_detail__purchase_order=item.order, item_code_id=item.item_code_ref_id
+        ).aggregate(
+            total=Sum(Case(When(purchase_qty__gt=0, then=F("purchase_qty")), default=F("quantity")))
+        )["total"] or Decimal("0")
     balance_qty = max(Decimal("0"), item.order_qty - received_sum)
     return {
         "id": item.pk,
@@ -87,7 +93,7 @@ def sync_all_master_item_ordered_qty():
     received_by_po_item = dict(
         StockPurchaseItem.objects.filter(po_item__isnull=False)
         .values("po_item_id")
-        .annotate(tot=Sum("quantity"))
+        .annotate(tot=Sum(Case(When(purchase_qty__gt=0, then=F("purchase_qty")), default=F("quantity"))))
         .values_list("po_item_id", "tot")
     )
 
@@ -156,9 +162,15 @@ def update_po_status_from_grn(po):
     any_received = False
 
     for item in po_items:
-        received_sum = StockPurchaseItem.objects.filter(po_item=item).aggregate(total=Sum("quantity"))["total"] or Decimal("0")
+        received_sum = StockPurchaseItem.objects.filter(po_item=item).aggregate(
+            total=Sum(Case(When(purchase_qty__gt=0, then=F("purchase_qty")), default=F("quantity")))
+        )["total"] or Decimal("0")
         if received_sum == 0 and item.item_code_ref_id:
-            received_sum = StockPurchaseItem.objects.filter(vendor_detail__purchase_order=po, item_code_id=item.item_code_ref_id).aggregate(total=Sum("quantity"))["total"] or Decimal("0")
+            received_sum = StockPurchaseItem.objects.filter(
+                vendor_detail__purchase_order=po, item_code_id=item.item_code_ref_id
+            ).aggregate(
+                total=Sum(Case(When(purchase_qty__gt=0, then=F("purchase_qty")), default=F("quantity")))
+            )["total"] or Decimal("0")
         if received_sum > 0:
             any_received = True
         if received_sum < item.order_qty:
@@ -448,4 +460,3 @@ def cancel_placed_stock_order_api_view(request, pk):
 # Aliases for backwards compatibility
 place_stock_order_api_view = create_place_stock_order_api_view
 place_stock_order_meta_api_view = place_stock_order_vendors_api_view
-
