@@ -1517,6 +1517,48 @@ select.auth-input option {
   min-width: 74px;
 }
 
+.crud-page .users-table-wrap--item-code-names {
+  overflow-x: auto;
+}
+
+.crud-page .users-table-wrap--item-code-names .users-table {
+  width: 100%;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.crud-page .users-table-wrap--item-code-names .users-table th,
+.crud-page .users-table-wrap--item-code-names .users-table td {
+  min-width: 75px;
+}
+
+.crud-page .users-table-wrap--item-code-names .users-table th:first-child,
+.crud-page .users-table-wrap--item-code-names .users-table td:first-child {
+  min-width: 380px;
+}
+
+.crud-page .users-table-wrap--item-code-names .users-table th {
+  white-space: normal;
+}
+
+.crud-page .users-table-wrap--item-code-names .users-table__sort-btn {
+  white-space: normal;
+  align-items: flex-start;
+}
+
+.crud-page .users-table-wrap--item-code-names .users-table__sort-btn span:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.crud-page .users-table-wrap--item-code-names .users-table .users-table__actions-col {
+  width: 74px;
+  min-width: 74px;
+}
+
 .crud-page .users-table-wrap--stocks-list {
   overflow-x: auto;
 }

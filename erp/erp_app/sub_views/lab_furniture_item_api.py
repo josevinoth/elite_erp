@@ -56,15 +56,21 @@ def _serialize_item_code_name(obj):
             or getattr(updated_by_user, "username", "")
             or str(updated_by_user)
         )
+    cat_name = obj.item_category.name if getattr(obj, "item_category_id", None) else ""
+    code = (obj.item_code or "").strip()
+    name = (obj.item_name or "").strip()
+    combined_parts = [p for p in [code, cat_name, name] if p]
+    combined_item = " _ ".join(combined_parts) if combined_parts else "—"
     return {
         "id": obj.pk,
         "item_code": obj.item_code,
         "item_name": obj.item_name,
         "item_category_id": getattr(obj, "item_category_id", None),
-        "item_category": obj.item_category.name if getattr(obj, "item_category_id", None) else "",
+        "item_category": cat_name,
         "procurement_classification": getattr(obj, "procurement_classification", "") or "",
         "business_criticality": getattr(obj, "business_criticality", "") or "",
         "label": f"{obj.item_code} - {obj.item_name}",
+        "combined_item": combined_item,
         "updated_at": getattr(obj, "updated_at", None).isoformat() if getattr(obj, "updated_at", None) else "",
         "updated_on": getattr(obj, "updated_at", None).strftime("%Y-%m-%d %H:%M:%S") if getattr(obj, "updated_at", None) else "",
         "updated_by": updated_by_name,
@@ -289,7 +295,7 @@ def create_item_code_name_api_view(request):
     payload = _read_json(request)
     item_code = _normalize_code(payload.get("item_code"))
     item_name = normalize_text(payload.get("item_name"))
-    item_category = _resolve_existing_category(payload.get("item_category_id", payload.get("item_category")))
+    item_category = _resolve_category(payload.get("item_category_id", payload.get("item_category")))
     procurement_classification = normalize_text(payload.get("procurement_classification", "")).upper()
     business_criticality = normalize_text(payload.get("business_criticality", "")).upper()
 
@@ -342,7 +348,37 @@ def item_code_name_detail_api_view(request, pk):
     payload = _read_json(request)
     item_code = _normalize_code(payload.get("item_code", obj.item_code))
     item_name = normalize_text(payload.get("item_name", obj.item_name))
-    item_category = _resolve_existing_category(payload.get("item_category_id", payload.get("item_category", obj.item_category_id)))
+
+    category_mode = payload.get("category_mode")
+    rename_category = payload.get("rename_category") or category_mode == "rename"
+
+    if rename_category and obj.item_category:
+        new_cat_name = normalize_text(payload.get("item_category", payload.get("new_category_name", "")))
+        if new_cat_name and new_cat_name.lower() != obj.item_category.name.lower():
+            old_cat_name = obj.item_category.name
+            cat_obj = obj.item_category
+            cat_obj.name = new_cat_name
+            cat_obj.save(update_fields=["name"])
+
+            # Propagate to any models storing category as CharField
+            from ..sub_models.lce_estimate import LCEEstimateItem
+            from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
+            try:
+                LCEEstimateItem.objects.filter(item_category__iexact=old_cat_name).update(item_category=new_cat_name)
+            except Exception:
+                pass
+            try:
+                PlaceStockOrderItem.objects.filter(item_category__iexact=old_cat_name).update(item_category=new_cat_name)
+            except Exception:
+                pass
+            item_category = cat_obj
+        else:
+            item_category = obj.item_category
+    else:
+        item_category = _resolve_category(payload.get("item_category_id", payload.get("item_category", obj.item_category_id)))
+        if item_category and item_category.pk != obj.item_category_id:
+            # Category was changed to another category -> update any linked LabFurnitureItem records too
+            LabFurnitureItem.objects.filter(item_code_ref=obj).update(item_category=item_category)
 
     if not item_code:
         return JsonResponse({"message": "Item code is required."}, status=400)
@@ -389,6 +425,42 @@ def create_lab_furniture_item_category_api_view(request):
 
     obj, _created = ItemCategory.objects.get_or_create(name=name)
     return JsonResponse({"success": True, "item_category": _serialize_category(obj)}, status=201)
+
+@csrf_protect
+def update_lab_furniture_item_category_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    cat = ItemCategory.objects.filter(pk=pk).first()
+    if not cat:
+        return JsonResponse({"message": "Category not found."}, status=404)
+
+    payload = _read_json(request)
+    new_name = normalize_text(payload.get("name") or payload.get("category_name", ""))
+    if not new_name:
+        return JsonResponse({"message": "Category name is required."}, status=400)
+
+    old_name = cat.name
+    if new_name.lower() != old_name.lower():
+        existing = ItemCategory.objects.filter(name__iexact=new_name).exclude(pk=cat.pk).first()
+        if existing:
+            return JsonResponse({"message": f'Category "{new_name}" already exists.'}, status=400)
+        cat.name = new_name
+        cat.save(update_fields=["name"])
+
+        from ..sub_models.lce_estimate import LCEEstimateItem
+        from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
+        try:
+            LCEEstimateItem.objects.filter(item_category__iexact=old_name).update(item_category=new_name)
+        except Exception:
+            pass
+        try:
+            PlaceStockOrderItem.objects.filter(item_category__iexact=old_name).update(item_category=new_name)
+        except Exception:
+            pass
+
+    return JsonResponse({"success": True, "item_category": _serialize_category(cat)})
 
 
 def get_item_requested_projects_data(item):

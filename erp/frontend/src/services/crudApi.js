@@ -1264,6 +1264,17 @@ export async function createLabFurnitureItemCategory(payload) {
   return parseJson(res);
 }
 
+export async function updateLabFurnitureItemCategory(id, payload) {
+  const headers = await csrfHeaders();
+  const res = await fetch(`/api/lab-furniture-item-categories/${id}/`, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
 // ── Stock Purchase ────────────────────────────────────────
 export async function listStockPurchases() {
   const res = await fetch("/api/stock-purchases/", { credentials: "include" });

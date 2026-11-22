@@ -297,12 +297,16 @@ function CrudPage({
         label: updatedByCol?.label || "Updated By",
         align: updatedByCol?.align || defaultAuditAlign,
         headerAlign: updatedByCol?.headerAlign || defaultAuditHeaderAlign,
+        ...(updatedByCol?.width ? { width: updatedByCol.width } : {}),
+        ...(updatedByCol?.minWidth ? { minWidth: updatedByCol.minWidth } : {}),
       },
       {
         key: "updated_on",
         label: updatedOnCol?.label || "Updated On",
         align: updatedOnCol?.align || defaultAuditAlign,
         headerAlign: updatedOnCol?.headerAlign || defaultAuditHeaderAlign,
+        ...(updatedOnCol?.width ? { width: updatedOnCol.width } : {}),
+        ...(updatedOnCol?.minWidth ? { minWidth: updatedOnCol.minWidth } : {}),
       },
     ];
   }, [columns, includeAuditColumns]);
@@ -533,7 +537,7 @@ function CrudPage({
         const payload = buildPayload(fv);
         try {
           if (editRow) {
-            savedRow = await updateFn(editRow[rowKey], payload);
+            savedRow = await updateFn(editRow[rowKey], payload, editRow);
           } else {
             savedRow = await createFn(payload);
           }
@@ -571,7 +575,9 @@ function CrudPage({
       }
       closeModal();
     } catch (err) {
-      setModalError(err.message || "Save failed.");
+      if (!err?.silent && !err?.isCancelled) {
+        setModalError(err.message || 'Save failed.');
+      }
     } finally {
       setSaving(false);
     }
@@ -749,11 +755,13 @@ function CrudPage({
 
   const displayedRows = useMemo(() => {
     const searchText = String(globalSearch || "").trim().toLowerCase();
+    const searchParts = searchText ? searchText.split(/\s+/).filter(Boolean) : [];
     const searchedRows = searchText
       ? normalizedRows.filter((row) =>
-          tableColumns.some((col) =>
-            String(row[col.key] ?? "").toLowerCase().includes(searchText)
-          )
+          tableColumns.some((col) => {
+            const val = String(row[col.key] ?? "").toLowerCase();
+            return val.includes(searchText) || (searchParts.length > 1 && searchParts.every((p) => val.includes(p)));
+          })
         )
       : normalizedRows;
 
@@ -763,11 +771,13 @@ function CrudPage({
 
     const filtered = normalizedFilters.length
       ? searchedRows.filter((row) =>
-          normalizedFilters.every(([key, value]) =>
-            String(row[key] ?? "")
-              .toLowerCase()
-              .includes(String(value).trim().toLowerCase())
-          )
+          normalizedFilters.every(([key, value]) => {
+            const rowVal = String(row[key] ?? "").toLowerCase();
+            const filterVal = String(value).trim().toLowerCase();
+            if (rowVal.includes(filterVal)) return true;
+            const filterParts = filterVal.split(/\s+/).filter(Boolean);
+            return filterParts.length > 1 && filterParts.every((p) => rowVal.includes(p));
+          })
         )
       : searchedRows;
 
@@ -1219,6 +1229,19 @@ function CrudPage({
                   </label>
 
                   {(() => {
+                    if (typeof field.render === "function") {
+                      return field.render({
+                        field,
+                        value: formValues[field.key],
+                        formValues,
+                        onChange: (val) => handleFieldChange(field.key, val),
+                        setFormValues,
+                        editRow,
+                        isRequired: isFieldRequired(field),
+                        isReadOnly: isFieldReadOnly(field),
+                      });
+                    }
+
                     const resolvedOptions = typeof field.options === "function"
                       ? field.options(formValues)
                       : field.options;

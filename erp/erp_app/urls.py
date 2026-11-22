@@ -32,6 +32,7 @@ from .sub_views.lab_furniture_item_api import (
     item_requested_projects_api_view,
     item_ordered_pos_api_view,
     item_consumed_projects_api_view,
+    update_lab_furniture_item_category_api_view,
 )
 from .sub_views.stock_purchase_api import (
     purchase_item_grns_api_view,
@@ -582,6 +583,11 @@ urlpatterns = [
         "api/lab-furniture-item-categories/create/",
         create_lab_furniture_item_category_api_view,
         name="api-lab-furniture-item-categories-create",
+    ),
+    path(
+        "api/lab-furniture-item-categories/<int:pk>/",
+        update_lab_furniture_item_category_api_view,
+        name="api-lab-furniture-item-categories-update",
     ),
     path("api/lab-furniture-items/create/", create_lab_furniture_item_api_view, name="api-lab-furniture-items-create"),
     path("api/lab-furniture-items/<int:pk>/", lab_furniture_item_detail_api_view, name="api-lab-furniture-items-detail"),
