@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CrudPage from "../components/CrudPage";
 import ConfirmPopupModal from "../components/ConfirmPopupModal";
 import {
+  checkItemCodeNameDownstream,
   createItemCodeName,
   deleteItemCodeName,
   listItemCodeNames,
@@ -514,6 +515,41 @@ function ItemCodeNamesPage() {
     return {};
   }, []);
 
+  const checkDeleteAllowedFn = useCallback(async (row) => {
+    try {
+      const data = await checkItemCodeNameDownstream(row.id);
+      if (data?.has_downstream) {
+        return {
+          allowed: false,
+          title: "Cannot Delete Item Code",
+          type: "warning",
+          message: `Item Code "${row.item_code}" (${row.item_name || ""}) cannot be deleted because it is referenced in connected downstream record(s):`,
+          details: data.details || [],
+          cancelLabel: "Close",
+        };
+      }
+    } catch (err) {
+      if (err?.data?.has_downstream) {
+        return {
+          allowed: false,
+          title: "Cannot Delete Item Code",
+          type: "warning",
+          message: err.data.message || `Item Code "${row.item_code}" cannot be deleted because it is referenced downstream.`,
+          details: err.data.details || [],
+          cancelLabel: "Close",
+        };
+      }
+    }
+    return {
+      allowed: true,
+      title: "Confirm Delete Item Code",
+      type: "danger",
+      message: `Are you sure you want to permanently delete Item Code "${row.item_code}" (${row.item_name || ""})? This action cannot be undone.`,
+      confirmLabel: "Delete Item Code",
+      cancelLabel: "Cancel",
+    };
+  }, []);
+
   return (
     <>
       <CrudPage
@@ -524,6 +560,7 @@ function ItemCodeNamesPage() {
         createFn={createFn}
         updateFn={updateFn}
         deleteFn={deleteItemCodeName}
+        checkDeleteAllowedFn={checkDeleteAllowedFn}
         computeValues={computeValues}
         includeAuditColumns={true}
         tableMaxHeight="60vh"

@@ -27,6 +27,7 @@ from .sub_views.lce_estimate_api import (
     delete_lce_item_api_view,
 )
 from .sub_views.lab_furniture_item_api import (
+    check_item_code_name_downstream_api_view,
     create_item_code_name_api_view,
     item_code_name_detail_api_view,
     item_requested_projects_api_view,
@@ -579,6 +580,8 @@ urlpatterns = [
     path("api/item-code-names/", list_item_code_names_api_view, name="api-item-code-names-list"),
     path("api/item-code-names/create/", create_item_code_name_api_view, name="api-item-code-names-create"),
     path("api/item-code-names/<int:pk>/", item_code_name_detail_api_view, name="api-item-code-names-detail"),
+    path("api/item-code-names/<int:pk>/downstream-check/", check_item_code_name_downstream_api_view, name="api-item-code-names-downstream-check"),
+    path("api/item-code-names/<int:pk>/downstream/", check_item_code_name_downstream_api_view, name="api-item-code-names-downstream"),
     path(
         "api/lab-furniture-item-categories/create/",
         create_lab_furniture_item_category_api_view,

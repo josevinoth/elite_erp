@@ -327,6 +327,175 @@ def create_item_code_name_api_view(request):
     return JsonResponse({"success": True, "item_code_name": _serialize_item_code_name(obj)}, status=201)
 
 
+def _get_item_code_name_downstream_links(obj):
+    details = []
+
+    # 1. Stock Item Master (LabFurnitureItem)
+    stock_items = list(
+        LabFurnitureItem.objects.filter(Q(item_code_ref=obj) | Q(item_name_ref=obj))
+        .select_related("item_category", "item_code_ref", "item_name_ref")
+    )
+    for si in stock_items:
+        c_code = si.item_code_ref.item_code if si.item_code_ref else obj.item_code
+        c_name = si.item_name_ref.item_name if si.item_name_ref else obj.item_name
+        cat_name = si.item_category.name if si.item_category else "Uncategorized"
+        details.append(f"Stock Item Master: [{c_code}] {c_name} (Category: {cat_name})")
+
+    stock_item_ids = [si.id for si in stock_items]
+
+    # 2. Project Quotations (ProjectQuotationItemInfo)
+    try:
+        from ..sub_models.project_quotation_items_mod import ProjectQuotationItemInfo
+        q_filter = Q(item_name__iexact=obj.item_name)
+        if stock_item_ids:
+            q_filter |= Q(item_code_id__in=stock_item_ids)
+
+        q_items = list(
+            ProjectQuotationItemInfo.objects.filter(q_filter)
+            .select_related("quotation_number")[:20]
+        )
+        for qi in q_items:
+            q_num = getattr(qi.quotation_number, "quotation_number", None) or "Quotation"
+            p_id = getattr(qi.quotation_number, "project_id", None) or ""
+            proj_str = f"Project {p_id} | Quotation {q_num}" if p_id else f"Quotation {q_num}"
+            details.append(f"Project Quotation: {proj_str} (Item: {qi.item_name or obj.item_name})")
+    except Exception:
+        pass
+
+    # 3. Project Costings (ProjectCostingItemInfo)
+    try:
+        from ..sub_models.project_costing_items_mod import ProjectCostingItemInfo
+        c_filter = Q(item_name__iexact=obj.item_name)
+        if stock_item_ids:
+            c_filter |= Q(item_code_id__in=stock_item_ids)
+
+        c_items = list(
+            ProjectCostingItemInfo.objects.filter(c_filter)
+            .select_related("costing_id")[:20]
+        )
+        for ci in c_items:
+            c_num = getattr(ci.costing_id, "quotation_number", None) or getattr(ci.costing_id, "costing_id", None) or "Costing"
+            p_id = getattr(ci.costing_id, "project_id", None) or ""
+            proj_str = f"Project {p_id} | Costing {c_num}" if p_id else f"Costing {c_num}"
+            details.append(f"Project Costing: {proj_str} (Item: {ci.item_name or obj.item_name})")
+    except Exception:
+        pass
+
+    # 4. Project Templates (ProjectTemplateItem)
+    if stock_item_ids:
+        try:
+            from ..sub_models.project_template import ProjectTemplateItem
+            t_items = list(
+                ProjectTemplateItem.objects.filter(item_code_id__in=stock_item_ids)
+                .select_related("template")[:15]
+            )
+            for ti in t_items:
+                t_name = ti.template.name if ti.template else "Template"
+                details.append(f"Project Template (BOM): {t_name}")
+        except Exception:
+            pass
+
+    # 5. Stock Purchases / Received Goods (StockPurchaseItem)
+    try:
+        from ..sub_models.stock_purchase import StockPurchaseItem
+        sp_filter = Q(item_name__iexact=obj.item_name)
+        if stock_item_ids:
+            sp_filter |= Q(item_code_id__in=stock_item_ids)
+
+        sp_items = list(
+            StockPurchaseItem.objects.filter(sp_filter)
+            .select_related("vendor_detail")[:15]
+        )
+        for spi in sp_items:
+            purchase_id = getattr(spi.vendor_detail, "purchase_id", None) or "SP"
+            inv_no = getattr(spi.vendor_detail, "invoice_number", None)
+            inv_str = f" | Inv: {inv_no}" if inv_no else ""
+            grn_str = f" | GRN: {spi.grn_number}" if getattr(spi, "grn_number", None) else ""
+            details.append(f"Stock Purchase: {purchase_id}{inv_str}{grn_str} (Item: {spi.item_name})")
+    except Exception:
+        pass
+
+    # 6. Procurement Orders (PlaceStockOrderItem)
+    try:
+        from ..sub_models.place_stock_order_mod import PlaceStockOrderItem
+        po_filter = Q(item_code__iexact=obj.item_code) | Q(item_name__iexact=obj.item_name)
+        if stock_item_ids:
+            po_filter |= Q(item_code_ref_id__in=stock_item_ids)
+
+        po_items = list(
+            PlaceStockOrderItem.objects.filter(po_filter)
+            .select_related("order")[:15]
+        )
+        for poi in po_items:
+            order_code = getattr(poi.order, "order_code", None) or f"PO-{poi.order_id}"
+            details.append(f"Procurement Order: {order_code} | Item: {poi.item_name or obj.item_name}")
+    except Exception:
+        pass
+
+    # 7. Stock Manufacture (StockManufactureItem)
+    try:
+        from ..sub_models.stock_manufacture import StockManufactureItem
+        sm_filter = Q(item_name__iexact=obj.item_name)
+        if stock_item_ids:
+            sm_filter |= Q(item_code_id__in=stock_item_ids)
+
+        sm_items = list(StockManufactureItem.objects.filter(sm_filter)[:10])
+        for smi in sm_items:
+            details.append(f"Stock Manufacture: Item {smi.item_name}")
+    except Exception:
+        pass
+
+    # 8. Item Costing (ItemCostingInfo)
+    try:
+        from ..sub_models.item_costing_mod import ItemCostingInfo
+        ic_items = list(
+            ItemCostingInfo.objects.filter(
+                Q(ic_item_code__iexact=obj.item_code) | Q(ic_item_description__iexact=obj.item_name)
+            ).select_related("ic_project_ref")[:10]
+        )
+        for ici in ic_items:
+            p_id = getattr(ici.ic_project_ref, "project_id", "N/A") if ici.ic_project_ref else "N/A"
+            details.append(f"Item Costing: Project {p_id} | Code: {ici.ic_item_code}")
+    except Exception:
+        pass
+
+    # Deduplicate while preserving order
+    seen = set()
+    deduped = []
+    for d in details:
+        if d not in seen:
+            seen.add(d)
+            deduped.append(d)
+
+    return deduped
+
+
+@require_GET
+def check_item_code_name_downstream_api_view(request, pk):
+    not_allowed = _ensure_authenticated(request)
+    if not_allowed:
+        return not_allowed
+
+    obj = ItemCodeName.objects.select_related("item_category").filter(pk=pk).first()
+    if not obj:
+        return JsonResponse({"message": "Item code name not found."}, status=404)
+
+    downstream_links = _get_item_code_name_downstream_links(obj)
+    has_downstream = len(downstream_links) > 0
+
+    return JsonResponse({
+        "has_downstream": has_downstream,
+        "details": downstream_links,
+        "item_code": obj.item_code,
+        "item_name": obj.item_name,
+        "message": (
+            f"Item Code '{obj.item_code}' ({obj.item_name}) cannot be deleted because it is referenced in {len(downstream_links)} downstream record(s)."
+            if has_downstream
+            else "No downstream dependencies found."
+        ),
+    })
+
+
 @require_http_methods(["PATCH", "DELETE"])
 @csrf_protect
 def item_code_name_detail_api_view(request, pk):
@@ -339,11 +508,17 @@ def item_code_name_detail_api_view(request, pk):
         return JsonResponse({"message": "Item code name not found."}, status=404)
 
     if request.method == "DELETE":
-        if LabFurnitureItem.objects.filter(item_code_ref=obj).exists() or LabFurnitureItem.objects.filter(item_name_ref=obj).exists():
-            return JsonResponse({"message": "Item code name is in use and cannot be deleted."}, status=400)
+        downstream_links = _get_item_code_name_downstream_links(obj)
+        if downstream_links:
+            return JsonResponse({
+                "has_downstream": True,
+                "message": f"Item Code '{obj.item_code}' ({obj.item_name}) cannot be deleted because it is referenced in {len(downstream_links)} downstream record(s).",
+                "details": downstream_links,
+            }, status=400)
 
+        item_code_str = obj.item_code
         obj.delete()
-        return JsonResponse({"success": True, "message": "Item code name deleted."})
+        return JsonResponse({"success": True, "message": f"Item Code '{item_code_str}' deleted successfully."})
 
     payload = _read_json(request)
     item_code = _normalize_code(payload.get("item_code", obj.item_code))

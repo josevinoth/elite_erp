@@ -1183,6 +1183,11 @@ export async function updateItemCodeName(id, payload) {
   return parseJson(res);
 }
 
+export async function checkItemCodeNameDownstream(id) {
+  const res = await fetch(`/api/item-code-names/${id}/downstream-check/`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function deleteItemCodeName(id) {
   const headers = await csrfHeaders();
   delete headers["Content-Type"];
