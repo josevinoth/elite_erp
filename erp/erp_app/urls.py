@@ -36,6 +36,7 @@ from .sub_views.lab_furniture_item_api import (
     update_lab_furniture_item_category_api_view,
 )
 from .sub_views.stock_purchase_api import (
+    check_stock_purchase_downstream_api_view,
     purchase_item_grns_api_view,
     stock_item_summary_api_view,
     stock_purchase_item_consumed_projects_api_view,
@@ -337,6 +338,11 @@ urlpatterns = [
     path("api/stock-purchases/", list_stock_purchases_api_view, name="api-stock-purchases-list"),
     path("api/stock-purchases/create/", create_stock_purchase_api_view, name="api-stock-purchases-create"),
     path("api/stock-purchases/<int:pk>/", stock_purchase_detail_api_view, name="api-stock-purchases-detail"),
+    path(
+        "api/stock-purchases/<int:pk>/downstream-check/",
+        check_stock_purchase_downstream_api_view,
+        name="api-stock-purchases-downstream-check",
+    ),
     path("api/purchase-items/<str:item_code>/grns/", purchase_item_grns_api_view, name="api-purchase-item-grns"),
     path("api/stock/<str:item_code>/summary/", stock_item_summary_api_view, name="api-stock-item-summary"),
     path(

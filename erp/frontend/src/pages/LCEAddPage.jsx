@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import Select from "react-select";
 import {
   BsChevronDown,
   BsChevronRight,
@@ -105,21 +106,33 @@ const toNumber = (value) => {
 const toFixed = (value, digits = 2) =>
   String(Math.round((value + Number.EPSILON) * 10 ** digits) / 10 ** digits);
 
+const getRowActualCost = (item) =>
+  toNumber(item?.actual_cost) ||
+  toNumber(item?.max_cost) ||
+  toNumber(item?.min_cost);
+
+const getRowQuantity = (item) => {
+  const q = item?.quantity;
+  if (q === "" || q === null || q === undefined) return 1;
+  return toNumber(q);
+};
+
+const getRowTotalCost = (item) =>
+  getRowActualCost(item) * getRowQuantity(item);
+
 const calculateItemsTotalPrice = (items = []) =>
   toFixed(
-    items.reduce(
-      (sum, item) =>
-        sum +
-        (toNumber(item?.actual_cost) ||
-          toNumber(item?.max_cost) ||
-          toNumber(item?.min_cost)),
-      0
-    ),
+    items.reduce((sum, item) => sum + getRowTotalCost(item), 0),
     2
   );
 
-const applyItemsToForm = (values, items = [], settlements = []) =>
-  applyFormulas(values, settlements);
+const applyItemsToForm = (values, items = [], settlements = []) => {
+  const nextValues =
+    Array.isArray(items) && items.length > 0
+      ? { ...values, ex_works_material_cost: calculateItemsTotalPrice(items) }
+      : values;
+  return applyFormulas(nextValues, settlements);
+};
 
 const calculateLinkedItemsTotalPrice = calculateItemsTotalPrice;
 const applyLinkedItemsToForm = applyItemsToForm;
@@ -411,12 +424,46 @@ function LCEAddPage() {
     row: null,
   });
 
+  const [addItemModal, setAddItemModal] = useState({
+    open: false,
+    selectedItemId: "",
+    quantity: "1",
+    actualCost: "0",
+    error: "",
+  });
+
   const [balanceSettlements, setBalanceSettlements] = useState([emptySettlementRow(1)]);
   const [nextSettlementRowId, setNextSettlementRowId] = useState(2);
 
   // Accordion section states (default closed)
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
   const [itemsAccordionOpen, setItemsAccordionOpen] = useState(false);
+
+  // Column filters & sort for Linked Item Codes table
+  const [itemFilters, setItemFilters] = useState({
+    item_code: "",
+    min_cost: "",
+    max_cost: "",
+    actual_cost: "",
+    quantity: "",
+    total_cost: "",
+    lce_cost: "",
+  });
+  const [itemSort, setItemSort] = useState({
+    key: "",
+    direction: "asc",
+  });
+
+  const handleItemSort = (key) => {
+    setItemSort((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
+  };
+
+  const handleItemFilterChange = (key, value) => {
+    setItemFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
   useEffect(() => {
     let alive = true;
@@ -528,6 +575,8 @@ function LCEAddPage() {
             min_cost: String(it.min_cost ?? "0"),
             max_cost: String(it.max_cost ?? "0"),
             actual_cost: String(it.actual_cost ?? it.max_cost ?? "0"),
+            quantity: String(it.quantity ?? "1"),
+            total_cost: String(it.total_cost ?? toFixed(getRowTotalCost({ ...it, quantity: it.quantity ?? "1" }), 2)),
             lce_cost: String(it.lce_cost ?? "0"),
           }));
         } else if (estimate.item_code_id || estimate.item_code) {
@@ -541,6 +590,8 @@ function LCEAddPage() {
               min_cost: String(estimate.min_cost ?? "0"),
               max_cost: String(estimate.max_cost ?? "0"),
               actual_cost: String(estimate.actual_cost ?? estimate.max_cost ?? "0"),
+              quantity: String(estimate.quantity ?? "1"),
+              total_cost: String(estimate.total_cost ?? toFixed(getRowTotalCost({ ...estimate, quantity: estimate.quantity ?? "1" }), 2)),
               lce_cost: String(estimate.lce_cost ?? "0"),
             },
           ];
@@ -586,7 +637,7 @@ function LCEAddPage() {
   }, [lceId]);
 
   useEffect(() => {
-    if (!lceId) return;
+    if (!lceId && items.length === 0) return;
     setForm((prevForm) =>
       applyFormulas(
         applyItemsToForm(prevForm, items),
@@ -623,21 +674,115 @@ function LCEAddPage() {
   };
 
   const handleAddItemRow = () => {
+    setAddItemModal({
+      open: true,
+      selectedItemId: "",
+      quantity: "1",
+      actualCost: "0",
+      error: "",
+    });
+  };
+
+  const addItemSelectOptions = useMemo(
+    () =>
+      itemMasterOptions.map((o) => {
+        const isLinkedOther = Boolean(
+          o.linked_lce_id && String(o.linked_lce_id) !== String(lceId || "")
+        );
+        const isAlreadyInTable = items.some(
+          (it) =>
+            (it.item_code_id && String(it.item_code_id) === String(o.value)) ||
+            (it.item_code &&
+              o.item_code &&
+              it.item_code.trim().toUpperCase() === o.item_code.trim().toUpperCase())
+        );
+        const baseLabel = `${o.item_code || ""}${o.item_category ? ` _ ${o.item_category}` : ""}${o.item_name ? ` _ ${o.item_name}` : ""}`;
+        const statusTag = isLinkedOther
+          ? ` [Linked in LCE #${o.linked_lce_id}]`
+          : isAlreadyInTable
+          ? " [Already added]"
+          : "";
+        return {
+          ...o,
+          label: `${baseLabel}${statusTag}`,
+          isLinkedOther,
+          isAlreadyInTable,
+        };
+      }),
+    [itemMasterOptions, items, lceId]
+  );
+
+  const validateManualItemSelection = (selectedId) => {
+    if (!selectedId) return "Please select an item code.";
+    const master = itemMasterOptions.find(
+      (o) => String(o.value) === String(selectedId)
+    );
+    if (!master) return "Selected item code was not found.";
+
+    const isAlreadyInTable = items.some(
+      (it) =>
+        (it.item_code_id && String(it.item_code_id) === String(master.value)) ||
+        (it.item_code &&
+          master.item_code &&
+          it.item_code.trim().toUpperCase() === master.item_code.trim().toUpperCase())
+    );
+    if (isAlreadyInTable) {
+      return `Duplicate item "${master.item_code}" — this item code is already added in this LCE.`;
+    }
+
+    if (
+      master.linked_lce_id &&
+      String(master.linked_lce_id) !== String(lceId || "")
+    ) {
+      return `Item "${master.item_code}" is already linked to LCE #${master.linked_lce_id}. An item code can only be linked to one LCE.`;
+    }
+
+    return "";
+  };
+
+  const handleConfirmAddItemRow = () => {
+    const errMsg = validateManualItemSelection(addItemModal.selectedItemId);
+    if (errMsg) {
+      setAddItemModal((prev) => ({ ...prev, error: errMsg }));
+      return;
+    }
+
+    const master = itemMasterOptions.find(
+      (o) => String(o.value) === String(addItemModal.selectedItemId)
+    );
+    const qtyStr =
+      String(addItemModal.quantity ?? "").trim() === ""
+        ? "1"
+        : String(addItemModal.quantity);
+    const qtyVal = toNumber(qtyStr);
+    const actualVal = toNumber(addItemModal.actualCost);
+    const totalCostStr = toFixed(qtyVal * actualVal, 2);
+
     setItems((prev) => [
       ...prev,
       {
         rowId: nextItemRowId,
-        item_code_id: "",
-        item_code: "",
-        item_name: "",
-        item_category: "",
-        min_cost: "0",
-        max_cost: "0",
-        actual_cost: "0",
-        lce_cost: "0",
+        item_code_id: master.value,
+        item_code: master.item_code,
+        item_name: master.item_name,
+        item_category: master.item_category || "",
+        min_cost: "0.00",
+        max_cost: "0.00",
+        actual_cost: toFixed(actualVal, 2),
+        quantity: qtyStr,
+        total_cost: totalCostStr,
+        lce_cost: toFixed(actualVal * toNumber(form.cost_factor), 2),
       },
     ]);
     setNextItemRowId((prev) => prev + 1);
+    setItemsAccordionOpen(true);
+    setAddItemModal({
+      open: false,
+      selectedItemId: "",
+      quantity: "1",
+      actualCost: "0",
+      error: "",
+    });
   };
 
   const handleRequestDeleteItem = async (rowItem) => {
@@ -729,10 +874,12 @@ function LCEAddPage() {
         const newActual = shouldUpdateActual ? newMin : row.actual_cost;
         const costVal =
           toNumber(newActual) || toNumber(newMin) || toNumber(row.max_cost);
+        const qtyVal = getRowQuantity(row);
         return {
           ...row,
           min_cost: newMin,
           actual_cost: newActual,
+          total_cost: toFixed(costVal * qtyVal, 2),
           lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
         };
       })
@@ -751,10 +898,12 @@ function LCEAddPage() {
         const newActual = shouldUpdateActual ? newMax : row.actual_cost;
         const costVal =
           toNumber(newActual) || toNumber(newMax) || toNumber(row.min_cost);
+        const qtyVal = getRowQuantity(row);
         return {
           ...row,
           max_cost: newMax,
           actual_cost: newActual,
+          total_cost: toFixed(costVal * qtyVal, 2),
           lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
         };
       })
@@ -767,10 +916,27 @@ function LCEAddPage() {
         if (row.rowId !== rowId) return row;
         const costVal =
           toNumber(value) || toNumber(row.max_cost) || toNumber(row.min_cost);
+        const qtyVal = getRowQuantity(row);
         return {
           ...row,
           actual_cost: value,
+          total_cost: toFixed(costVal * qtyVal, 2),
           lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
+        };
+      })
+    );
+  };
+
+  const handleQuantityChange = (rowId, value) => {
+    setItems((prev) =>
+      prev.map((row) => {
+        if (row.rowId !== rowId) return row;
+        const costVal = getRowActualCost(row);
+        const qtyVal = value === "" ? 0 : toNumber(value);
+        return {
+          ...row,
+          quantity: value,
+          total_cost: toFixed(costVal * qtyVal, 2),
         };
       })
     );
@@ -793,6 +959,8 @@ function LCEAddPage() {
                 min_cost: "0",
                 max_cost: "0",
                 actual_cost: "0",
+                quantity: "1",
+                total_cost: "0",
                 lce_cost: "0",
               }
             : row
@@ -823,6 +991,8 @@ function LCEAddPage() {
                 min_cost: minCost,
                 max_cost: maxCost,
                 actual_cost: actualCost,
+                quantity: row.quantity || "1",
+                total_cost: toFixed(costVal * getRowQuantity({ quantity: row.quantity || "1" }), 2),
                 lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
               }
             : row
@@ -842,6 +1012,8 @@ function LCEAddPage() {
                 min_cost: "0",
                 max_cost: "0",
                 actual_cost: "0",
+                quantity: row.quantity || "1",
+                total_cost: "0",
                 lce_cost: "0",
               }
             : row
@@ -934,6 +1106,8 @@ function LCEAddPage() {
           min_cost: minCost,
           max_cost: maxCost,
           actual_cost: actualCost,
+          quantity: "1",
+          total_cost: toFixed(toNumber(actualCost) * 1, 2),
           lce_cost: toFixed(toNumber(actualCost) * toNumber(form.cost_factor), 2),
         });
       });
@@ -956,6 +1130,96 @@ function LCEAddPage() {
     );
     return selected?.currencyCode || "EUR";
   }, [currencyOptions, form.foreign_currency_id]);
+
+  const filteredAndSortedItems = useMemo(() => {
+    const costFactor = toNumber(form.cost_factor);
+    const enriched = items.map((row) => {
+      const master = itemMasterOptions.find(
+        (o) =>
+          (row.item_code_id && String(o.value) === String(row.item_code_id)) ||
+          (row.item_code && o.item_code === row.item_code)
+      );
+      const itemName = row.item_name || master?.item_name || "";
+      const itemCategory = row.item_category || master?.item_category || "";
+      const itemCode = row.item_code || master?.item_code || "";
+      const concatenatedItemCode = itemCode
+        ? `${itemCode}${itemName ? ` - ${itemName}` : ""}${itemCategory ? ` (${itemCategory})` : ""}`
+        : (itemName || "—");
+      const actualVal = getRowActualCost(row);
+      const qtyVal = getRowQuantity(row);
+      const totalCostVal = actualVal * qtyVal;
+      const lceCostVal = actualVal * costFactor;
+
+      return {
+        row,
+        master,
+        itemName,
+        itemCategory,
+        itemCode,
+        concatenatedItemCode,
+        minStr: String(row.min_cost || "0"),
+        maxStr: String(row.max_cost || "0"),
+        actualStr: String(row.actual_cost ?? "0"),
+        qtyStr: String(row.quantity ?? "1"),
+        totalCostStr: toFixed(totalCostVal, 2),
+        lceCostStr: toFixed(lceCostVal, 2),
+        minNum: toNumber(row.min_cost),
+        maxNum: toNumber(row.max_cost),
+        actualNum: actualVal,
+        qtyNum: qtyVal,
+        totalCostNum: totalCostVal,
+        lceCostNum: lceCostVal,
+      };
+    });
+
+    const filtered = enriched.filter((entry) => {
+      const fCode = itemFilters.item_code.trim().toLowerCase();
+      if (fCode && !entry.concatenatedItemCode.toLowerCase().includes(fCode)) return false;
+
+      const fMin = itemFilters.min_cost.trim().toLowerCase();
+      if (fMin && !entry.minStr.toLowerCase().includes(fMin)) return false;
+
+      const fMax = itemFilters.max_cost.trim().toLowerCase();
+      if (fMax && !entry.maxStr.toLowerCase().includes(fMax)) return false;
+
+      const fActual = itemFilters.actual_cost.trim().toLowerCase();
+      if (fActual && !entry.actualStr.toLowerCase().includes(fActual)) return false;
+
+      const fQty = itemFilters.quantity.trim().toLowerCase();
+      if (fQty && !entry.qtyStr.toLowerCase().includes(fQty)) return false;
+
+      const fTotal = itemFilters.total_cost.trim().toLowerCase();
+      if (fTotal && !entry.totalCostStr.toLowerCase().includes(fTotal)) return false;
+
+      const fLce = itemFilters.lce_cost.trim().toLowerCase();
+      if (fLce && !entry.lceCostStr.toLowerCase().includes(fLce)) return false;
+
+      return true;
+    });
+
+    if (!itemSort.key) return filtered;
+
+    const dir = itemSort.direction === "desc" ? -1 : 1;
+    const numericKeyMap = {
+      min_cost: "minNum",
+      max_cost: "maxNum",
+      actual_cost: "actualNum",
+      quantity: "qtyNum",
+      total_cost: "totalCostNum",
+      lce_cost: "lceCostNum",
+    };
+
+    return [...filtered].sort((a, b) => {
+      if (itemSort.key === "item_code") {
+        return a.concatenatedItemCode.localeCompare(b.concatenatedItemCode) * dir;
+      }
+      const numField = numericKeyMap[itemSort.key];
+      if (numField) {
+        return (a[numField] - b[numField]) * dir;
+      }
+      return 0;
+    });
+  }, [items, itemMasterOptions, form.cost_factor, itemFilters, itemSort]);
 
   const withForeignCurrencyLabel = (key, label) => {
     if (FOREIGN_CURRENCY_KEYS.has(key)) {
@@ -1045,6 +1309,7 @@ function LCEAddPage() {
       .map((r) => {
         const costVal =
           toNumber(r.actual_cost) || toNumber(r.max_cost) || toNumber(r.min_cost);
+        const qtyVal = getRowQuantity(r);
         return {
           item_code_id: r.item_code_id,
           item_code: r.item_code,
@@ -1053,6 +1318,8 @@ function LCEAddPage() {
           min_cost: r.min_cost,
           max_cost: r.max_cost,
           actual_cost: r.actual_cost,
+          quantity: String(qtyVal),
+          total_cost: toFixed(costVal * qtyVal, 2),
           lce_cost: toFixed(costVal * toNumber(form.cost_factor), 2),
         };
       });
@@ -1099,6 +1366,8 @@ function LCEAddPage() {
           min_cost: String(it.min_cost ?? "0"),
           max_cost: String(it.max_cost ?? "0"),
           actual_cost: String(it.actual_cost ?? it.max_cost ?? "0"),
+          quantity: String(it.quantity ?? "1"),
+          total_cost: String(it.total_cost ?? toFixed(getRowTotalCost({ ...it, quantity: it.quantity ?? "1" }), 2)),
           lce_cost: String(it.lce_cost ?? toFixed(toNumber(it.actual_cost) * toNumber(form.cost_factor), 2)),
         }));
       } else if (estimate.item_code_id || estimate.item_code) {
@@ -1112,6 +1381,8 @@ function LCEAddPage() {
             min_cost: String(estimate.min_cost ?? "0"),
             max_cost: String(estimate.max_cost ?? "0"),
             actual_cost: String(estimate.actual_cost ?? estimate.max_cost ?? "0"),
+            quantity: String(estimate.quantity ?? "1"),
+            total_cost: String(estimate.total_cost ?? toFixed(getRowTotalCost({ ...estimate, quantity: estimate.quantity ?? "1" }), 2)),
             lce_cost: String(estimate.lce_cost ?? toFixed(toNumber(estimate.actual_cost) * toNumber(form.cost_factor), 2)),
           },
         ];
@@ -1726,7 +1997,7 @@ function LCEAddPage() {
         </Card>
 
         {/* ========== ACCORDION 2: Linked Item Codes & Purchase Cost History (Default Closed) ========== */}
-        <Card className="lce-card mb-3 lce-accordion-card">
+        <Card className="lce-card lce-card--items mb-3 lce-accordion-card">
           <CardHeader
             className="lce-accordion-header"
             onClick={() => setItemsAccordionOpen((prev) => !prev)}
@@ -1995,56 +2266,262 @@ function LCEAddPage() {
                   <table className="users-table">
                     <thead>
                       <tr>
-                        <th style={{ minWidth: "220px" }}>Item Code</th>
-                        <th style={{ minWidth: "100px" }}>Min Cost</th>
-                        <th style={{ minWidth: "100px" }}>Max Cost</th>
-                        <th style={{ minWidth: "120px" }}>Actual Cost</th>
-                        <th style={{ minWidth: "130px" }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                            <span>LCE Cost</span>
-                            <span
-                              title="Product of Actual Cost and Cost Factor"
-                              style={{
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                color: "#94a3b8",
-                                transition: "color 0.15s ease",
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.color = "#38bdf8")}
-                              onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-                            >
-                              <BsInfoCircle size={13} aria-hidden="true" />
+                        <th
+                          className="users-table__sticky-head"
+                          style={{
+                            width: "260px",
+                            minWidth: "220px",
+                            maxWidth: "280px",
+                            left: 0,
+                            zIndex: 25,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="users-table__sort-btn"
+                            onClick={() => handleItemSort("item_code")}
+                            style={{ justifyContent: "space-between", width: "100%" }}
+                          >
+                            <span>Item Code</span>
+                            <span className="users-table__sort-icon">
+                              {itemSort.key === "item_code" ? (itemSort.direction === "asc" ? "▲" : "▼") : "↕"}
                             </span>
-                          </span>
+                          </button>
                         </th>
-                        <th style={{ minWidth: "140px" }}>Actions</th>
+                        <th className="users-table__sticky-head" style={{ minWidth: "95px" }}>
+                          <button
+                            type="button"
+                            className="users-table__sort-btn"
+                            onClick={() => handleItemSort("min_cost")}
+                            style={{ justifyContent: "space-between", width: "100%" }}
+                          >
+                            <span>Min Cost</span>
+                            <span className="users-table__sort-icon">
+                              {itemSort.key === "min_cost" ? (itemSort.direction === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                        <th className="users-table__sticky-head" style={{ minWidth: "95px" }}>
+                          <button
+                            type="button"
+                            className="users-table__sort-btn"
+                            onClick={() => handleItemSort("max_cost")}
+                            style={{ justifyContent: "space-between", width: "100%" }}
+                          >
+                            <span>Max Cost</span>
+                            <span className="users-table__sort-icon">
+                              {itemSort.key === "max_cost" ? (itemSort.direction === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                        <th className="users-table__sticky-head" style={{ minWidth: "110px" }}>
+                          <button
+                            type="button"
+                            className="users-table__sort-btn"
+                            onClick={() => handleItemSort("actual_cost")}
+                            style={{ justifyContent: "space-between", width: "100%" }}
+                          >
+                            <span>Actual Cost</span>
+                            <span className="users-table__sort-icon">
+                              {itemSort.key === "actual_cost" ? (itemSort.direction === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                        <th className="users-table__sticky-head" style={{ minWidth: "95px" }}>
+                          <button
+                            type="button"
+                            className="users-table__sort-btn"
+                            onClick={() => handleItemSort("quantity")}
+                            style={{ justifyContent: "space-between", width: "100%" }}
+                          >
+                            <span>Quantity</span>
+                            <span className="users-table__sort-icon">
+                              {itemSort.key === "quantity" ? (itemSort.direction === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                        <th className="users-table__sticky-head" style={{ minWidth: "110px" }}>
+                          <button
+                            type="button"
+                            className="users-table__sort-btn"
+                            onClick={() => handleItemSort("total_cost")}
+                            style={{ justifyContent: "space-between", width: "100%" }}
+                          >
+                            <span>Total Cost</span>
+                            <span className="users-table__sort-icon">
+                              {itemSort.key === "total_cost" ? (itemSort.direction === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                        <th className="users-table__sticky-head" style={{ minWidth: "120px" }}>
+                          <button
+                            type="button"
+                            className="users-table__sort-btn"
+                            onClick={() => handleItemSort("lce_cost")}
+                            style={{ justifyContent: "space-between", width: "100%" }}
+                          >
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                              <span>LCE Cost</span>
+                              <span
+                                title="Product of Actual Cost and Cost Factor"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  color: "#94a3b8",
+                                  transition: "color 0.15s ease",
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = "#38bdf8")}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                              >
+                                <BsInfoCircle size={13} aria-hidden="true" />
+                              </span>
+                            </span>
+                            <span className="users-table__sort-icon">
+                              {itemSort.key === "lce_cost" ? (itemSort.direction === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                        <th className="users-table__sticky-head" style={{ minWidth: "120px", textAlign: "center" }}>
+                          Actions
+                        </th>
+                      </tr>
+                      <tr>
+                        <th
+                          className="users-table__sticky-filter"
+                          style={{
+                            width: "260px",
+                            minWidth: "220px",
+                            maxWidth: "280px",
+                            left: 0,
+                            zIndex: 24,
+                          }}
+                        >
+                          <input
+                            type="text"
+                            className="users-table__filter-input"
+                            placeholder="Filter"
+                            value={itemFilters.item_code}
+                            onChange={(e) => handleItemFilterChange("item_code", e.target.value)}
+                          />
+                        </th>
+                        <th className="users-table__sticky-filter">
+                          <input
+                            type="text"
+                            className="users-table__filter-input"
+                            placeholder="Filter"
+                            value={itemFilters.min_cost}
+                            onChange={(e) => handleItemFilterChange("min_cost", e.target.value)}
+                          />
+                        </th>
+                        <th className="users-table__sticky-filter">
+                          <input
+                            type="text"
+                            className="users-table__filter-input"
+                            placeholder="Filter"
+                            value={itemFilters.max_cost}
+                            onChange={(e) => handleItemFilterChange("max_cost", e.target.value)}
+                          />
+                        </th>
+                        <th className="users-table__sticky-filter">
+                          <input
+                            type="text"
+                            className="users-table__filter-input"
+                            placeholder="Filter"
+                            value={itemFilters.actual_cost}
+                            onChange={(e) => handleItemFilterChange("actual_cost", e.target.value)}
+                          />
+                        </th>
+                        <th className="users-table__sticky-filter">
+                          <input
+                            type="text"
+                            className="users-table__filter-input"
+                            placeholder="Filter"
+                            value={itemFilters.quantity}
+                            onChange={(e) => handleItemFilterChange("quantity", e.target.value)}
+                          />
+                        </th>
+                        <th className="users-table__sticky-filter">
+                          <input
+                            type="text"
+                            className="users-table__filter-input"
+                            placeholder="Filter"
+                            value={itemFilters.total_cost}
+                            onChange={(e) => handleItemFilterChange("total_cost", e.target.value)}
+                          />
+                        </th>
+                        <th className="users-table__sticky-filter">
+                          <input
+                            type="text"
+                            className="users-table__filter-input"
+                            placeholder="Filter"
+                            value={itemFilters.lce_cost}
+                            onChange={(e) => handleItemFilterChange("lce_cost", e.target.value)}
+                          />
+                        </th>
+                        <th className="users-table__sticky-filter" />
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((row) => {
-                        const master = itemMasterOptions.find(
-                          (o) =>
-                            (row.item_code_id && String(o.value) === String(row.item_code_id)) ||
-                            (row.item_code && o.item_code === row.item_code)
-                        );
-                        const itemName = row.item_name || master?.item_name || "";
-                        const itemCategory = row.item_category || master?.item_category || "";
-                        const itemCode = row.item_code || master?.item_code || "";
-                        const concatenatedItemCode = itemCode
-                          ? `${itemCode}${itemName ? ` - ${itemName}` : ""}${itemCategory ? ` (${itemCategory})` : ""}`
-                          : (itemName || "—");
-
-                        return (
+                      {filteredAndSortedItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ textAlign: "center", padding: "1.25rem", color: "#64748b" }}>
+                            No matching items found.{" "}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setItemFilters({
+                                  item_code: "",
+                                  min_cost: "",
+                                  max_cost: "",
+                                  actual_cost: "",
+                                  quantity: "",
+                                  total_cost: "",
+                                  lce_cost: "",
+                                })
+                              }
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#2563eb",
+                                textDecoration: "underline",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Clear Filters
+                            </button>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredAndSortedItems.map(({ row, master, itemName, itemCategory, itemCode, concatenatedItemCode }) => (
                           <tr key={row.rowId}>
-                            <td>
+                            <td
+                              style={{
+                                width: "260px",
+                                minWidth: "220px",
+                                maxWidth: "280px",
+                                whiteSpace: "normal",
+                                position: "sticky",
+                                left: 0,
+                                zIndex: 5,
+                                backgroundColor: "#ffffff",
+                                boxShadow: "2px 0 6px -2px rgba(15, 23, 42, 0.08)",
+                              }}
+                            >
                               <span
                                 style={{
                                   fontWeight: 600,
                                   color: "#1e293b",
-                                  fontSize: "0.875rem",
-                                  display: "inline-block",
-                                  padding: "0.25rem 0",
+                                  fontSize: "0.84rem",
+                                  lineHeight: 1.35,
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden",
+                                  whiteSpace: "normal",
+                                  wordBreak: "break-word",
                                 }}
                                 title={concatenatedItemCode}
                               >
@@ -2057,10 +2534,9 @@ function LCEAddPage() {
                               step="any"
                               className="form-control"
                               value={row.min_cost || "0"}
-                              onChange={(e) =>
-                                handleMinCostChange(row.rowId, e.target.value)
-                              }
-                              title="Min Cost (editable)"
+                              readOnly
+                              disabled
+                              title="Min Cost (read-only)"
                             />
                           </td>
                           <td>
@@ -2069,10 +2545,9 @@ function LCEAddPage() {
                               step="any"
                               className="form-control"
                               value={row.max_cost || "0"}
-                              onChange={(e) =>
-                                handleMaxCostChange(row.rowId, e.target.value)
-                              }
-                              title="Max Cost (editable)"
+                              readOnly
+                              disabled
+                              title="Max Cost (read-only)"
                             />
                           </td>
                           <td>
@@ -2085,6 +2560,30 @@ function LCEAddPage() {
                                 handleActualCostChange(row.rowId, e.target.value)
                               }
                               title="Actual Cost (editable)"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              className="form-control"
+                              value={row.quantity ?? "1"}
+                              onChange={(e) =>
+                                handleQuantityChange(row.rowId, e.target.value)
+                              }
+                              title="Quantity (editable)"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              className="form-control"
+                              value={toFixed(getRowTotalCost(row), 2)}
+                              readOnly
+                              disabled
+                              style={{ fontWeight: 600 }}
+                              title="Product of Quantity and Actual Cost"
                             />
                           </td>
                           <td>
@@ -2143,8 +2642,8 @@ function LCEAddPage() {
                             </div>
                           </td>
                         </tr>
-                      );
-                    })}
+                        ))
+                      )}
                     </tbody>
                   </table>
                 )}
@@ -2170,7 +2669,7 @@ function LCEAddPage() {
                     Total Linked Items: <strong>{items.length}</strong>
                   </span>
                   <span>
-                    Sum Actual Cost (Ex Works):{" "}
+                    Sum Total Cost (Ex Works):{" "}
                     <strong>
                       {calculateItemsTotalPrice(items)} {selectedForeignCurrencyCode}
                     </strong>
@@ -2518,6 +3017,188 @@ function LCEAddPage() {
           </div>
         </ConfirmPopupModal>
       )}
+
+      {/* Manual Add Item Row Popup */}
+      <ConfirmPopupModal
+        open={addItemModal.open}
+        title="Add Item Row"
+        type="info"
+        maxWidth="620px"
+        confirmLabel="Add Item"
+        cancelLabel="Cancel"
+        confirmDisabled={!addItemModal.selectedItemId || Boolean(addItemModal.error)}
+        onConfirm={handleConfirmAddItemRow}
+        onCancel={() =>
+          setAddItemModal({
+            open: false,
+            selectedItemId: "",
+            quantity: "1",
+            actualCost: "0",
+            error: "",
+          })
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {addItemModal.error ? (
+            <AlertMessage type="danger" message={addItemModal.error} />
+          ) : null}
+
+          <div>
+            <label
+              htmlFor="lce-add-item-select"
+              style={{
+                display: "block",
+                fontWeight: 600,
+                fontSize: "0.86rem",
+                marginBottom: "0.35rem",
+                color: "#334155",
+              }}
+            >
+              Item Code _ Item Category _ Item Name *
+            </label>
+            <Select
+              inputId="lce-add-item-select"
+              isSearchable
+              isClearable
+              options={addItemSelectOptions}
+              placeholder="Search and select item code _ category _ name..."
+              value={
+                addItemSelectOptions.find(
+                  (o) => String(o.value) === String(addItemModal.selectedItemId)
+                ) || null
+              }
+              isOptionDisabled={(opt) => opt.isLinkedOther || opt.isAlreadyInTable}
+              onChange={(opt) => {
+                const nextId = opt ? String(opt.value) : "";
+                const errMsg = nextId ? validateManualItemSelection(nextId) : "";
+                setAddItemModal((prev) => ({
+                  ...prev,
+                  selectedItemId: nextId,
+                  error: errMsg,
+                }));
+              }}
+              menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+              menuPosition="fixed"
+              styles={{
+                control: (base, state) => ({
+                  ...base,
+                  minHeight: 40,
+                  borderColor: state.isFocused ? "#3b82f6" : "#cbd5e1",
+                  boxShadow: state.isFocused ? "0 0 0 2px rgba(59,130,246,0.2)" : "none",
+                }),
+                menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                option: (base, state) => ({
+                  ...base,
+                  color: state.isDisabled ? "#94a3b8" : state.isSelected ? "#ffffff" : "#1e293b",
+                  fontSize: "0.85rem",
+                  cursor: state.isDisabled ? "not-allowed" : "pointer",
+                }),
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: "0.75rem",
+            }}
+          >
+            <div>
+              <label
+                htmlFor="lce-add-item-qty"
+                style={{
+                  display: "block",
+                  fontWeight: 600,
+                  fontSize: "0.84rem",
+                  marginBottom: "0.3rem",
+                  color: "#334155",
+                }}
+              >
+                Quantity *
+              </label>
+              <input
+                id="lce-add-item-qty"
+                type="number"
+                step="any"
+                min="0"
+                className="form-control"
+                value={addItemModal.quantity}
+                onChange={(e) =>
+                  setAddItemModal((prev) => ({ ...prev, quantity: e.target.value }))
+                }
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="lce-add-item-actual-cost"
+                style={{
+                  display: "block",
+                  fontWeight: 600,
+                  fontSize: "0.84rem",
+                  marginBottom: "0.3rem",
+                  color: "#334155",
+                }}
+              >
+                Actual Cost ({selectedForeignCurrencyCode}) *
+              </label>
+              <input
+                id="lce-add-item-actual-cost"
+                type="number"
+                step="any"
+                min="0"
+                className="form-control"
+                value={addItemModal.actualCost}
+                onChange={(e) =>
+                  setAddItemModal((prev) => ({ ...prev, actualCost: e.target.value }))
+                }
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="lce-add-item-total-cost"
+                style={{
+                  display: "block",
+                  fontWeight: 600,
+                  fontSize: "0.84rem",
+                  marginBottom: "0.3rem",
+                  color: "#334155",
+                }}
+              >
+                Total Cost ({selectedForeignCurrencyCode})
+              </label>
+              <input
+                id="lce-add-item-total-cost"
+                type="number"
+                className="form-control"
+                value={toFixed(
+                  toNumber(addItemModal.quantity === "" ? "1" : addItemModal.quantity) *
+                    toNumber(addItemModal.actualCost),
+                  2
+                )}
+                readOnly
+                disabled
+                style={{ fontWeight: 700, color: "#0f766e" }}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              fontSize: "0.8rem",
+              color: "#64748b",
+              backgroundColor: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "6px",
+            }}
+          >
+            Min Cost and Max Cost will be set to <strong>0.00</strong> for manually added items.
+          </div>
+        </div>
+      </ConfirmPopupModal>
     </section>
   );
 }

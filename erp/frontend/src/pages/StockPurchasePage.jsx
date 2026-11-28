@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import StandardListPage from "../components/StandardListPage";
 import {
+  checkStockPurchaseDownstream,
   deleteStockPurchase,
   listStockPurchases,
 } from "../services/crudApi";
@@ -20,16 +21,39 @@ function StockPurchasePage() {
     return data.stock_purchases || [];
   }, []);
 
-  const deleteDisabledPredicate = useCallback((row) => {
-    return Number(row.lce_linked_count) > 0;
-  }, []);
-
-  const deleteDisabledTitle = useCallback((row) => {
-    const count = Number(row.lce_linked_count) || 0;
-    if (count > 0) {
-      return `Cannot delete: ${count} item(s) in this purchase are linked to an LCE estimate. Please unlink them from LCE first.`;
+  const checkDeleteAllowedFn = useCallback(async (row) => {
+    try {
+      const data = await checkStockPurchaseDownstream(row.id);
+      if (data?.has_downstream) {
+        return {
+          allowed: false,
+          title: "Cannot Delete Stock Purchase",
+          type: "warning",
+          message: `Stock Purchase "${row.purchase_id || row.id}" cannot be deleted because purchased item(s) are referenced downstream:`,
+          details: data.details || [],
+          cancelLabel: "Close",
+        };
+      }
+    } catch (err) {
+      if (err?.data?.has_downstream) {
+        return {
+          allowed: false,
+          title: "Cannot Delete Stock Purchase",
+          type: "warning",
+          message: err.data.message || `Stock Purchase "${row.purchase_id || row.id}" cannot be deleted because purchased item(s) are referenced downstream.`,
+          details: err.data.details || [],
+          cancelLabel: "Close",
+        };
+      }
     }
-    return "Delete";
+    return {
+      allowed: true,
+      title: "Confirm Delete Stock Purchase",
+      type: "danger",
+      message: `Are you sure you want to permanently delete Stock Purchase "${row.purchase_id || row.id}"? This action cannot be undone.`,
+      confirmLabel: "Delete Stock Purchase",
+      cancelLabel: "Cancel",
+    };
   }, []);
 
   return (
@@ -38,8 +62,7 @@ function StockPurchasePage() {
       columns={COLUMNS}
       fetchRows={fetchRows}
       deleteFn={deleteStockPurchase}
-      deleteDisabledPredicate={deleteDisabledPredicate}
-      deleteDisabledTitle={deleteDisabledTitle}
+      checkDeleteAllowedFn={checkDeleteAllowedFn}
       showAddButton
       addButtonTo="/stock-purchase/add"
       editButtonTo={(row) => `/stock-purchase/record/${row.id}`}

@@ -33,6 +33,54 @@
   margin-right: auto;
 }
 
+/* Expanded by 30% for Linked Item Codes & Purchase Cost History */
+.lce-card.lce-card--items {
+  width: 91%;
+  max-width: 1260px;
+}
+
+.lce-card--items .card-table-wrap {
+  position: relative;
+  max-height: 470px;
+  overflow: auto;
+}
+
+.lce-card--items .card-table-wrap table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.lce-card--items .users-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.lce-card--items .users-table thead tr:first-child th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 22 !important;
+  height: 40px;
+  background: var(--list-header-bg, #2c3e50) !important;
+  color: #f7f9ff !important;
+}
+
+.lce-card--items .users-table thead tr:nth-child(2) th {
+  position: sticky !important;
+  top: 40px !important;
+  z-index: 21 !important;
+  background: var(--list-header-bg-2, #eef2f7) !important;
+  color: #495057 !important;
+}
+
+.lce-card--items .users-table thead tr:first-child th:first-child {
+  z-index: 25 !important;
+}
+
+.lce-card--items .users-table thead tr:nth-child(2) th:first-child {
+  z-index: 24 !important;
+}
+
 /* ── Single-column field layout inside the card matching list ── */
 .lce-fields-grid {
   display: flex;

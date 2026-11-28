@@ -1323,6 +1323,11 @@ export async function updateStockPurchase(id, payload) {
   return parseJson(res);
 }
 
+export async function checkStockPurchaseDownstream(id) {
+  const res = await fetch(`/api/stock-purchases/${id}/downstream-check/`, { credentials: "include" });
+  return parseJson(res);
+}
+
 export async function deleteStockPurchase(id) {
   const headers = await csrfHeaders();
   delete headers["Content-Type"];

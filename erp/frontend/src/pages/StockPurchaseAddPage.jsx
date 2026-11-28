@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BsBoxArrowUpRight, BsExclamationTriangleFill, BsPencilSquare, BsPlusCircleFill, BsTrashFill, BsXCircleFill } from "react-icons/bs";
 import { Card, CardHeader, CardBody } from "../components/Card";
+import ConfirmPopupModal from "../components/ConfirmPopupModal";
 import StockPurchaseItemModal from "./StockPurchaseItemModal";
 import {
     checkStockPurchaseItemDelete,
@@ -418,6 +419,11 @@ function StockPurchaseAddPage() {
     const [statusOptions, setStatusOptions] = useState([]);
     const [showVendorModal, setShowVendorModal] = useState(false);
     const [showItemModal, setShowItemModal] = useState(false);
+    const [lceCostAlertModal, setLceCostAlertModal] = useState({
+        open: false,
+        updates: [],
+        pendingNavigateTo: "",
+    });
     const [itemToEdit, setItemToEdit] = useState(null);
     // Fetch status options
     useEffect(() => {
@@ -878,8 +884,18 @@ function StockPurchaseAddPage() {
             const savedSpNumber = savedSP?.purchase_number || "";
             if (savedSpNumber) setSpNumber(savedSpNumber);
 
-            if (!isEditMode && savedPurchaseId) {
-                navigate(`/stock-purchase/record/${savedPurchaseId}`, { replace: true });
+            const lceUpdates = Array.isArray(successData?.lce_cost_updates)
+                ? successData.lce_cost_updates
+                : [];
+            const nextRoute = !isEditMode && savedPurchaseId ? `/stock-purchase/record/${savedPurchaseId}` : "";
+            if (lceUpdates.length > 0) {
+                setLceCostAlertModal({
+                    open: true,
+                    updates: lceUpdates,
+                    pendingNavigateTo: nextRoute,
+                });
+            } else if (nextRoute) {
+                navigate(nextRoute, { replace: true });
             }
             setStatus("Items saved successfully.");
         } catch (error) {
@@ -1158,13 +1174,25 @@ function StockPurchaseAddPage() {
 
             if (savedSpNumber) setSpNumber(savedSpNumber);
 
+            const lceUpdates = Array.isArray(successData?.lce_cost_updates)
+                ? successData.lce_cost_updates
+                : [];
+            const nextRoute = !isEditMode && savedPurchaseId ? `/stock-purchase/record/${savedPurchaseId}` : "";
+
             if (isEditMode) {
                 setStatus("Stock purchase and GRN updated successfully. PO status updated.");
             } else {
                 setStatus(`Stock purchase ${savedSpNumber || "saved"} successfully. GRN created and PO status updated.`);
-                if (savedPurchaseId) {
-                    navigate(`/stock-purchase/record/${savedPurchaseId}`, { replace: true });
-                }
+            }
+
+            if (lceUpdates.length > 0) {
+                setLceCostAlertModal({
+                    open: true,
+                    updates: lceUpdates,
+                    pendingNavigateTo: nextRoute,
+                });
+            } else if (nextRoute) {
+                navigate(nextRoute, { replace: true });
             }
         } catch (error) {
             setStatus(error?.message || "Save failed.");
@@ -1634,6 +1662,67 @@ function StockPurchaseAddPage() {
                 uomOptions={uomOptions}
                 existingItems={items}
             />
+
+            {/* LCE Cost Comparison & Auto-Update Notification Modal */}
+            <ConfirmPopupModal
+                open={lceCostAlertModal.open}
+                title="LCE Cost Updated from Purchase"
+                type="warning"
+                maxWidth="700px"
+                confirmLabel="OK"
+                cancelLabel={null}
+                onConfirm={() => {
+                    const nextTo = lceCostAlertModal.pendingNavigateTo;
+                    setLceCostAlertModal({ open: false, updates: [], pendingNavigateTo: "" });
+                    if (nextTo) {
+                        navigate(nextTo, { replace: true });
+                    }
+                }}
+                onCancel={() => {
+                    const nextTo = lceCostAlertModal.pendingNavigateTo;
+                    setLceCostAlertModal({ open: false, updates: [], pendingNavigateTo: "" });
+                    if (nextTo) {
+                        navigate(nextTo, { replace: true });
+                    }
+                }}
+            >
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                    <p style={{ margin: 0, fontSize: "0.9rem", color: "#334155", lineHeight: 1.5 }}>
+                        The following purchased item(s) are linked to an LCE and downstream Work In Progress (WIP) costing/quotation. Because the existing LCE cost was less than the new purchase unit cost, the LCE cost has been updated to match the purchase cost:
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem", maxHeight: "320px", overflowY: "auto" }}>
+                        {(lceCostAlertModal.updates || []).map((upd, idx) => (
+                            <div
+                                key={`${upd.item_code}-${upd.lce_id}-${idx}`}
+                                style={{
+                                    padding: "0.75rem 0.9rem",
+                                    borderRadius: "8px",
+                                    border: "1px solid #fed7aa",
+                                    backgroundColor: "#fff7ed",
+                                    fontSize: "0.85rem",
+                                }}
+                            >
+                                <div style={{ fontWeight: 700, color: "#9a3412", marginBottom: "0.25rem" }}>
+                                    {upd.item_code} — {upd.item_name} ({upd.lce_code})
+                                </div>
+                                <div style={{ color: "#334155", marginBottom: "0.25rem" }}>
+                                    Previous LCE Cost: <strong>{upd.old_lce_cost}</strong> &rarr;{" "}
+                                    New Purchase / LCE Cost:{" "}
+                                    <strong style={{ color: "#0f766e" }}>{upd.new_lce_cost}</strong>
+                                </div>
+                                {Array.isArray(upd.wip_projects) && upd.wip_projects.length > 0 ? (
+                                    <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                                        <strong>Affected WIP:</strong>{" "}
+                                        {upd.wip_projects
+                                            .map((p) => `${p.project_code || p.reference} (${p.stage})`)
+                                            .join(", ")}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </ConfirmPopupModal>
         </section>
     );
 }

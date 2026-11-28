@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from ..sub_models import ItemCategory, ItemType_info, LabFurnitureItem, LCECostDetail, LCEEstimate, ProjectCostingItemAllocation, ProjectCostingItemInfo, RetrievalStatusInfo, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
+from ..sub_models import ItemCategory, ItemType_info, LabFurnitureItem, LCECostDetail, LCEEstimate, LCEEstimateItem, ProjectCostingItemAllocation, ProjectCostingItemInfo, RetrievalStatusInfo, StockPurchaseItem, StockPurchaseVendorDetail, Vendor
 from ..utils import normalize_text
 
 
@@ -709,6 +709,60 @@ def _recalculate_lce_estimates(estimate_ids):
             StockPurchaseItem.objects.bulk_update(linked_items, ["lce_cost"])
 
 
+def _sync_lce_cost_on_purchase(saved_items):
+    """
+    When an item is purchased, check if it is linked in any LCE and downstream
+    to any Work In Progress costing/quotation.
+    The LCE cost of any item must be >= the purchase unit cost.
+    If existing LCE cost < purchase unit cost, update the LCE cost and return
+    notification details to inform the user.
+    """
+    from .lce_estimate_api import check_lce_item_wip_usage
+
+    updates = []
+    seen_lce_item_pks = set()
+
+    for sp_item in saved_items or []:
+        item_master = getattr(sp_item, "item_code", None)
+        if not item_master:
+            continue
+        purchase_cost = Decimal(str(getattr(sp_item, "unit_price", 0) or 0)).quantize(Decimal("0.01"))
+        if purchase_cost <= Decimal("0.00"):
+            continue
+
+        lce_items = list(
+            LCEEstimateItem.objects.filter(item_code=item_master).select_related("lce_estimate")
+        )
+        if not lce_items:
+            continue
+
+        wip_projects = check_lce_item_wip_usage(item_master)
+        if not wip_projects:
+            continue
+
+        for lce_item in lce_items:
+            if lce_item.pk in seen_lce_item_pks:
+                continue
+            existing_lce_cost = Decimal(str(lce_item.lce_cost or 0)).quantize(Decimal("0.01"))
+            if existing_lce_cost < purchase_cost:
+                seen_lce_item_pks.add(lce_item.pk)
+                LCEEstimateItem.objects.filter(pk=lce_item.pk).update(lce_cost=purchase_cost)
+                if lce_item.lce_estimate_id and lce_item.lce_estimate.item_code_id == item_master.pk:
+                    LCEEstimate.objects.filter(pk=lce_item.lce_estimate_id).update(lce_cost=purchase_cost)
+                updates.append({
+                    "item_code": item_master.item_code,
+                    "item_name": sp_item.item_name or item_master.item_name,
+                    "lce_id": lce_item.lce_estimate_id,
+                    "lce_code": f"LCE_{lce_item.lce_estimate_id:03d}" if lce_item.lce_estimate_id else "",
+                    "old_lce_cost": str(existing_lce_cost),
+                    "purchase_cost": str(purchase_cost),
+                    "new_lce_cost": str(purchase_cost),
+                    "wip_projects": wip_projects,
+                })
+
+    return updates
+
+
 def _sync_items(stock_purchase, items_payload):
     existing_items = list(stock_purchase.items.all())
     existing_by_id = {item.id: item for item in existing_items}
@@ -1011,11 +1065,135 @@ def create_stock_purchase_api_view(request):
             from .place_stock_order_api import update_po_status_from_grn
             update_po_status_from_grn(po)
         sync_all_master_item_physical_qty()
+        lce_cost_updates = _sync_lce_cost_on_purchase(saved_items)
     except ValueError as exc:
         obj.delete()
         return JsonResponse({"message": str(exc)}, status=400)
 
-    return JsonResponse({"success": True, "stock_purchase": _serialize(obj)}, status=201)
+    return JsonResponse({"success": True, "stock_purchase": _serialize(obj), "lce_cost_updates": lce_cost_updates}, status=201)
+
+
+def _get_stock_purchase_downstream_details(obj):
+    details = []
+    purchase_items = list(
+        obj.items.select_related("item_code__item_code_ref", "lce_estimate", "lca_actuals").all()
+    )
+    purchase_item_ids = [sp.id for sp in purchase_items]
+    master_item_ids = [sp.item_code_id for sp in purchase_items if sp.item_code_id]
+    code_by_master_id = {
+        sp.item_code_id: (sp.item_code.item_code if sp.item_code else sp.item_name)
+        for sp in purchase_items
+        if sp.item_code_id
+    }
+
+    # 1. Direct links on StockPurchaseItem (LCE, LCA)
+    for sp in purchase_items:
+        grn = sp.grn_number or f"GRN#{sp.id}"
+        code_label = (sp.item_code.item_code if sp.item_code else sp.item_name) or "Item"
+        if sp.lce_estimate_id:
+            details.append(f"{grn} ({code_label}): Linked in LCE_{sp.lce_estimate_id:03d}")
+        if sp.lca_actuals_id:
+            details.append(f"{grn} ({code_label}): Linked in LCA #{sp.lca_actuals_id}")
+
+    # 2. Project Costing Allocations & Direct Costing Item links to these purchase items
+    if purchase_item_ids:
+        allocs = (
+            ProjectCostingItemAllocation.objects.filter(purchase_item_id__in=purchase_item_ids)
+            .select_related("costing_item__costing_id__project", "purchase_item__item_code__item_code_ref")[:20]
+        )
+        for alloc in allocs:
+            ci = getattr(alloc, "costing_item", None)
+            cs = getattr(ci, "costing_id", None) if ci else None
+            proj_code = getattr(getattr(cs, "project", None), "project_id", "") or getattr(cs, "costing_id", "") or f"Costing #{getattr(cs, 'id', '')}"
+            grn = getattr(alloc.purchase_item, "grn_number", "") or f"GRN#{alloc.purchase_item_id}"
+            details.append(f"{grn}: Allocated to Project Costing {proj_code}")
+
+        direct_cost_items = (
+            ProjectCostingItemInfo.objects.filter(purchase_item_id__in=purchase_item_ids)
+            .select_related("costing_id__project", "purchase_item")[:20]
+        )
+        for ci in direct_cost_items:
+            cs = getattr(ci, "costing_id", None)
+            proj_code = getattr(getattr(cs, "project", None), "project_id", "") or getattr(cs, "costing_id", "") or f"Costing #{getattr(cs, 'id', '')}"
+            grn = getattr(ci.purchase_item, "grn_number", "") or f"GRN#{ci.purchase_item_id}"
+            details.append(f"{grn}: Linked in Project Costing {proj_code}")
+
+    # 3. Item Master downstream references (LCEEstimateItem, ProjectCosting, ProjectQuotation, Templates, Manufacture)
+    if master_item_ids:
+        for li in LCEEstimateItem.objects.filter(item_code_id__in=master_item_ids).select_related("lce_estimate")[:25]:
+            code_label = code_by_master_id.get(li.item_code_id, f"Item #{li.item_code_id}")
+            details.append(f"Item {code_label}: Referenced in LCE_{li.lce_estimate_id:03d}")
+
+        for ci in (
+            ProjectCostingItemInfo.objects.filter(item_code_id__in=master_item_ids)
+            .select_related("costing_id__project")[:20]
+        ):
+            cs = getattr(ci, "costing_id", None)
+            proj_code = getattr(getattr(cs, "project", None), "project_id", "") or getattr(cs, "costing_id", "") or f"Costing #{getattr(cs, 'id', '')}"
+            code_label = code_by_master_id.get(ci.item_code_id, f"Item #{ci.item_code_id}")
+            details.append(f"Item {code_label}: Referenced in Project Costing {proj_code}")
+
+        try:
+            from ..sub_models.project_quotation_items_mod import ProjectQuotationItemInfo
+            for qi in (
+                ProjectQuotationItemInfo.objects.filter(item_code_id__in=master_item_ids)
+                .select_related("quotation_number__project")[:20]
+            ):
+                qs = getattr(qi, "quotation_number", None)
+                proj_code = getattr(getattr(qs, "project", None), "project_id", "") or getattr(qs, "quotation_number", "") or f"Quotation #{getattr(qs, 'id', '')}"
+                code_label = code_by_master_id.get(qi.item_code_id, f"Item #{qi.item_code_id}")
+                details.append(f"Item {code_label}: Referenced in Project Quotation {proj_code}")
+        except Exception:
+            pass
+
+        try:
+            from ..sub_models.project_template import ProjectTemplateItem
+            for ti in ProjectTemplateItem.objects.filter(item_code_id__in=master_item_ids).select_related("template")[:15]:
+                code_label = code_by_master_id.get(ti.item_code_id, f"Item #{ti.item_code_id}")
+                t_name = ti.template.name if ti.template else "Template"
+                details.append(f"Item {code_label}: Referenced in Project Template '{t_name}'")
+        except Exception:
+            pass
+
+        try:
+            from ..sub_models.stock_manufacture import StockManufactureItem
+            for sm in StockManufactureItem.objects.filter(item_code_id__in=master_item_ids)[:15]:
+                code_label = code_by_master_id.get(sm.item_code_id, f"Item #{sm.item_code_id}")
+                details.append(f"Item {code_label}: Referenced in Stock Manufacture ({sm.item_name})")
+        except Exception:
+            pass
+
+    seen = set()
+    deduped = []
+    for d in details:
+        if d not in seen:
+            seen.add(d)
+            deduped.append(d)
+    return deduped
+
+
+@require_GET
+def check_stock_purchase_downstream_api_view(request, pk):
+    na = _ensure_authenticated(request)
+    if na:
+        return na
+
+    obj = StockPurchaseVendorDetail.objects.filter(pk=pk).first()
+    if not obj:
+        return JsonResponse({"message": "Stock purchase record not found."}, status=404)
+
+    details = _get_stock_purchase_downstream_details(obj)
+    has_downstream = len(details) > 0
+    return JsonResponse({
+        "has_downstream": has_downstream,
+        "details": details,
+        "purchase_id": obj.purchase_id or f"SP{obj.pk:05d}",
+        "message": (
+            f"Stock Purchase '{obj.purchase_id or obj.pk}' cannot be deleted because purchased item(s) are referenced downstream."
+            if has_downstream
+            else "No downstream dependencies found."
+        ),
+    })
 
 
 @require_http_methods(['GET', 'PATCH', 'DELETE'])
@@ -1043,6 +1221,14 @@ def stock_purchase_detail_api_view(request, pk):
         return JsonResponse({'stock_purchase': _serialize(obj)})
 
     if request.method == 'DELETE':
+        downstream_details = _get_stock_purchase_downstream_details(obj)
+        if downstream_details:
+            return JsonResponse({
+                "has_downstream": True,
+                "message": f"Stock Purchase '{obj.purchase_id or obj.pk}' cannot be deleted because purchased item(s) are referenced downstream.",
+                "details": downstream_details,
+            }, status=400)
+
         po = obj.purchase_order
         obj.delete()
         if po:
@@ -1073,6 +1259,7 @@ def stock_purchase_detail_api_view(request, pk):
     obj.save()
 
     # Update items if provided
+    lce_cost_updates = []
     items_payload = p.get("items")
     if isinstance(items_payload, list):
         try:
@@ -1135,10 +1322,11 @@ def stock_purchase_detail_api_view(request, pk):
             if old_po and old_po != obj.purchase_order:
                 update_po_status_from_grn(old_po)
             sync_all_master_item_physical_qty()
+            lce_cost_updates = _sync_lce_cost_on_purchase(saved_items)
         except ValueError as exc:
             return JsonResponse({"message": str(exc)}, status=400)
 
-    return JsonResponse({'success': True, 'stock_purchase': _serialize(obj)})
+    return JsonResponse({'success': True, 'stock_purchase': _serialize(obj), 'lce_cost_updates': lce_cost_updates})
 
 
 @require_GET

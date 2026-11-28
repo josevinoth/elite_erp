@@ -72,6 +72,8 @@ class LCEEstimate(models.Model):
     max_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     min_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     actual_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    quantity = models.DecimalField(max_digits=14, decimal_places=2, default=1)
+    total_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     lce_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     total = models.DecimalField(max_digits=14, decimal_places=3, default=0)
@@ -132,6 +134,10 @@ class LCEEstimate(models.Model):
             self.calculate_cost_from_purchases()
         if (self.actual_cost in (None, "", 0, Decimal("0"))) and self.max_cost:
             self.actual_cost = self.max_cost
+        qty = Decimal(str(self.quantity if self.quantity not in (None, "") else 1))
+        act = Decimal(str(self.actual_cost if self.actual_cost not in (None, "") else 0))
+        self.quantity = qty
+        self.total_cost = (qty * act).quantize(Decimal("0.01"))
         if self.ex_works_material_cost:
             cf = self.total / self.ex_works_material_cost
             self.lce_cost = (self.actual_cost * cf).quantize(Decimal("0.01"))
@@ -154,6 +160,8 @@ class LCEEstimateItem(models.Model):
     min_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     max_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     actual_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    quantity = models.DecimalField(max_digits=14, decimal_places=2, default=1)
+    total_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     lce_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -203,6 +211,10 @@ class LCEEstimateItem(models.Model):
             self.calculate_cost_from_purchases()
         if (self.actual_cost in (None, "", 0, Decimal("0"))) and self.max_cost:
             self.actual_cost = self.max_cost
+        qty = Decimal(str(self.quantity if self.quantity not in (None, "") else 1))
+        act = Decimal(str(self.actual_cost if self.actual_cost not in (None, "") else 0))
+        self.quantity = qty
+        self.total_cost = (qty * act).quantize(Decimal("0.01"))
         if self.lce_estimate and self.lce_estimate.ex_works_material_cost:
             cf = self.lce_estimate.total / self.lce_estimate.ex_works_material_cost
             self.lce_cost = (self.actual_cost * cf).quantize(Decimal("0.01"))

@@ -36,6 +36,7 @@ function StandardListPage({
   renderFooter = null,
   editButtonTo = null,
   deleteFn = null,
+  checkDeleteAllowedFn = null,
   deleteDisabledPredicate = null,
   deleteDisabledTitle = "Delete",
   deleteConfirmFn = null,
@@ -60,6 +61,7 @@ function StandardListPage({
       createFn={noopCreate}
       updateFn={noopUpdate}
       deleteFn={deleteFn || noopDelete}
+      checkDeleteAllowedFn={checkDeleteAllowedFn}
       rowKey={rowKey}
       addButtonTo={addButtonTo}
       addButtonLabel={addButtonLabel}

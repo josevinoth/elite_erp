@@ -145,6 +145,8 @@ def _calculate_item_purchase_stats(item_master):
         "min_cost": str(min_cost),
         "max_cost": str(max_cost),
         "actual_cost": str(actual_cost),
+        "quantity": "1",
+        "total_cost": str(actual_cost),
         "purchases_count": len(costs),
     }
 
@@ -311,6 +313,10 @@ def _save_lce_items(estimate, items_payload):
         actual_cost = _to_decimal(user_actual, max_cost or min_cost)
         if actual_cost == Decimal("0") and (max_cost > Decimal("0") or min_cost > Decimal("0")):
             actual_cost = max_cost or min_cost
+        quantity = _to_decimal(row.get("quantity"), Decimal("1"))
+        if row.get("quantity") in (None, ""):
+            quantity = Decimal("1")
+        total_cost = (actual_cost * quantity).quantize(Decimal("0.01"))
         calculated_lce_cost = (actual_cost * cost_factor).quantize(Decimal("0.01")) if cost_factor else Decimal("0.00")
         lce_cost = _to_decimal(row.get("lce_cost"), calculated_lce_cost)
         if lce_cost == Decimal("0") and calculated_lce_cost > Decimal("0"):
@@ -324,6 +330,8 @@ def _save_lce_items(estimate, items_payload):
             min_cost=min_cost,
             max_cost=max_cost,
             actual_cost=actual_cost,
+            quantity=quantity,
+            total_cost=total_cost,
             lce_cost=lce_cost,
         )
         item_rows.append(item_row)
@@ -338,8 +346,10 @@ def _save_lce_items(estimate, items_payload):
         estimate.min_cost = first_item.min_cost
         estimate.max_cost = first_item.max_cost
         estimate.actual_cost = first_item.actual_cost
+        estimate.quantity = first_item.quantity
+        estimate.total_cost = first_item.total_cost
         estimate.lce_cost = first_item.lce_cost
-        estimate.save(update_fields=["item_code", "item_category", "item_name", "min_cost", "max_cost", "actual_cost", "lce_cost"])
+        estimate.save(update_fields=["item_code", "item_category", "item_name", "min_cost", "max_cost", "actual_cost", "quantity", "total_cost", "lce_cost"])
     else:
         estimate.item_code = None
         estimate.item_category = ""
@@ -347,8 +357,10 @@ def _save_lce_items(estimate, items_payload):
         estimate.min_cost = Decimal("0")
         estimate.max_cost = Decimal("0")
         estimate.actual_cost = Decimal("0")
+        estimate.quantity = Decimal("1")
+        estimate.total_cost = Decimal("0")
         estimate.lce_cost = Decimal("0")
-        estimate.save(update_fields=["item_code", "item_category", "item_name", "min_cost", "max_cost", "actual_cost", "lce_cost"])
+        estimate.save(update_fields=["item_code", "item_category", "item_name", "min_cost", "max_cost", "actual_cost", "quantity", "total_cost", "lce_cost"])
 
 
 def _ensure_authenticated(request):
@@ -501,6 +513,12 @@ def _serialize(obj):
             "min_cost": str(it.min_cost),
             "max_cost": str(it.max_cost),
             "actual_cost": str(it.actual_cost),
+            "quantity": str(it.quantity if it.quantity not in (None, "") else Decimal("1")),
+            "total_cost": str(
+                it.total_cost
+                if it.total_cost not in (None, "") and (it.total_cost > Decimal("0") or it.actual_cost == Decimal("0"))
+                else (it.actual_cost * (it.quantity if it.quantity not in (None, "") else Decimal("1"))).quantize(Decimal("0.01"))
+            ),
             "lce_cost": str(it.lce_cost or ((it.actual_cost * cost_factor).quantize(Decimal("0.01")) if cost_factor else "0.00")),
         }
         for it in obj.items.select_related("item_code__item_code_ref", "item_code__item_category").all()
@@ -516,6 +534,8 @@ def _serialize(obj):
         "min_cost": str(obj.min_cost),
         "max_cost": str(obj.max_cost),
         "actual_cost": str(obj.actual_cost),
+        "quantity": str(getattr(obj, "quantity", Decimal("1")) or Decimal("1")),
+        "total_cost": str(getattr(obj, "total_cost", Decimal("0")) or Decimal("0")),
         "lce_cost": str(obj.lce_cost or ((obj.actual_cost * cost_factor).quantize(Decimal("0.01")) if cost_factor and obj.actual_cost else "0.00")),
         "linked_item_ids": [i.id for i in linked_items],
         "purchase_items": [_serialize_purchase_item(i) for i in linked_items],
@@ -819,10 +839,18 @@ def create_lce_estimate_api_view(request):
     items_payload = payload.get("items")
     item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
     if items_payload is not None:
-        if "ex_works_material_cost" in payload and payload.get("ex_works_material_cost") not in (None, ""):
+        if "ex_works_material_cost" in payload and payload.get("ex_works_material_cost") not in (None, "") and not items_payload:
             values["ex_works_material_cost"] = _to_decimal(payload.get("ex_works_material_cost"))
-        else:
-            values["ex_works_material_cost"] = sum((_to_decimal(r.get("actual_cost"), Decimal("0")) for r in items_payload if isinstance(r, dict)), Decimal("0"))
+        elif items_payload:
+            values["ex_works_material_cost"] = sum(
+                (
+                    _to_decimal(r.get("actual_cost"), Decimal("0"))
+                    * (_to_decimal(r.get("quantity"), Decimal("1")) if r.get("quantity") not in (None, "") else Decimal("1"))
+                    for r in items_payload
+                    if isinstance(r, dict)
+                ),
+                Decimal("0"),
+            ).quantize(Decimal("0.01"))
     elif item_ids:
         values["ex_works_material_cost"] = _sum_item_total_price(item_ids)
 
@@ -875,10 +903,18 @@ def lce_estimate_record_api_view(request, lce_id):
     values = {field: _to_decimal(payload.get(field, getattr(estimate, field)), Decimal("0")) for field in EDITABLE_FIELDS}
     items_payload = payload.get("items")
     if items_payload is not None:
-        if "ex_works_material_cost" in payload and payload.get("ex_works_material_cost") not in (None, ""):
+        if "ex_works_material_cost" in payload and payload.get("ex_works_material_cost") not in (None, "") and not items_payload:
             values["ex_works_material_cost"] = _to_decimal(payload.get("ex_works_material_cost"))
-        else:
-            values["ex_works_material_cost"] = sum((_to_decimal(r.get("actual_cost"), Decimal("0")) for r in items_payload if isinstance(r, dict)), Decimal("0"))
+        elif items_payload:
+            values["ex_works_material_cost"] = sum(
+                (
+                    _to_decimal(r.get("actual_cost"), Decimal("0"))
+                    * (_to_decimal(r.get("quantity"), Decimal("1")) if r.get("quantity") not in (None, "") else Decimal("1"))
+                    for r in items_payload
+                    if isinstance(r, dict)
+                ),
+                Decimal("0"),
+            ).quantize(Decimal("0.01"))
     elif "item_ids" in payload:
         item_ids = [int(i) for i in (payload.get("item_ids") or []) if str(i).isdigit()]
         values["ex_works_material_cost"] = _sum_item_total_price(item_ids)

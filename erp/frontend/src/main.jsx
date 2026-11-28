@@ -11,7 +11,7 @@ const configuredBase =
 const currentPath = window.location.pathname;
 const routerBase =
   configuredBase &&
-  (currentPath === configuredBase || currentPath.startsWith(`${configuredBase}/`))
+    (currentPath === configuredBase || currentPath.startsWith(`${configuredBase}/`))
     ? configuredBase
     : undefined;
 

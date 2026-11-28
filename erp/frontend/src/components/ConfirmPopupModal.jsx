@@ -62,6 +62,7 @@ function ConfirmPopupModal({
         aria-label={title}
         style={{
           width: maxWidth ? `min(${maxWidth}, 94vw)` : "min(520px, 94vw)",
+          maxHeight: "88vh",
           borderRadius: "10px",
           overflow: "hidden",
           boxShadow: "0 20px 45px rgba(0, 0, 0, 0.35)",
@@ -80,6 +81,7 @@ function ConfirmPopupModal({
             padding: "0.85rem 1.25rem",
             background: "linear-gradient(135deg, #2a3042 0%, #36405a 100%)",
             color: "#ffffff",
+            flexShrink: 0,
           }}
         >
           <h3
